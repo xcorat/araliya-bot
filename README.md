@@ -4,8 +4,7 @@ emoji: 👁
 colorFrom: red
 colorTo: blue
 sdk: docker
-sdk_version: 5.48.0
-app_file: hf_space/app/main.py
+app_port: 7860
 pinned: false
 license: mit
 short_description: ai avatar w rag
