@@ -138,6 +138,15 @@ def respond(message: str, history: List[Tuple[str, str]], session_id: str = "def
     
     return "", history
 
+# API endpoint function with explicit API name
+@spaces.GPU(duration=120)
+def api_chat(message: str, session_id: str = "default") -> str:
+    """API endpoint for chat processing with explicit API name.
+    
+    This function is specifically designed for API access.
+    """
+    return process_chat_message(message, session_id)
+
 # Create the Gradio interface
 with gr.Blocks(
     title="Araliya Bot",
@@ -188,32 +197,39 @@ with gr.Blocks(
                 )
                 refresh_btn = gr.Button("Refresh Status", size="sm")
     
-    # Event handlers
+    # Event handlers with explicit API names
     msg.submit(
-        respond,
+        fn=respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot]
+        outputs=[msg, chatbot],
+        api_name="submit_chat"
     )
     
     submit_btn.click(
-        respond,
+        fn=respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot]
+        outputs=[msg, chatbot],
+        api_name="click_submit"
     )
     
     clear_btn.click(
-        lambda: ([], "default"),
-        outputs=[chatbot, session_id]
+        fn=lambda: ([], "default"),
+        outputs=[chatbot, session_id],
+        api_name="clear_chat"
     )
     
     refresh_btn.click(
-        get_health_status,
-        outputs=[health_status]
+        fn=get_health_status,
+        outputs=[health_status],
+        api_name="refresh_status"
     )
+    
+    # Add a dedicated API endpoint for external access
+    demo.queue()
     
     # Initialize health status on load
     demo.load(
-        get_health_status,
+        fn=get_health_status,
         outputs=[health_status]
     )
 
@@ -223,5 +239,6 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=7860,
         show_error=True,
-        show_api=False
+        show_api=True,  # Enable API documentation
+        share=False
     )
