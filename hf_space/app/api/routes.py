@@ -8,10 +8,15 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from app.config import get_settings
-from app.models.chat import ChatRequest, ChatResponse, HealthResponse
-from app.services.openai_service import OpenAIService
-from app.services.session_manager import session_manager
+# Add the parent directory to Python path for imports
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ if '__file__' in globals() else '.')))
+
+from config import get_settings
+from models.chat import ChatRequest, ChatResponse, HealthResponse
+from services.openai_service import OpenAIService
+from services.session_manager import session_manager
 
 logger = logging.getLogger(__name__)
 

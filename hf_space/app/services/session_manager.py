@@ -9,8 +9,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import threading
 
-from app.config import get_settings
-from app.models.chat import ChatMessage
+# Add the parent directory to Python path for imports
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ if '__file__' in globals() else '.')))
+
+from config import get_settings
+from models.chat import ChatMessage
 
 logger = logging.getLogger(__name__)
 

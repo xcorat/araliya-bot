@@ -8,10 +8,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Use relative imports for Hugging Face deployment
-from .config import get_settings
-from .api.routes import router as api_router
-from .utils.error_handlers import setup_error_handlers
+# Add the parent directory to Python path for imports
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from config import get_settings
+from api.routes import router as api_router
+from utils.error_handlers import setup_error_handlers
 
 # Configure logging
 logging.basicConfig(
