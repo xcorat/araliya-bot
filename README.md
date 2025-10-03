@@ -4,7 +4,7 @@ emoji: 👁
 colorFrom: red
 colorTo: blue
 sdk: gradio
-file: hf_space/app/main.py
+app_file: hf_space/app/main.py
 pinned: false
 license: mit
 short_description: ai avatar w rag
