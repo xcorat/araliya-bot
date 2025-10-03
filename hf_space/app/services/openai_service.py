@@ -43,14 +43,19 @@ class OpenAIService:
             logger.error(f"OpenAI connectivity check failed: {e}")
             return False
     
-    def _format_conversation_history(self, messages: List[ChatMessage]) -> List[Dict[str, str]]:
+    def _format_conversation_history(self, messages: List[ChatMessage], context: str = "") -> List[Dict[str, str]]:
         """Format conversation history for OpenAI API."""
         formatted_messages = []
         
-        # Add system message
+        # Create system message with optional RAG context
+        system_content = "You are Araliya, a helpful AI assistant. Provide clear, concise, and helpful responses to user questions."
+        
+        if context:
+            system_content += f"\n\nYou have access to the following relevant information to help answer questions:\n\n{context}\n\nUse this information to provide accurate and helpful responses. If the context doesn't contain relevant information for the user's question, you can still provide general assistance based on your knowledge."
+        
         formatted_messages.append({
             "role": "system",
-            "content": "You are Araliya, a helpful AI assistant. Provide clear, concise, and helpful responses to user questions."
+            "content": system_content
         })
         
         # Add conversation history
@@ -65,7 +70,8 @@ class OpenAIService:
     async def generate_response(
         self, 
         user_message: str, 
-        conversation_history: List[ChatMessage]
+        conversation_history: List[ChatMessage],
+        context: str = ""
     ) -> Dict[str, Any]:
         """
         Generate AI response using OpenAI API.
@@ -73,6 +79,7 @@ class OpenAIService:
         Args:
             user_message: The user's message
             conversation_history: Previous conversation messages
+            context: Optional RAG context to include in the prompt
             
         Returns:
             Dictionary containing response and metadata
@@ -85,8 +92,8 @@ class OpenAIService:
                 ChatMessage(role="user", content=user_message)
             ]
             
-            # Format for OpenAI API
-            formatted_messages = self._format_conversation_history(current_messages)
+            # Format for OpenAI API with context
+            formatted_messages = self._format_conversation_history(current_messages, context)
             
             # Make API call
             response = self.client.chat.completions.create(

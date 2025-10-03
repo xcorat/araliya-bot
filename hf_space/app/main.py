@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import get_settings
 from api.routes import router as api_router
 from utils.error_handlers import setup_error_handlers
+from services.rag_service import initialize_rag_service
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +32,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Araliya Bot HF Space application")
     settings = get_settings()
     logger.info(f"Application configured for environment: {settings.environment}")
+    
+    # Initialize RAG service with sample data
+    try:
+        logger.info("Initializing RAG service...")
+        initialize_rag_service()
+        logger.info("RAG service initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize RAG service: {e}")
+        # Continue startup even if RAG fails - the app can still work without it
     
     # Startup
     yield

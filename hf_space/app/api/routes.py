@@ -17,6 +17,7 @@ from config import get_settings
 from models.chat import ChatRequest, ChatResponse, HealthResponse
 from services.openai_service import OpenAIService
 from services.session_manager import session_manager
+from services.rag_service import get_rag_service
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +103,15 @@ async def chat_endpoint(request: ChatRequest):
         # Add user message to session
         session_manager.add_user_message(session_id, request.message)
         
-        # Generate AI response
+        # Get RAG context
+        rag_service = get_rag_service()
+        context = rag_service.get_context(request.message)
+        
+        # Generate AI response with RAG context
         response_data = await openai_service.generate_response(
             user_message=request.message,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            context=context
         )
         
         # Add AI response to session
@@ -185,4 +191,27 @@ async def clear_session(session_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error clearing session"
+        )
+
+
+@router.get("/rag/status")
+async def get_rag_status():
+    """
+    Get RAG service status and statistics.
+    """
+    try:
+        rag_service = get_rag_service()
+        stats = rag_service.get_stats()
+        
+        return {
+            "status": "active",
+            "timestamp": datetime.utcnow(),
+            **stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting RAG status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving RAG status"
         )

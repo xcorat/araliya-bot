@@ -5,3 +5,6 @@ openai
 python-multipart
 python-dotenv
 gradio
+faiss-cpu
+sentence-transformers
+numpy
