@@ -3,8 +3,8 @@ title: Araliya Bot
 emoji: 👁
 colorFrom: red
 colorTo: blue
-sdk: docker
-app_port: 7860
+sdk: gradio
+file: hf_space/app/main.py
 pinned: false
 license: mit
 short_description: ai avatar w rag
