@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import spaces for GPU decorator
 try:
     import spaces
-    logger.info("HF Spaces ZeroGPU is available")
 except ImportError:
     # Create a no-op decorator for local development
     class MockSpaces:
@@ -31,7 +30,6 @@ except ImportError:
                 return func
             return decorator
     spaces = MockSpaces()
-    logger.info("HF Spaces ZeroGPU is not available, using mock decorator")
 
 # Import services
 from config import get_settings
@@ -39,17 +37,28 @@ from services.openai_service import OpenAIService
 from services.session_manager import session_manager
 from services.rag_service import initialize_rag_service, get_rag_service
 
-# Initialize services
-openai_service = OpenAIService()
+# Services will be initialized lazily
+openai_service = None
+rag_service = None
 
-# Initialize RAG service
-try:
-    logger.info("Initializing RAG service...")
-    initialize_rag_service()
-    logger.info("RAG service initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize RAG service: {e}")
-    # Continue startup even if RAG fails - the app can still work without it
+def get_openai_service():
+    """Get OpenAI service instance (lazy loading)."""
+    global openai_service
+    if openai_service is None:
+        openai_service = OpenAIService()
+    return openai_service
+
+def get_rag_service_instance():
+    """Get RAG service instance (lazy loading)."""
+    global rag_service
+    if rag_service is None:
+        try:
+            initialize_rag_service()
+            rag_service = get_rag_service()
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG service: {e}")
+            rag_service = None
+    return rag_service
 
 # GPU-accelerated chat processing function following HF Spaces patterns
 @spaces.GPU(duration=120)
@@ -62,8 +71,6 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
     - Returns the final result
     """
     try:
-        logger.info(f"Processing chat message for session {session_id}")
-        
         # Create or get session
         session_id = session_manager.create_session(session_id)
         
@@ -74,11 +81,11 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
         session_manager.add_user_message(session_id, message)
         
         # Get RAG context
-        rag_service = get_rag_service()
-        context = rag_service.get_context(message)
+        rag_service = get_rag_service_instance()
+        context = rag_service.get_context(message) if rag_service else ""
         
         # Generate AI response with RAG context
-        response_data = openai_service.generate_response_sync(
+        response_data = get_openai_service().generate_response(
             user_message=message,
             conversation_history=conversation_history,
             context=context
@@ -87,7 +94,6 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
         # Add AI response to session
         session_manager.add_assistant_message(session_id, response_data["message"])
         
-        logger.info(f"Chat response generated for session {session_id}")
         return response_data["message"]
         
     except Exception as e:
@@ -99,8 +105,8 @@ def get_health_status() -> str:
     """Get system health status."""
     try:
         # Check OpenAI connectivity
-        openai_connected = openai_service.check_connectivity_sync()
-        rag_service = get_rag_service()
+        openai_connected = get_openai_service().check_connectivity()
+        rag_service = get_rag_service_instance()
         rag_initialized = rag_service.is_initialized() if rag_service else False
         
         status_parts = []
@@ -138,14 +144,6 @@ def respond(message: str, history: List[Tuple[str, str]], session_id: str = "def
     
     return "", history
 
-# API endpoint function with explicit API name
-@spaces.GPU(duration=120)
-def api_chat(message: str, session_id: str = "default") -> str:
-    """API endpoint for chat processing with explicit API name.
-    
-    This function is specifically designed for API access.
-    """
-    return process_chat_message(message, session_id)
 
 # Create the Gradio interface
 with gr.Blocks(
@@ -197,39 +195,32 @@ with gr.Blocks(
                 )
                 refresh_btn = gr.Button("Refresh Status", size="sm")
     
-    # Event handlers with explicit API names
+    # Event handlers
     msg.submit(
-        fn=respond,
+        respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot],
-        api_name="submit_chat"
+        outputs=[msg, chatbot]
     )
     
     submit_btn.click(
-        fn=respond,
+        respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot],
-        api_name="click_submit"
+        outputs=[msg, chatbot]
     )
     
     clear_btn.click(
-        fn=lambda: ([], "default"),
-        outputs=[chatbot, session_id],
-        api_name="clear_chat"
+        lambda: ([], "default"),
+        outputs=[chatbot, session_id]
     )
     
     refresh_btn.click(
-        fn=get_health_status,
-        outputs=[health_status],
-        api_name="refresh_status"
+        get_health_status,
+        outputs=[health_status]
     )
-    
-    # Add a dedicated API endpoint for external access
-    demo.queue()
     
     # Initialize health status on load
     demo.load(
-        fn=get_health_status,
+        get_health_status,
         outputs=[health_status]
     )
 
@@ -237,8 +228,5 @@ with gr.Blocks(
 if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
-        server_port=7860,
-        show_error=True,
-        show_api=True,  # Enable API documentation
-        share=False
+        server_port=7860
     )

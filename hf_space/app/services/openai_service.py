@@ -4,20 +4,9 @@ OpenAI service for handling LLM interactions.
 
 import logging
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import openai
 from openai import OpenAI
-
-# Import spaces for GPU decorator
-try:
-    import spaces
-    HF_SPACES_AVAILABLE = True
-except ImportError:
-    HF_SPACES_AVAILABLE = False
-    # Create a no-op decorator for local development
-    def spaces_gpu_decorator(func):
-        return func
-    spaces = type('MockSpaces', (), {'GPU': spaces_gpu_decorator})()
 
 # Add the parent directory to Python path for imports
 import sys
@@ -44,7 +33,7 @@ class OpenAIService:
         if not self.settings.validate_openai_config():
             raise ValueError("Invalid OpenAI configuration. Please check your API key.")
     
-    def check_connectivity_sync(self) -> bool:
+    def check_connectivity(self) -> bool:
         """Check OpenAI API connectivity without making a full request."""
         try:
             # Simple way to check if API key is valid
@@ -78,7 +67,7 @@ class OpenAIService:
         
         return formatted_messages
     
-    def generate_response_sync(
+    def generate_response(
         self, 
         user_message: str, 
         conversation_history: List[ChatMessage],
