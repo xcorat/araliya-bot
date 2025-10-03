@@ -78,7 +78,6 @@ class OpenAIService:
         
         return formatted_messages
     
-    @spaces.GPU
     async def generate_response(
         self, 
         user_message: str, 
@@ -107,14 +106,26 @@ class OpenAIService:
             # Format for OpenAI API with context
             formatted_messages = self._format_conversation_history(current_messages, context)
             
-            # Make API call
-            response = self.client.chat.completions.create(
-                model=self.settings.openai_model,
-                messages=formatted_messages,
-                max_tokens=self.settings.openai_max_tokens,
-                temperature=self.settings.openai_temperature,
-                timeout=self.settings.request_timeout_seconds
-            )
+            # Make API call (GPU-accelerated in HF Spaces)
+            try:
+                from .gpu_accelerated import generate_openai_response
+                response = await generate_openai_response(
+                    self.client,
+                    formatted_messages,
+                    self.settings.openai_model,
+                    self.settings.openai_max_tokens,
+                    self.settings.openai_temperature,
+                    self.settings.request_timeout_seconds
+                )
+            except ImportError:
+                # Fallback for local development
+                response = self.client.chat.completions.create(
+                    model=self.settings.openai_model,
+                    messages=formatted_messages,
+                    max_tokens=self.settings.openai_max_tokens,
+                    temperature=self.settings.openai_temperature,
+                    timeout=self.settings.request_timeout_seconds
+                )
             
             # Extract response
             ai_message = response.choices[0].message.content

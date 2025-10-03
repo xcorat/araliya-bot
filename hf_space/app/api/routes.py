@@ -89,7 +89,6 @@ async def health_check():
 
 
 @router.post("/chat", response_model=ChatResponse)
-@spaces.GPU
 async def chat_endpoint(request: ChatRequest):
     """
     Chat endpoint that processes user messages and returns AI responses.

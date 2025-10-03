@@ -122,7 +122,6 @@ class RAGService:
         except Exception as e:
             logger.error(f"Failed to save index: {e}")
     
-    @spaces.GPU
     def add_documents(self, documents: List[Dict[str, Any]]):
         """
         Add documents to the vector store.
@@ -145,9 +144,14 @@ class RAGService:
             texts.append(text)
             doc_metadata.append(doc)
         
-        # Generate embeddings
+        # Generate embeddings (GPU-accelerated in HF Spaces)
         logger.info("Generating embeddings...")
-        embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
+        try:
+            from .gpu_accelerated import generate_embeddings
+            embeddings = generate_embeddings(self.embedding_model, texts)
+        except ImportError:
+            # Fallback for local development
+            embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
         
         # Normalize embeddings for cosine similarity
         faiss.normalize_L2(embeddings)
@@ -161,7 +165,6 @@ class RAGService:
         
         logger.info(f"Successfully added {len(documents)} documents. Total: {self.index.ntotal}")
     
-    @spaces.GPU
     def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
         Search for relevant documents.
@@ -177,8 +180,13 @@ class RAGService:
             logger.warning("No documents in index")
             return []
         
-        # Generate query embedding
-        query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
+        # Generate query embedding (GPU-accelerated in HF Spaces)
+        try:
+            from .gpu_accelerated import search_embeddings
+            query_embedding = search_embeddings(self.embedding_model, query)
+        except ImportError:
+            # Fallback for local development
+            query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
         faiss.normalize_L2(query_embedding)
         
         # Search
