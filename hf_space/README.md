@@ -1,3 +1,16 @@
+---
+title: Araliya Bot
+emoji: 👁
+colorFrom: red
+colorTo: blue
+sdk: gradio
+sdk_version: 5.48.0
+app_file: app.py
+pinned: false
+license: mit
+short_description: ai avatar w rag
+---
+
 # Araliya Bot - HF Space Backend
 
 **Phase 1: Basic HF ZeroGPU Bot**
