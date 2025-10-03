@@ -17,9 +17,9 @@ dependencies = [
     "python-dotenv",
     "gradio",
     # CPU-optimized packages for local development
-    "faiss-cpu",
+    "faiss-cpu",  # Latest CPU version
     "sentence-transformers",
-    "numpy",
+    "numpy<2.0",  # Pin to NumPy 1.x for compatibility
     "torch",
     "transformers",
 ]

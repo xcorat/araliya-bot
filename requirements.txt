@@ -7,10 +7,19 @@ python-multipart
 python-dotenv
 gradio
 spaces
+
+# NumPy must be installed first and pinned to <2.0 for FAISS compatibility
+# See: https://github.com/facebookresearch/faiss/issues/3526
+numpy<2.0
+
 # GPU-optimized packages for HF Spaces ZeroGPU
-faiss-gpu
+# Note: faiss-gpu-cu12 is not compatible with NumPy 2.x
+faiss-gpu-cu12
 sentence-transformers
-numpy
+
+# HuggingFace packages
+# Note: transformers also requires numpy<2.0 as of version 4.42.3
+# See: https://github.com/huggingface/transformers/issues/31740
 torch
 transformers
 accelerate

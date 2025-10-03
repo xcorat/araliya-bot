@@ -10,23 +10,43 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# Smart FAISS import: GPU for HF Spaces, CPU for local development
+# Smart FAISS import with NumPy compatibility handling
+FAISS_AVAILABLE = False
+FAISS_GPU_AVAILABLE = False
+
 try:
     import faiss
+    FAISS_AVAILABLE = True
+    
     # Try to detect if we're in HF Spaces environment
     if os.environ.get('SPACE_ID') or os.environ.get('SPACES_ZERO_GPU'):
         # We're in HF Spaces - use GPU if available
-        if hasattr(faiss, 'get_num_gpus') and faiss.get_num_gpus() > 0:
-            FAISS_GPU_AVAILABLE = True
+        try:
+            if hasattr(faiss, 'get_num_gpus') and faiss.get_num_gpus() > 0:
+                FAISS_GPU_AVAILABLE = True
+                logger = logging.getLogger(__name__)
+                logger.info("FAISS GPU detected - using GPU acceleration")
+            else:
+                FAISS_GPU_AVAILABLE = False
+        except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.info("FAISS GPU detected - using GPU acceleration")
-        else:
+            logger.warning(f"FAISS GPU detection failed: {e}")
             FAISS_GPU_AVAILABLE = False
     else:
         # Local development - use CPU
         FAISS_GPU_AVAILABLE = False
-except ImportError:
-    import faiss
+        
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.error(f"FAISS import failed: {e}")
+    
+    # Check if it's a NumPy compatibility issue
+    if "numpy" in str(e).lower() or "_array_api" in str(e).lower():
+        logger.error("NumPy compatibility issue detected. Try:")
+        logger.error("1. pip install 'numpy<2.0' faiss-cpu==1.12.0")
+        logger.error("2. Or use conda: conda install faiss-cpu")
+        
+    FAISS_AVAILABLE = False
     FAISS_GPU_AVAILABLE = False
 
 # Import spaces for GPU decorator
@@ -59,6 +79,16 @@ class RAGService:
         self.model_name = model_name
         self.index_path = index_path
         self.metadata_path = f"{index_path}_metadata.pkl"
+        
+        # Check if FAISS is available
+        if not FAISS_AVAILABLE:
+            logger.error("FAISS is not available. RAG functionality will be disabled.")
+            logger.error("To fix: pip install 'numpy<2.0' faiss-cpu==1.12.0")
+            self.index = None
+            self.metadata = []
+            self.embedding_model = None
+            self.embedding_dim = 384  # Default dimension
+            return
         
         # Initialize embedding model
         logger.info(f"Loading embedding model: {model_name}")
@@ -131,6 +161,10 @@ class RAGService:
         """
         if not documents:
             return
+            
+        if not FAISS_AVAILABLE:
+            logger.warning("FAISS not available - documents not indexed")
+            return
         
         logger.info(f"Adding {len(documents)} documents to vector store")
         
@@ -176,6 +210,10 @@ class RAGService:
         Returns:
             List of relevant documents with scores
         """
+        if not FAISS_AVAILABLE or self.index is None:
+            logger.warning("FAISS not available - returning empty results")
+            return []
+            
         if self.index.ntotal == 0:
             logger.warning("No documents in index")
             return []
@@ -246,10 +284,12 @@ class RAGService:
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the RAG service."""
         return {
-            "total_documents": self.index.ntotal if self.index else 0,
+            "total_documents": self.index.ntotal if (FAISS_AVAILABLE and self.index) else 0,
             "embedding_model": self.model_name,
             "embedding_dimension": self.embedding_dim,
-            "index_path": self.index_path
+            "index_path": self.index_path,
+            "faiss_available": FAISS_AVAILABLE,
+            "faiss_gpu_available": FAISS_GPU_AVAILABLE
         }
 
 

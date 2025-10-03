@@ -3,9 +3,8 @@ title: Araliya Bot
 emoji: 👁
 colorFrom: red
 colorTo: blue
-sdk: gradio
-sdk_version: 5.48.0
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 short_description: ai avatar w rag
@@ -79,10 +78,30 @@ The application uses environment variables for configuration:
 
 ## Local Development
 
-### Setup
+### Option 1: Docker (Recommended)
 
 ```bash
-# Install dependencies
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your OpenAI API key
+nano .env
+
+# Build and start the application
+./scripts/docker_dev.sh up
+
+# Or use development mode with uv
+./scripts/docker_dev.sh dev
+```
+
+### Option 2: Direct Setup
+
+```bash
+# Install dependencies with uv (recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync
+
+# Or with pip
 pip install -r requirements.txt
 
 # Set environment variables
