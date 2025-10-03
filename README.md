@@ -3,7 +3,7 @@ title: Araliya Bot
 emoji: 👁
 colorFrom: red
 colorTo: blue
-sdk: gradio
+sdk: docker
 sdk_version: 5.48.0
 app_file: hf_space/app/main.py
 pinned: false
