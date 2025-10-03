@@ -6,8 +6,8 @@ Handles environment variables and application settings.
 import os
 from functools import lru_cache
 from typing import List
-from pydantic import BaseSettings, Field
-
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables
         
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

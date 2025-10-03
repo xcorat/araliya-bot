@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pydantic-settings
+openai
+python-multipart
+python-dotenv
+gradio

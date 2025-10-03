@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID for conversation context")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "message": "Hello, how can you help me today?",
                 "session_id": "user-123-session"
@@ -36,7 +36,7 @@ class ChatResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional response metadata")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "message": "Hello! I'm here to help you with any questions you have.",
                 "session_id": "user-123-session",
@@ -59,7 +59,7 @@ class HealthResponse(BaseModel):
     uptime_seconds: Optional[float] = Field(None, description="Service uptime in seconds")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "healthy",
                 "timestamp": "2025-10-02T14:30:00Z",

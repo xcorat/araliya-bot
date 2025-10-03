@@ -8,10 +8,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Use relative imports for Hugging Face deployment
-from .config import get_settings
-from .api.routes import router as api_router
-from .utils.error_handlers import setup_error_handlers
+# Use absolute imports
+from app.config import get_settings
+from app.api.routes import router as api_router
+from app.utils.error_handlers import setup_error_handlers
 
 # Configure logging
 logging.basicConfig(
