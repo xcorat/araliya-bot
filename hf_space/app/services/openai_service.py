@@ -45,7 +45,7 @@ class OpenAIService:
             raise ValueError("Invalid OpenAI configuration. Please check your API key.")
     
     def check_connectivity_sync(self) -> bool:
-        """Synchronous version: Check OpenAI API connectivity without making a full request."""
+        """Check OpenAI API connectivity without making a full request."""
         try:
             # Simple way to check if API key is valid
             models = self.client.models.list()
@@ -53,10 +53,6 @@ class OpenAIService:
         except Exception as e:
             logger.error(f"OpenAI connectivity check failed: {e}")
             return False
-            
-    async def check_connectivity(self) -> bool:
-        """Async version: Check OpenAI API connectivity without making a full request."""
-        return self.check_connectivity_sync()
     
     def _format_conversation_history(self, messages: List[ChatMessage], context: str = "") -> List[Dict[str, str]]:
         """Format conversation history for OpenAI API."""
@@ -89,7 +85,7 @@ class OpenAIService:
         context: str = ""
     ) -> Dict[str, Any]:
         """
-        Synchronous version: Generate AI response using OpenAI API.
+        Generate AI response using OpenAI API.
         
         Args:
             user_message: The user's message
@@ -110,26 +106,14 @@ class OpenAIService:
             # Format for OpenAI API with context
             formatted_messages = self._format_conversation_history(current_messages, context)
             
-            # Make API call (GPU-accelerated in HF Spaces)
-            try:
-                from .gpu_accelerated import generate_openai_response
-                # Use the synchronous version directly
-                response = self.client.chat.completions.create(
-                    model=self.settings.openai_model,
-                    messages=formatted_messages,
-                    max_tokens=self.settings.openai_max_tokens,
-                    temperature=self.settings.openai_temperature,
-                    timeout=self.settings.request_timeout_seconds
-                )
-            except ImportError:
-                # Fallback for local development
-                response = self.client.chat.completions.create(
-                    model=self.settings.openai_model,
-                    messages=formatted_messages,
-                    max_tokens=self.settings.openai_max_tokens,
-                    temperature=self.settings.openai_temperature,
-                    timeout=self.settings.request_timeout_seconds
-                )
+            # Make API call
+            response = self.client.chat.completions.create(
+                model=self.settings.openai_model,
+                messages=formatted_messages,
+                max_tokens=self.settings.openai_max_tokens,
+                temperature=self.settings.openai_temperature,
+                timeout=self.settings.request_timeout_seconds
+            )
             
             # Extract response
             ai_message = response.choices[0].message.content
@@ -168,44 +152,3 @@ class OpenAIService:
             logger.error(f"Unexpected error in OpenAI service: {e}")
             raise Exception("An unexpected error occurred. Please try again.")
     
-    async def generate_response(
-        self, 
-        user_message: str, 
-        conversation_history: List[ChatMessage],
-        context: str = ""
-    ) -> Dict[str, Any]:
-        """
-        Generate AI response using OpenAI API.
-        
-        Args:
-            user_message: The user's message
-            conversation_history: Previous conversation messages
-            context: Optional RAG context to include in the prompt
-            
-        Returns:
-            Dictionary containing response and metadata
-        """
-        start_time = time.time()
-        
-        try:
-            # Add current user message to history
-            current_messages = conversation_history + [
-                ChatMessage(role="user", content=user_message)
-            ]
-            
-            # Format for OpenAI API with context
-            formatted_messages = self._format_conversation_history(current_messages, context)
-            
-            # For async version, just call the sync version
-            # This avoids code duplication and ensures consistent behavior
-            return self.generate_response_sync(
-                user_message=user_message,
-                conversation_history=conversation_history,
-                context=context
-            )
-            
-        except Exception as e:
-            # All exceptions are already handled in the sync version
-            # This is just a safety net
-            logger.error(f"Unexpected error in async OpenAI service: {e}")
-            raise Exception("An unexpected error occurred. Please try again.")

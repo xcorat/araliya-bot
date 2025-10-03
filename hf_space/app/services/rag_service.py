@@ -99,7 +99,6 @@ class RAGService:
         self.index = None
         self.metadata = []  # Store document metadata
         
-        # Try to load existing index
         self._load_index()
         
         if self.index is None:
@@ -178,14 +177,9 @@ class RAGService:
             texts.append(text)
             doc_metadata.append(doc)
         
-        # Generate embeddings (GPU-accelerated in HF Spaces)
+        # Generate embeddings
         logger.info("Generating embeddings...")
-        try:
-            from .gpu_accelerated import generate_embeddings
-            embeddings = generate_embeddings(self.embedding_model, texts)
-        except ImportError:
-            # Fallback for local development
-            embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
+        embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
         
         # Normalize embeddings for cosine similarity
         faiss.normalize_L2(embeddings)
@@ -218,13 +212,8 @@ class RAGService:
             logger.warning("No documents in index")
             return []
         
-        # Generate query embedding (GPU-accelerated in HF Spaces)
-        try:
-            from .gpu_accelerated import search_embeddings
-            query_embedding = search_embeddings(self.embedding_model, query)
-        except ImportError:
-            # Fallback for local development
-            query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
+        # Generate query embedding
+        query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
         faiss.normalize_L2(query_embedding)
         
         # Search
@@ -291,6 +280,13 @@ class RAGService:
             "faiss_available": FAISS_AVAILABLE,
             "faiss_gpu_available": FAISS_GPU_AVAILABLE
         }
+    
+    def is_initialized(self) -> bool:
+        """Check if the RAG service is properly initialized."""
+        return (FAISS_AVAILABLE and 
+                self.index is not None and 
+                self.embedding_model is not None and 
+                self.index.ntotal > 0)
 
 
 # Global RAG service instance

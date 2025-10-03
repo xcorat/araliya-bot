@@ -1,5 +1,4 @@
-"""
-Araliya Bot - HF Space Gradio Application
+"""Araliya Bot - HF Space Gradio Application
 Main entry point for the Hugging Face Space with ZeroGPU support.
 """
 
@@ -7,8 +6,7 @@ import os
 import sys
 import logging
 import gradio as gr
-from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Tuple
 
 # Configure logging
 logging.basicConfig(
@@ -23,14 +21,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import spaces for GPU decorator
 try:
     import spaces
-    HF_SPACES_AVAILABLE = True
     logger.info("HF Spaces ZeroGPU is available")
 except ImportError:
-    HF_SPACES_AVAILABLE = False
     # Create a no-op decorator for local development
-    def spaces_gpu_decorator(func):
-        return func
-    spaces = type('MockSpaces', (), {'GPU': spaces_gpu_decorator})()
+    class MockSpaces:
+        @staticmethod
+        def GPU(duration=60):
+            def decorator(func):
+                return func
+            return decorator
+    spaces = MockSpaces()
     logger.info("HF Spaces ZeroGPU is not available, using mock decorator")
 
 # Import services
@@ -51,40 +51,18 @@ except Exception as e:
     logger.error(f"Failed to initialize RAG service: {e}")
     # Continue startup even if RAG fails - the app can still work without it
 
-# Synchronous function for GPU-intensive operations that can be properly decorated
-@spaces.GPU
-def _process_chat_gpu(message: str, conversation_history, context):
-    """GPU-accelerated chat processing function.
+# GPU-accelerated chat processing function following HF Spaces patterns
+@spaces.GPU(duration=120)
+def process_chat_message(message: str, session_id: str = "default") -> str:
+    """Process chat messages with GPU acceleration.
     
-    This synchronous function is properly decorated with @spaces.GPU and handles
-    the GPU-intensive operations.
-    """
-    settings = get_settings()
-    
-    # Generate AI response with RAG context
-    response_data = openai_service.generate_response_sync(
-        user_message=message,
-        conversation_history=conversation_history,
-        context=context
-    )
-    
-    return response_data
-
-# Async chat processing function that calls the GPU-decorated function
-async def process_chat(message: str, history: List[List[str]], session_id: str = "default") -> str:
-    """
-    Process chat messages with GPU acceleration.
-    
-    Args:
-        message: User message
-        history: Chat history
-        session_id: Session identifier
-        
-    Returns:
-        Bot response
+    This function follows the correct HF Spaces ZeroGPU pattern:
+    - Synchronous function decorated with @spaces.GPU
+    - Contains all GPU-intensive operations
+    - Returns the final result
     """
     try:
-        settings = get_settings()
+        logger.info(f"Processing chat message for session {session_id}")
         
         # Create or get session
         session_id = session_manager.create_session(session_id)
@@ -99,9 +77,9 @@ async def process_chat(message: str, history: List[List[str]], session_id: str =
         rag_service = get_rag_service()
         context = rag_service.get_context(message)
         
-        # Call the GPU-decorated synchronous function
-        response_data = _process_chat_gpu(
-            message=message,
+        # Generate AI response with RAG context
+        response_data = openai_service.generate_response_sync(
+            user_message=message,
             conversation_history=conversation_history,
             context=context
         )
@@ -116,97 +94,134 @@ async def process_chat(message: str, history: List[List[str]], session_id: str =
         logger.error(f"Chat processing error: {e}")
         return f"I'm sorry, an error occurred: {str(e)[:100]}... Please try again."
 
-# Synchronous function for GPU-intensive health check operations
-@spaces.GPU
-def _check_health_gpu():
-    """GPU-accelerated health check function.
-    
-    This synchronous function is properly decorated with @spaces.GPU and handles
-    the GPU-intensive operations for health checking.
-    """
-    settings = get_settings()
-    
-    # Check OpenAI connectivity
-    openai_connected = openai_service.check_connectivity_sync()
-    openai_status = "connected" if openai_connected else "disconnected"
-    
-    # Determine overall status
-    overall_status = "healthy" if openai_connected else "degraded"
-    
-    return {
-        "status": overall_status,
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0",
-        "openai_status": openai_status,
-        "rag_status": "active" if get_rag_service().is_initialized() else "inactive"
-    }
-
-# Async health check function that calls the GPU-decorated function
-async def check_health() -> Dict[str, Any]:
-    """
-    Check system health and OpenAI connectivity.
-    """
+# Simple health check function (no GPU needed for this)
+def get_health_status() -> str:
+    """Get system health status."""
     try:
-        # Call the GPU-decorated synchronous function
-        return _check_health_gpu()
+        # Check OpenAI connectivity
+        openai_connected = openai_service.check_connectivity_sync()
+        rag_service = get_rag_service()
+        rag_initialized = rag_service.is_initialized() if rag_service else False
+        
+        status_parts = []
+        if openai_connected:
+            status_parts.append("✅ OpenAI: Connected")
+        else:
+            status_parts.append("❌ OpenAI: Disconnected")
+            
+        if rag_initialized:
+            status_parts.append("✅ RAG: Active")
+        else:
+            status_parts.append("⚠️ RAG: Inactive")
+            
+        return "\n".join(status_parts)
         
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "version": "1.0.0",
-            "openai_status": "unknown",
-            "error": str(e)[:100]
-        }
+        return f"❌ System Error: {str(e)[:100]}"
+
+# Create the Gradio interface following HF Spaces best practices
+def respond(message: str, history: List[Tuple[str, str]], session_id: str = "default") -> Tuple[str, List[Tuple[str, str]]]:
+    """Gradio chat response function.
+    
+    This function handles the chat interface and calls the GPU-decorated function.
+    Following Gradio best practices for chat interfaces.
+    """
+    if not message.strip():
+        return "", history
+    
+    # Call the GPU-decorated chat processing function
+    bot_response = process_chat_message(message, session_id)
+    
+    # Update history
+    history.append((message, bot_response))
+    
+    return "", history
 
 # Create the Gradio interface
-with gr.Blocks(title="Araliya Bot") as demo:
-    gr.Markdown("# Araliya Bot")
-    gr.Markdown("AI Assistant with Graph-RAG Knowledge System")
+with gr.Blocks(
+    title="Araliya Bot",
+    theme=gr.themes.Soft(),
+    css=".gradio-container {max-width: 1200px; margin: auto;}"
+) as demo:
+    gr.Markdown(
+        """
+        # 🌺 Araliya Bot
+        AI Assistant with Graph-RAG Knowledge System
+        
+        Ask me anything and I'll help you with information from my knowledge base!
+        """
+    )
     
     with gr.Row():
         with gr.Column(scale=4):
-            chatbot = gr.Chatbot(height=500)
-            msg = gr.Textbox(placeholder="Ask me anything...", container=False)
-            clear = gr.Button("Clear")
-        
+            chatbot = gr.Chatbot(
+                height=600,
+                placeholder="Hi! I'm Araliya, your AI assistant. How can I help you today?",
+                show_copy_button=True
+            )
+            
+            with gr.Row():
+                msg = gr.Textbox(
+                    placeholder="Type your message here...",
+                    container=False,
+                    scale=4
+                )
+                submit_btn = gr.Button("Send", variant="primary", scale=1)
+            
+            with gr.Row():
+                clear_btn = gr.Button("Clear Chat", variant="secondary")
+                
         with gr.Column(scale=1):
-            session_id = gr.Textbox(value="default", label="Session ID")
+            session_id = gr.Textbox(
+                value="default",
+                label="Session ID",
+                info="Change this to start a new conversation"
+            )
+            
             with gr.Accordion("System Status", open=False):
-                health_info = gr.JSON(value={"status": "Loading..."})
-                refresh_btn = gr.Button("Refresh Status")
+                health_status = gr.Textbox(
+                    label="Health Check",
+                    value="Loading...",
+                    interactive=False,
+                    lines=3
+                )
+                refresh_btn = gr.Button("Refresh Status", size="sm")
     
-    def update_chat(message, chat_history, session_id):
-        if message.strip() == "":
-            return "", chat_history
-        
-        # Add user message to history
-        chat_history.append([message, None])
-        return "", chat_history
-    
-    async def bot_response(chat_history, session_id):
-        if len(chat_history) == 0:
-            return chat_history
-        
-        user_message = chat_history[-1][0]
-        bot_message = await process_chat(user_message, chat_history, session_id)
-        
-        # Update last message with bot response
-        chat_history[-1][1] = bot_message
-        return chat_history
-    
-    # Set up event handlers
-    msg.submit(update_chat, [msg, chatbot, session_id], [msg, chatbot]).then(
-        bot_response, [chatbot, session_id], [chatbot]
+    # Event handlers
+    msg.submit(
+        respond,
+        inputs=[msg, chatbot, session_id],
+        outputs=[msg, chatbot]
     )
     
-    clear.click(lambda: ([], "default"), outputs=[chatbot, session_id])
-    refresh_btn.click(check_health, outputs=[health_info])
+    submit_btn.click(
+        respond,
+        inputs=[msg, chatbot, session_id],
+        outputs=[msg, chatbot]
+    )
+    
+    clear_btn.click(
+        lambda: ([], "default"),
+        outputs=[chatbot, session_id]
+    )
+    
+    refresh_btn.click(
+        get_health_status,
+        outputs=[health_status]
+    )
     
     # Initialize health status on load
-    demo.load(check_health, outputs=[health_info])
+    demo.load(
+        get_health_status,
+        outputs=[health_status]
+    )
 
 # Launch the app
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        show_error=True,
+        show_api=False
+    )
