@@ -9,6 +9,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { ChatMessage, ChatSession } from '$lib/types/chat.js';
 	import { generateId } from '$lib/utils/helpers.js';
+	import { apiClient } from '$lib/api/client.js';
 
 	let sessions = $state<ChatSession[]>([]);
 	let ui = $state<{
@@ -102,17 +103,24 @@
 				}
 			}
 
-			// TODO: Call API to get AI response
-			// For now, simulate AI response
-			setTimeout(() => {
+			// Call the API to get AI response
+			try {
+				const response = await apiClient.sendMessage({
+					message: content,
+					session_id: ui.activeSessionId,
+					history: session?.messages || []
+				});
+
+				// Create AI message from response
 				const aiMessage: ChatMessage = {
 					id: generateId(),
-					content: "I'm a placeholder response. The backend API integration will be implemented next to connect to the Phase 1 HF Space.",
+					content: response.message,
 					role: 'assistant',
 					timestamp: new Date(),
 					metadata: {
-						processingTime: 1200,
-						tokens: 25
+						processingTime: response.metadata.processingTime,
+						tokens: response.metadata.tokenUsage?.total_tokens || 0,
+						model: response.metadata.model
 					}
 				};
 
@@ -125,9 +133,12 @@
 						lastMessage: aiMessage.content
 					});
 				}
+			} catch (apiError) {
+				console.error('API Error:', apiError);
+				uiStore.setError('Failed to get response from AI. Please try again.');
+			}
 
-				uiStore.setLoading(false);
-			}, 1500);
+			uiStore.setLoading(false);
 
 		} catch (error) {
 			console.error('Failed to send message:', error);

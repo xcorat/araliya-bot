@@ -9,7 +9,16 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
-export function formatTimestamp(date: Date): string {
+export function formatTimestamp(dateInput: Date | string): string {
+  // Ensure we have a Date object
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.error('Invalid date:', dateInput);
+    return 'Invalid date';
+  }
+  
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const minutes = Math.floor(diff / 60000);

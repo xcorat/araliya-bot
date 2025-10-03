@@ -1,6 +1,7 @@
 import type { ChatRequest, ChatResponse, HealthStatus, APIError } from '$lib/types/api.js';
 
-const API_BASE_URL = 'https://your-hf-space-url.hf.space'; // TODO: Replace with actual HF Space URL
+// Use local proxy endpoints to avoid CORS issues
+const API_BASE_URL = '';  // Empty string for relative URLs to our own server
 
 class APIClient {
   private baseURL: string;
@@ -21,10 +22,12 @@ class APIClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
+      console.log('Request URL:', url);
       const response = await fetch(url, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           ...options.headers,
         },
         signal: controller.signal,
