@@ -8,6 +8,17 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 
+# Import spaces for GPU decorator
+try:
+    import spaces
+    HF_SPACES_AVAILABLE = True
+except ImportError:
+    HF_SPACES_AVAILABLE = False
+    # Create a no-op decorator for local development
+    def spaces_gpu_decorator(func):
+        return func
+    spaces = type('MockSpaces', (), {'GPU': spaces_gpu_decorator})()
+
 # Add the parent directory to Python path for imports
 import sys
 import os
@@ -78,6 +89,7 @@ async def health_check():
 
 
 @router.post("/chat", response_model=ChatResponse)
+@spaces.GPU
 async def chat_endpoint(request: ChatRequest):
     """
     Chat endpoint that processes user messages and returns AI responses.

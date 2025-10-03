@@ -8,6 +8,17 @@ from typing import List, Dict, Any, Optional
 import openai
 from openai import OpenAI
 
+# Import spaces for GPU decorator
+try:
+    import spaces
+    HF_SPACES_AVAILABLE = True
+except ImportError:
+    HF_SPACES_AVAILABLE = False
+    # Create a no-op decorator for local development
+    def spaces_gpu_decorator(func):
+        return func
+    spaces = type('MockSpaces', (), {'GPU': spaces_gpu_decorator})()
+
 # Add the parent directory to Python path for imports
 import sys
 import os
@@ -67,6 +78,7 @@ class OpenAIService:
         
         return formatted_messages
     
+    @spaces.GPU
     async def generate_response(
         self, 
         user_message: str, 

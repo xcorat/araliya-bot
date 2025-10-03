@@ -69,7 +69,13 @@ cd hf_space
 python scripts/test_rag.py
 ```
 
-### 2. Test API with RAG
+### 2. Test CPU-Optimized RAG
+```bash
+cd hf_space
+python scripts/test_cpu_rag.py
+```
+
+### 3. Test API with RAG
 ```bash
 cd hf_space
 python scripts/test_api_rag.py
@@ -84,9 +90,12 @@ Start the server and test with queries like:
 ## Configuration
 
 ### Dependencies
-- `faiss-cpu`: Vector similarity search
+- `faiss-cpu`: Vector similarity search (CPU-optimized)
 - `sentence-transformers`: Text embeddings
 - `numpy`: Numerical operations
+- `torch`: PyTorch backend (CPU-only)
+- `spaces`: HF Spaces GPU acceleration decorator
+- `transformers`: Transformer models support
 
 ### Files Structure
 ```
@@ -112,7 +121,9 @@ hf_space/app/
 
 - **Embedding Model**: Lightweight `all-MiniLM-L6-v2` (384 dimensions)
 - **Search Speed**: FAISS provides fast similarity search
-- **Memory Usage**: Minimal - suitable for HF Spaces free tier
+- **Memory Usage**: CPU-optimized - suitable for HF Spaces
+- **GPU Acceleration**: `@spaces.GPU` decorator for HF Spaces
+- **CPU Fallback**: Works without GPU for local development
 - **Context Limit**: ~2000 tokens to fit within LLM limits
 
 ## Next Steps

@@ -1,0 +1,60 @@
+[project]
+name = "araliya-bot"
+version = "1.0.0"
+description = "Araliya Graph-RAG Chatbot - HF Space Backend"
+readme = "README.md"
+authors = [
+    {name = "Araliya Bot Team"}
+]
+requires-python = ">=3.9"
+# Local development dependencies (CPU-optimized)
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    "openai",
+    "python-multipart",
+    "python-dotenv",
+    "gradio",
+    # CPU-optimized packages for local development
+    "faiss-cpu",
+    "sentence-transformers",
+    "numpy",
+    "torch",
+    "transformers",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "black",
+    "ruff",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]  # Line too long (handled by black)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"

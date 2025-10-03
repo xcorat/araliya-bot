@@ -8,8 +8,37 @@ import os
 import pickle
 from typing import List, Dict, Any, Optional
 import numpy as np
-import faiss
 from sentence_transformers import SentenceTransformer
+
+# Smart FAISS import: GPU for HF Spaces, CPU for local development
+try:
+    import faiss
+    # Try to detect if we're in HF Spaces environment
+    if os.environ.get('SPACE_ID') or os.environ.get('SPACES_ZERO_GPU'):
+        # We're in HF Spaces - use GPU if available
+        if hasattr(faiss, 'get_num_gpus') and faiss.get_num_gpus() > 0:
+            FAISS_GPU_AVAILABLE = True
+            logger = logging.getLogger(__name__)
+            logger.info("FAISS GPU detected - using GPU acceleration")
+        else:
+            FAISS_GPU_AVAILABLE = False
+    else:
+        # Local development - use CPU
+        FAISS_GPU_AVAILABLE = False
+except ImportError:
+    import faiss
+    FAISS_GPU_AVAILABLE = False
+
+# Import spaces for GPU decorator
+try:
+    import spaces
+    HF_SPACES_AVAILABLE = True
+except ImportError:
+    HF_SPACES_AVAILABLE = False
+    # Create a no-op decorator for local development
+    def spaces_gpu_decorator(func):
+        return func
+    spaces = type('MockSpaces', (), {'GPU': spaces_gpu_decorator})()
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +74,21 @@ class RAGService:
         
         if self.index is None:
             logger.info("Creating new FAISS index")
-            self.index = faiss.IndexFlatIP(self.embedding_dim)  # Inner product for cosine similarity
+            # Create CPU index first
+            cpu_index = faiss.IndexFlatIP(self.embedding_dim)  # Inner product for cosine similarity
+            
+            # Move to GPU if available (HF Spaces ZeroGPU)
+            if FAISS_GPU_AVAILABLE:
+                try:
+                    res = faiss.StandardGpuResources()
+                    self.index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
+                    logger.info("FAISS index moved to GPU")
+                except Exception as e:
+                    logger.warning(f"Failed to move FAISS to GPU, using CPU: {e}")
+                    self.index = cpu_index
+            else:
+                self.index = cpu_index
+                logger.info("Using CPU FAISS index (local development)")
     
     def _load_index(self) -> bool:
         """Load existing FAISS index and metadata if they exist."""
@@ -79,6 +122,7 @@ class RAGService:
         except Exception as e:
             logger.error(f"Failed to save index: {e}")
     
+    @spaces.GPU
     def add_documents(self, documents: List[Dict[str, Any]]):
         """
         Add documents to the vector store.
@@ -117,6 +161,7 @@ class RAGService:
         
         logger.info(f"Successfully added {len(documents)} documents. Total: {self.index.ntotal}")
     
+    @spaces.GPU
     def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
         Search for relevant documents.

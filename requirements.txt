@@ -1,3 +1,4 @@
+# HF Spaces ZeroGPU Requirements
 fastapi
 uvicorn
 pydantic-settings
@@ -5,6 +6,11 @@ openai
 python-multipart
 python-dotenv
 gradio
-faiss-cpu
+spaces
+# GPU-optimized packages for HF Spaces ZeroGPU
+faiss-gpu
 sentence-transformers
 numpy
+torch
+transformers
+accelerate
