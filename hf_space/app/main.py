@@ -51,8 +51,26 @@ except Exception as e:
     logger.error(f"Failed to initialize RAG service: {e}")
     # Continue startup even if RAG fails - the app can still work without it
 
-# Chat processing function with GPU acceleration
+# Synchronous function for GPU-intensive operations that can be properly decorated
 @spaces.GPU
+def _process_chat_gpu(message: str, conversation_history, context):
+    """GPU-accelerated chat processing function.
+    
+    This synchronous function is properly decorated with @spaces.GPU and handles
+    the GPU-intensive operations.
+    """
+    settings = get_settings()
+    
+    # Generate AI response with RAG context
+    response_data = openai_service.generate_response_sync(
+        user_message=message,
+        conversation_history=conversation_history,
+        context=context
+    )
+    
+    return response_data
+
+# Async chat processing function that calls the GPU-decorated function
 async def process_chat(message: str, history: List[List[str]], session_id: str = "default") -> str:
     """
     Process chat messages with GPU acceleration.
@@ -81,9 +99,9 @@ async def process_chat(message: str, history: List[List[str]], session_id: str =
         rag_service = get_rag_service()
         context = rag_service.get_context(message)
         
-        # Generate AI response with RAG context
-        response_data = await openai_service.generate_response(
-            user_message=message,
+        # Call the GPU-decorated synchronous function
+        response_data = _process_chat_gpu(
+            message=message,
             conversation_history=conversation_history,
             context=context
         )
@@ -98,29 +116,39 @@ async def process_chat(message: str, history: List[List[str]], session_id: str =
         logger.error(f"Chat processing error: {e}")
         return f"I'm sorry, an error occurred: {str(e)[:100]}... Please try again."
 
-# Health check function
+# Synchronous function for GPU-intensive health check operations
 @spaces.GPU
+def _check_health_gpu():
+    """GPU-accelerated health check function.
+    
+    This synchronous function is properly decorated with @spaces.GPU and handles
+    the GPU-intensive operations for health checking.
+    """
+    settings = get_settings()
+    
+    # Check OpenAI connectivity
+    openai_connected = openai_service.check_connectivity_sync()
+    openai_status = "connected" if openai_connected else "disconnected"
+    
+    # Determine overall status
+    overall_status = "healthy" if openai_connected else "degraded"
+    
+    return {
+        "status": overall_status,
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "openai_status": openai_status,
+        "rag_status": "active" if get_rag_service().is_initialized() else "inactive"
+    }
+
+# Async health check function that calls the GPU-decorated function
 async def check_health() -> Dict[str, Any]:
     """
     Check system health and OpenAI connectivity.
     """
     try:
-        settings = get_settings()
-        
-        # Check OpenAI connectivity
-        openai_connected = await openai_service.check_connectivity()
-        openai_status = "connected" if openai_connected else "disconnected"
-        
-        # Determine overall status
-        overall_status = "healthy" if openai_connected else "degraded"
-        
-        return {
-            "status": overall_status,
-            "timestamp": datetime.utcnow().isoformat(),
-            "version": "1.0.0",
-            "openai_status": openai_status,
-            "rag_status": "active" if get_rag_service().is_initialized() else "inactive"
-        }
+        # Call the GPU-decorated synchronous function
+        return _check_health_gpu()
         
     except Exception as e:
         logger.error(f"Health check failed: {e}")
