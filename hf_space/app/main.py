@@ -73,8 +73,8 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
         # Add user message to session
         session_manager.add_user_message(session_id, message)
         
-        # Get RAG context using GPU acceleration
-        context = rag_service.get_context_gpu(message) if rag_service else ""
+        # Get RAG context (model already on GPU from main process)
+        context = rag_service.get_context(message) if rag_service else ""
         
         # Generate AI response with RAG context
         response_data = openai_service.generate_response(
