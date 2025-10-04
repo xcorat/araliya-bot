@@ -90,34 +90,22 @@ class RAGService:
             self.embedding_dim = 384  # Default dimension
             return
         
-        # Initialize embedding model
-        logger.info(f"Loading embedding model: {model_name}")
-        self.embedding_model = SentenceTransformer(model_name)
+        # Initialize embedding model on CPU to avoid CUDA initialization in main process
+        logger.info(f"Loading embedding model: {model_name} on CPU")
+        self.embedding_model = SentenceTransformer(model_name, device='cpu')
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
         
-        # Initialize FAISS index
+        # Initialize FAISS index on CPU only
         self.index = None
         self.metadata = []  # Store document metadata
         
         self._load_index()
         
         if self.index is None:
-            logger.info("Creating new FAISS index")
-            # Create CPU index first
-            cpu_index = faiss.IndexFlatIP(self.embedding_dim)  # Inner product for cosine similarity
-            
-            # Move to GPU if available (HF Spaces ZeroGPU)
-            if FAISS_GPU_AVAILABLE:
-                try:
-                    res = faiss.StandardGpuResources()
-                    self.index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
-                    logger.info("FAISS index moved to GPU")
-                except Exception as e:
-                    logger.warning(f"Failed to move FAISS to GPU, using CPU: {e}")
-                    self.index = cpu_index
-            else:
-                self.index = cpu_index
-                logger.info("Using CPU FAISS index (local development)")
+            logger.info("Creating new FAISS index on CPU")
+            # Create CPU index only - GPU operations will happen in @spaces.GPU function
+            self.index = faiss.IndexFlatIP(self.embedding_dim)  # Inner product for cosine similarity
+            logger.info("Using CPU FAISS index")
     
     def _load_index(self) -> bool:
         """Load existing FAISS index and metadata if they exist."""
@@ -177,8 +165,8 @@ class RAGService:
             texts.append(text)
             doc_metadata.append(doc)
         
-        # Generate embeddings
-        logger.info("Generating embeddings...")
+        # Generate embeddings on CPU (model is on CPU)
+        logger.info("Generating embeddings on CPU...")
         embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
         
         # Normalize embeddings for cosine similarity
@@ -193,9 +181,10 @@ class RAGService:
         
         logger.info(f"Successfully added {len(documents)} documents. Total: {self.index.ntotal}")
     
-    def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+    def search_gpu(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
         """
-        Search for relevant documents.
+        Search for relevant documents using GPU acceleration.
+        This method should be called from within a @spaces.GPU decorated function.
         
         Args:
             query: Search query
@@ -212,7 +201,51 @@ class RAGService:
             logger.warning("No documents in index")
             return []
         
-        # Generate query embedding
+        # Move model to GPU for embedding generation
+        self.embedding_model.to('cuda')
+        
+        # Generate query embedding on GPU
+        query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
+        faiss.normalize_L2(query_embedding)
+        
+        # Search using CPU index (FAISS operations are fast on CPU)
+        scores, indices = self.index.search(query_embedding, min(k, self.index.ntotal))
+        
+        # Move model back to CPU
+        self.embedding_model.to('cpu')
+        
+        # Format results
+        results = []
+        for score, idx in zip(scores[0], indices[0]):
+            if idx >= 0:  # Valid index
+                doc = self.metadata[idx].copy()
+                doc['similarity_score'] = float(score)
+                results.append(doc)
+        
+        logger.info(f"Found {len(results)} relevant documents for query: {query[:50]}...")
+        return results
+    
+    def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search for relevant documents using CPU only.
+        This method can be called from main process.
+        
+        Args:
+            query: Search query
+            k: Number of results to return
+            
+        Returns:
+            List of relevant documents with scores
+        """
+        if not FAISS_AVAILABLE or self.index is None:
+            logger.warning("FAISS not available - returning empty results")
+            return []
+            
+        if self.index.ntotal == 0:
+            logger.warning("No documents in index")
+            return []
+        
+        # Generate query embedding on CPU
         query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
         faiss.normalize_L2(query_embedding)
         
@@ -230,9 +263,51 @@ class RAGService:
         logger.info(f"Found {len(results)} relevant documents for query: {query[:50]}...")
         return results
     
+    def get_context_gpu(self, query: str, max_tokens: int = 2000) -> str:
+        """
+        Get formatted context for RAG generation using GPU acceleration.
+        This method should be called from within a @spaces.GPU decorated function.
+        
+        Args:
+            query: User query
+            max_tokens: Approximate maximum tokens for context
+            
+        Returns:
+            Formatted context string
+        """
+        relevant_docs = self.search_gpu(query, k=3)
+        
+        if not relevant_docs:
+            return ""
+        
+        context_parts = []
+        current_length = 0
+        
+        for doc in relevant_docs:
+            # Create a formatted context entry
+            doc_context = f"Title: {doc.get('title', 'Unknown')}\n"
+            doc_context += f"Content: {doc.get('content', '')}\n"
+            doc_context += f"Source: {doc.get('author', 'Unknown')} ({doc.get('date', 'Unknown')})\n"
+            doc_context += "---\n"
+            
+            # Rough token estimation (1 token ≈ 4 characters)
+            estimated_tokens = len(doc_context) // 4
+            
+            if current_length + estimated_tokens > max_tokens:
+                break
+            
+            context_parts.append(doc_context)
+            current_length += estimated_tokens
+        
+        context = "\n".join(context_parts)
+        logger.info(f"Generated context with ~{current_length} tokens from {len(context_parts)} documents")
+        
+        return context
+    
     def get_context(self, query: str, max_tokens: int = 2000) -> str:
         """
-        Get formatted context for RAG generation.
+        Get formatted context for RAG generation using CPU only.
+        This method can be called from main process.
         
         Args:
             query: User query

@@ -37,28 +37,21 @@ from services.openai_service import OpenAIService
 from services.session_manager import session_manager
 from services.rag_service import initialize_rag_service, get_rag_service
 
-# Services will be initialized lazily
-openai_service = None
-rag_service = None
+# Initialize services in main process with CPU-only models
+logger.info("Initializing services in main process...")
 
-def get_openai_service():
-    """Get OpenAI service instance (lazy loading)."""
-    global openai_service
-    if openai_service is None:
-        openai_service = OpenAIService()
-    return openai_service
+# Initialize OpenAI service
+openai_service = OpenAIService()
 
-def get_rag_service_instance():
-    """Get RAG service instance (lazy loading)."""
-    global rag_service
-    if rag_service is None:
-        try:
-            initialize_rag_service()
-            rag_service = get_rag_service()
-        except Exception as e:
-            logger.error(f"Failed to initialize RAG service: {e}")
-            rag_service = None
-    return rag_service
+# Initialize RAG service with CPU-only models
+try:
+    logger.info("Initializing RAG service with CPU models...")
+    initialize_rag_service()
+    rag_service = get_rag_service()
+    logger.info("RAG service initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize RAG service: {e}")
+    rag_service = None
 
 # GPU-accelerated chat processing function following HF Spaces patterns
 @spaces.GPU(duration=120)
@@ -67,7 +60,7 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
     
     This function follows the correct HF Spaces ZeroGPU pattern:
     - Synchronous function decorated with @spaces.GPU
-    - Contains all GPU-intensive operations
+    - Contains all GPU-intensive operations (RAG context generation)
     - Returns the final result
     """
     try:
@@ -80,12 +73,11 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
         # Add user message to session
         session_manager.add_user_message(session_id, message)
         
-        # Get RAG context
-        rag_service = get_rag_service_instance()
-        context = rag_service.get_context(message) if rag_service else ""
+        # Get RAG context using GPU acceleration
+        context = rag_service.get_context_gpu(message) if rag_service else ""
         
         # Generate AI response with RAG context
-        response_data = get_openai_service().generate_response(
+        response_data = openai_service.generate_response(
             user_message=message,
             conversation_history=conversation_history,
             context=context
@@ -105,8 +97,7 @@ def get_health_status() -> str:
     """Get system health status."""
     try:
         # Check OpenAI connectivity
-        openai_connected = get_openai_service().check_connectivity()
-        rag_service = get_rag_service_instance()
+        openai_connected = openai_service.check_connectivity()
         rag_initialized = rag_service.is_initialized() if rag_service else False
         
         status_parts = []
