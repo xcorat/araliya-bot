@@ -10,7 +10,7 @@ export async function POST(event: RequestEvent) {
     
     console.log('HF_URL:', HF_URL);
     console.log('HF_TOKEN:', HF_TOKEN ? `${HF_TOKEN.substring(0, 10)}...` : 'undefined');
-    console.log('Full URL:', `${HF_URL}/call/chat`);
+    console.log('Full URL:', `${HF_URL}/gradio_api/call/chat`);
     
     // Transform frontend format to Gradio format
     const gradioPayload = {
@@ -24,7 +24,7 @@ export async function POST(event: RequestEvent) {
     console.log('Gradio payload:', gradioPayload);
     
     // Forward the request to the HF Space Gradio API
-    const response = await fetch(`${HF_URL}/call/chat`, {
+    const response = await fetch(`${HF_URL}/gradio_api/call/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
