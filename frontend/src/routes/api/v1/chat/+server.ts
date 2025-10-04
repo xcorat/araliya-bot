@@ -10,16 +10,27 @@ export async function POST(event: RequestEvent) {
     
     console.log('HF_URL:', HF_URL);
     console.log('HF_TOKEN:', HF_TOKEN ? `${HF_TOKEN.substring(0, 10)}...` : 'undefined');
-    console.log('Full URL:', `${HF_URL}/api/v1/chat`);
+    console.log('Full URL:', `${HF_URL}/call/chat`);
     
-    // Forward the request to the HF Space
-    const response = await fetch(`${HF_URL}/api/v1/chat`, {
+    // Transform frontend format to Gradio format
+    const gradioPayload = {
+      data: [
+        requestData.message,           // message string
+        requestData.history || [],     // chat history array
+        requestData.session_id || "default"  // session_id string
+      ]
+    };
+    
+    console.log('Gradio payload:', gradioPayload);
+    
+    // Forward the request to the HF Space Gradio API
+    const response = await fetch(`${HF_URL}/call/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(HF_TOKEN ? { 'Authorization': `Bearer ${HF_TOKEN}` } : {})
       },
-      body: JSON.stringify(requestData)
+      body: JSON.stringify(gradioPayload)
     });
 
     if (!response.ok) {
@@ -31,8 +42,30 @@ export async function POST(event: RequestEvent) {
       }, { status: response.status });
     }
 
-    const data = await response.json();
-    return json(data);
+    const gradioResponse = await response.json();
+    console.log('Gradio response:', gradioResponse);
+    
+    // Transform Gradio response back to frontend format
+    // Gradio returns: ["", [["user_message", "bot_response"]]]
+    // We need: { message: { role: "assistant", content: "bot_response" }, session_id: "...", metadata: {...} }
+    
+    const [_, updatedHistory] = gradioResponse;
+    const lastMessage = updatedHistory[updatedHistory.length - 1];
+    const botResponse = lastMessage ? lastMessage[1] : "No response";
+    
+    const frontendResponse = {
+      message: {
+        role: "assistant",
+        content: botResponse,
+        timestamp: new Date().toISOString()
+      },
+      session_id: requestData.session_id || "default",
+      metadata: {
+        processingTime: 0 // Could calculate this if needed
+      }
+    };
+    
+    return json(frontendResponse);
   } catch (error) {
     console.error('Proxy error:', error);
     return json({

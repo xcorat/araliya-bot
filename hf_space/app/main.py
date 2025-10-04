@@ -187,13 +187,15 @@ with gr.Blocks(
     msg.submit(
         respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot]
+        outputs=[msg, chatbot],
+        api_name="chat"  # Creates /call/chat endpoint
     )
     
     submit_btn.click(
         respond,
         inputs=[msg, chatbot, session_id],
-        outputs=[msg, chatbot]
+        outputs=[msg, chatbot],
+        api_name=False  # Don't create duplicate endpoint
     )
     
     clear_btn.click(
