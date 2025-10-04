@@ -8,11 +8,7 @@ from typing import List, Dict, Any
 import openai
 from openai import OpenAI
 
-# Add the parent directory to Python path for imports
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ if '__file__' in globals() else '.')))
-
+# Import from app package
 from config import get_settings
 from models.chat import ChatMessage
 

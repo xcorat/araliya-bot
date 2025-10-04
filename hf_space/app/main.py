@@ -15,9 +15,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add the parent directory to Python path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 # Import spaces for GPU decorator
 try:
     import spaces
@@ -217,6 +214,7 @@ with gr.Blocks(
 
 # Launch the app
 if __name__ == "__main__":
+    demo.queue()  # Enable API queue processing for Blocks
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860

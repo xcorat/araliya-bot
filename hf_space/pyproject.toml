@@ -22,6 +22,7 @@ dependencies = [
     "numpy<2.0",  # Pin to NumPy 1.x for compatibility
     "torch",
     "transformers",
+    "datasets>=2.0.0",  # Required for FAISS integration
 ]
 
 [project.optional-dependencies]
