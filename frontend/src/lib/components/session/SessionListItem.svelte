@@ -80,7 +80,7 @@
     <!-- Last message preview -->
     {#if session.lastMessage}
       <p class="text-body-small text-text-secondary truncate mt-1">
-        {truncateText(session.lastMessage, 40)}
+        <span class="text-caption text-text-secondary">{truncateText(session.lastMessage, 40)}</span>
       </p>
     {/if}
 

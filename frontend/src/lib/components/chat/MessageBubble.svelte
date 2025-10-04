@@ -3,6 +3,7 @@
   import { cn, formatTimestamp, copyToClipboard } from '$lib/utils/helpers.js';
   import type { ChatMessage } from '$lib/types/chat.js';
   import { Button } from '$lib/components/ui/button/index.js';
+    import { onMount } from 'svelte';
 
   interface Props {
     message: ChatMessage;
@@ -28,6 +29,10 @@
       console.error('Failed to copy message:', error);
     }
   }
+
+  onMount(() => {
+    console.log("message: ", message.content)
+  })
 
   const isUser = message.role === 'user';
 </script>

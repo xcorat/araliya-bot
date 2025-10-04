@@ -58,7 +58,7 @@ def process_chat_message(message: str, session_id: str = "default") -> str:
     This function follows the correct HF Spaces ZeroGPU pattern:
     - Synchronous function decorated with @spaces.GPU
     - Contains all GPU-intensive operations (RAG context generation)
-    - Returns the final result
+    - Returns the final result as a string
     """
     try:
         # Create or get session
@@ -115,22 +115,25 @@ def get_health_status() -> str:
         return f"❌ System Error: {str(e)[:100]}"
 
 # Create the Gradio interface following HF Spaces best practices
-def respond(message: str, history: List[Tuple[str, str]], session_id: str = "default") -> Tuple[str, List[Tuple[str, str]]]:
+def respond(message: str, history: List[Tuple[str, str]], session_id: str = "default") -> Tuple[None, List[Tuple[str, str]]]:
     """Gradio chat response function.
     
     This function handles the chat interface and calls the GPU-decorated function.
     Following Gradio best practices for chat interfaces.
+    
+    Returns:
+        Tuple[None, List[Tuple[str, str]]]: (None, updated_history)
     """
     if not message.strip():
-        return "", history
+        return None, history
     
     # Call the GPU-decorated chat processing function
     bot_response = process_chat_message(message, session_id)
     
-    # Update history
-    history.append((message, bot_response))
+    # Create new history with the conversation
+    updated_history = history + [(message, bot_response)]
     
-    return "", history
+    return None, updated_history
 
 
 # Create the Gradio interface
@@ -199,8 +202,8 @@ with gr.Blocks(
     )
     
     clear_btn.click(
-        lambda: ([], "default"),
-        outputs=[chatbot, session_id]
+        lambda: (None, [], "default"),
+        outputs=[msg, chatbot, session_id]
     )
     
     refresh_btn.click(

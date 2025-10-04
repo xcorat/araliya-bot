@@ -114,9 +114,9 @@
 				// Create AI message from response
 				const aiMessage: ChatMessage = {
 					id: generateId(),
-					content: response.message,
+					content: response.message.content, // Fix: Extract the content property from the message object
 					role: 'assistant',
-					timestamp: new Date(),
+					timestamp: response.message.timestamp, // Use the timestamp from the response
 					metadata: {
 						processingTime: response.metadata.processingTime,
 						tokens: response.metadata.tokenUsage?.total_tokens || 0,
@@ -130,7 +130,7 @@
 					sessionsStore.updateSession(ui.activeSessionId!, {
 						messages: updatedSession.messages,
 						messageCount: updatedSession.messages.length,
-						lastMessage: aiMessage.content
+						lastMessage: aiMessage.content // This is now correctly a string from the previous fix
 					});
 				}
 			} catch (apiError) {

@@ -34,6 +34,7 @@ export function formatTimestamp(dateInput: Date | string): string {
 }
 
 export function truncateText(text: string, maxLength: number): string {
+  console.log("trunkate: ", text, typeof text)
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength).trim() + '...';
 }
