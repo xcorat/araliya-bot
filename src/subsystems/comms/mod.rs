@@ -20,6 +20,8 @@
 
 mod state;
 pub mod pty;
+#[cfg(feature = "channel-telegram")]
+pub mod telegram;
 
 pub use state::{CommsEvent, CommsState};
 
@@ -64,6 +66,14 @@ pub fn start(
         if config.comms_pty_should_load() {
             info!("loading pty channel");
             components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
+        }
+    }
+
+    #[cfg(feature = "channel-telegram")]
+    {
+        if config.comms_telegram_should_load() {
+            info!("loading telegram channel");
+            components.push(Box::new(telegram::TelegramChannel::new("telegram0", state.clone())));
         }
     }
 

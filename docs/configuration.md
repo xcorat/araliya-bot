@@ -30,6 +30,8 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `subsystem-agents` | `--features subsystem-agents` | Yes, for agent logic |
 | `subsystem-llm` | `--features subsystem-llm` | Yes, for completion tools |
 | `subsystem-comms` | `--features subsystem-comms` | Yes, for PTY/HTTP I/O |
+| `channel-pty` | `--features channel-pty` | No, for terminal console |
+| `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
 
@@ -85,14 +87,15 @@ Secrets must come from environment variables or `.env`, never from config files.
 
 | Variable | Purpose |
 |----------|---------|
-| *(planned)* `LLM_API_KEY` | LLM provider API key |
-| *(planned)* `TELEGRAM_BOT_TOKEN` | Telegram channel token |
+| `LLM_API_KEY` | LLM provider API key |
+| `TELEGRAM_BOT_TOKEN` | Telegram channel token |
 
 A `.env` file in `araliya-bot/` is loaded automatically at startup if present. It is gitignored — never commit it.
 
 ```bash
 # .env
 LLM_API_KEY=sk-...
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 ```
 
 ## Resolution Order

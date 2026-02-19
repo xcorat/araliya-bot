@@ -56,14 +56,40 @@ Araliya Bot is designed around a flexible, event-driven architecture:
 | :--- | :--- | :--- | :--- |
 | **Language** | Rust | Rust | TypeScript / Node.js |
 | **Architecture** | Single-process supervisor, pluggable subsystems, event bus | Trait-driven, single binary, swappable providers/channels | Gateway WS control plane, multi-agent routing |
-| **Memory Footprint** | *Not implemented / No info* | < 5MB | > 1GB |
-| **Startup Time** | *Not implemented / No info* | < 10ms | > 500s |
-| **Binary Size** | *Not implemented / No info* | ~3.4 MB | ~28MB (dist) |
-| **Identity** | ed25519 keypair, persistent bot ID | AIEOS (JSON) or OpenClaw (Markdown) | Markdown files (IDENTITY.md, SOUL.md, etc.) |
-| **Security** | *Not implemented / No info* | Gateway pairing, strict sandboxing, explicit allowlists | Gateway pairing, sandboxing, allowlists |
-| **Channels** | *Not implemented / No info* | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
-| **Memory System** | *Not implemented / No info* | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
-| **Tools** | *Not implemented / No info* | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
+| **Memory Footprint** | ~6.1 MB  | < 5MB | > 1GB |
+| **Startup Time** | < 1s | < 10ms | > 500s |
+| **Binary Size** | ~3.5 MB  | ~3.4 MB | ~28MB (dist) |
+| **Identity** | ed25519 keypair persisted, Markdown identity | AIEOS (JSON) or OpenClaw (Markdown) | Markdown files (IDENTITY.md, SOUL.md, etc.) |
+| **Security** | Persistent ed25519 identity implemented; pairing/sandboxing/allowlists not implemented (see `notes/` for design) | Gateway pairing, strict sandboxing, explicit allowlists | Gateway pairing, sandboxing, allowlists |
+| **Channels** | PTY console channel (`pty0`), Telegram channel (`telegram0`) | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
+| **Memory System** | Not implemented (design notes in `notes/`); TODO: add SQLite/embedding backend | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
+| **Tools** | No general tool subsystem; built-in agents: `echo`, `basic_chat` (`src/subsystems/agents/mod.rs`) | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
+
+## 📈 Benchmarks (CI)
+
+A GitHub Actions workflow has been added at `.github/workflows/benchmarks.yml` that measures:
+
+- `binary size` (`target/release/araliya-bot`)
+- `startup latency` (time from process start until the log line `identity ready — starting subsystems`)
+- `memory RSS` (VmRSS while running)
+
+Run locally:
+
+```bash
+cargo build --release
+./target/release/araliya-bot & sleep 1; pkill araliya-bot
+```
+
+Example local measurement (observed on this machine):
+
+```text
+$ ls -lh target/release/araliya-bot
+-rwxr-xr-x. 2 sachi sachi 3.5M Feb 19 13:00 target/release/araliya-bot
+
+# sample process info (RES)
+PID    USER   RSS
+603255 sachi  6.1M
+```
 
 ## ⚙️ Configuration & Secrets
 

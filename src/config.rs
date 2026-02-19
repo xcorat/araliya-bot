@@ -21,10 +21,18 @@ pub struct PtyConfig {
     pub enabled: bool,
 }
 
+/// Telegram channel configuration.
+#[derive(Debug, Clone)]
+pub struct TelegramConfig {
+    /// Whether the Telegram channel is explicitly enabled.
+    pub enabled: bool,
+}
+
 /// Comms subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct CommsConfig {
     pub pty: PtyConfig,
+    pub telegram: TelegramConfig,
 }
 
 /// OpenAI / OpenAI-compatible provider configuration.
@@ -89,6 +97,11 @@ impl Config {
     pub fn comms_pty_should_load(&self) -> bool {
         self.comms.pty.enabled
     }
+
+    /// Returns `true` if the Telegram channel should be loaded.
+    pub fn comms_telegram_should_load(&self) -> bool {
+        self.comms.telegram.enabled
+    }
 }
 
 /// Raw TOML shape — `serde` target before resolution.
@@ -116,12 +129,21 @@ struct RawSupervisor {
 struct RawComms {
     #[serde(default)]
     pty: RawPty,
+    #[serde(default)]
+    telegram: RawTelegram,
 }
 
 #[derive(Deserialize)]
 struct RawPty {
     /// Defaults to `true`: PTY auto-enables when no other channel is present.
     #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct RawTelegram {
+    /// Defaults to `false`: Telegram must be explicitly enabled.
+    #[serde(default = "default_false")]
     enabled: bool,
 }
 
@@ -197,8 +219,18 @@ impl Default for RawPty {
     }
 }
 
+impl Default for RawTelegram {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }
 
 /// Load config from `config/default.toml`, then apply env-var overrides.
@@ -247,6 +279,9 @@ pub fn load_from(
         comms: CommsConfig {
             pty: PtyConfig {
                 enabled: parsed.comms.pty.enabled,
+            },
+            telegram: TelegramConfig {
+                enabled: parsed.comms.telegram.enabled,
             },
         },
         agents: AgentsConfig {

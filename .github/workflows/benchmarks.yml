@@ -1,0 +1,60 @@
+name: benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Binary size
+        run: ls -lh target/release/araliya-bot
+
+      - name: Startup time & RSS
+        run: |
+          set -euo pipefail
+          ./target/release/araliya-bot > araliya.log 2>&1 &
+          pid=$!
+          start_ns=$(date +%s%N)
+          found=0
+          for i in $(seq 1 100); do
+            if grep -q "identity ready — starting subsystems" araliya.log; then
+              found=1
+              break
+            fi
+            sleep 0.1
+          done
+          end_ns=$(date +%s%N)
+          if [ "$found" -eq 1 ]; then
+            startup_ms=$(( (end_ns - start_ns) / 1000000 ))
+            echo "Startup: ${startup_ms} ms"
+          else
+            echo "Startup line not found within timeout"
+          fi
+          if [ -d /proc/$pid ]; then
+            rss_kb=$(grep VmRSS /proc/$pid | awk '{print $2}' || true)
+            echo "VmRSS: ${rss_kb} KB"
+          fi
+          kill $pid || true
+          wait $pid 2>/dev/null || true
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: araliya-log
+          path: araliya.log
