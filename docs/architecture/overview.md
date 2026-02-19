@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.0.4 — supervisor bootstrap + PTY comms + method-dispatch messaging service + agents (basic_chat default).
+**Status:** v0.1.0 — supervisor bootstrap + PTY comms + non-blocking method-dispatch + agents + LLM subsystem (dummy provider).
 
 ---
 
@@ -9,6 +9,7 @@
 - **Single-process supervisor model** — all subsystems run as Tokio tasks within one process; upgradeable to OS-level processes later without changing message types
 - **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor, not directly with each other
 - **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
+- **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
 - **Plugin-based extensibility** — subsystems can load and unload plugins at runtime
 
 ---
@@ -31,26 +32,28 @@
 │  │      Typed Channel Router (star hub)      │       │
 │  └──────┬─────────────────┬──────────────────┘       │
 │         │                 │                          │
-│  ┌──────┴──────┐   ┌───────┴──────┐                  │
-│  │   Agents    │   │    Tools     │   (planned)       │
-│  │  Subsystem  │   │  Subsystem   │                   │
-│  └─────────────┘   └─────────────┘                   │
+│  ┌──────┴──────┐  ┌───────┴──────┐  ┌────────────┐  │
+│  │   Agents    │  │     LLM      │  │   Tools    │  │
+│  │  Subsystem  │  │  Subsystem   │  │  Subsystem │  │
+│  │             │  │ DummyProvider│  │ (planned)  │  │
+│  └─────────────┘  └──────────────┘  └────────────┘  │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Modules (v0.2)
+## Modules
 
 | Module | File | Summary |
 |--------|------|---------|
-| Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; supervises subsystem tasks |
+| Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; routes messages between subsystems |
 | Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
-| Config | `config.rs` | TOML load, env overrides, path expansion, `[comms.pty]` section |
+| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[agents]`, `[llm]` sections |
 | Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
 | Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
 | Error | `error.rs` | Typed error enum with thiserror |
+| LLM providers | `llm/` | `LlmProvider` enum dispatch; `providers::build(name)` factory; `DummyProvider` |
 
 ---
 
@@ -61,13 +64,13 @@
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented |
 | Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
 | Memory Service | — | Planned |
-| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (minimal: basic_chat + echo fallback + channel mapping) |
+| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (`basic_chat` routes to LLM subsystem; `echo` fallback; channel mapping) |
+| LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (dummy provider; real provider support planned) |
 | Tools | — | Planned |
-| AI/LLM Provider | — | Planned |
 
 ---
 
-## Startup Sequence (v0.0.4)
+## Startup Sequence
 
 ```
 main()  [#[tokio::main]]
@@ -77,13 +80,30 @@ main()  [#[tokio::main]]
   ├─ logger::init(...)              initialize logger once
   ├─ identity::setup(&config)       load or generate ed25519 keypair
   ├─ CancellationToken::new()       shared shutdown signal
-  ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle for comms
+  ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle before move
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
-  ├─ spawn: supervisor::run(bus)    supervisor message loop
+  ├─ LlmSubsystem::new(&config.llm) build LLM subsystem (provider from config)
+  ├─ AgentsSubsystem::new(config.agents, bus_handle.clone())
+  ├─ spawn: supervisor::run(bus, agents, llm)   pure router; never awaits handlers
   ├─ subsystems::comms::run(...)    PTY channel — blocks until shutdown or EOF
   ├─ token.cancel()                 ensure all tasks stop if comms exits first
   └─ join supervisor task
 ```
+
+---
+
+## Supervisor Routing Model
+
+The supervisor dispatches by method prefix and immediately forwards ownership of `reply_tx: oneshot::Sender<BusResult>` to the target subsystem. It does not await the result.
+
+```
+Request { method, payload, reply_tx }
+  ├─ "agents/*"  → agents.handle_request(method, payload, reply_tx)
+  ├─ "llm/*"     → llm.handle_request(method, payload, reply_tx)
+  └─ unknown     → reply_tx.send(Err(ERR_METHOD_NOT_FOUND))
+```
+
+Handlers resolve `reply_tx` directly for synchronous work (echo) or from a `tokio::spawn`ed task for async work (LLM calls, future tool I/O). Adding a new subsystem is one match arm.
 
 ---
 
@@ -103,7 +123,7 @@ See [identity.md](identity.md) for full details.
 
 - [identity.md](identity.md) — keypair lifecycle, file format, security
 - [subsystems/comms.md](subsystems/comms.md) — PTY, HTTP, channel plugins
-- [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory
-- [subsystems/agents.md](subsystems/agents.md) — agent orchestration, lanes, runs
-- [subsystems/tools.md](subsystems/tools.md) — tool registry, sandboxing
-- [subsystems/llm.md](subsystems/llm.md) — LLM provider client, failover
+- [subsystems/agents.md](subsystems/agents.md) — agent routing, LLM wiring, method grammar
+- [subsystems/llm.md](subsystems/llm.md) — LLM provider abstraction, dummy provider, adding real providers
+- [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned)
+- [subsystems/tools.md](subsystems/tools.md) — tool registry, sandboxing (planned)

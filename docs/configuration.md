@@ -16,6 +16,9 @@ enabled = ["basic_chat"]
 
 [agents.channel_map]
 # pty0 = "echo"
+
+[llm]
+provider = "dummy"
 ```
 
 ### Fields
@@ -33,6 +36,14 @@ enabled = ["basic_chat"]
 |-------|------|---------|-------------|
 | `agents.enabled` | array<string> | `["basic_chat"]` | Ordered enabled agents. First entry is default fallback agent. If empty, runtime auto-falls back to `echo`. |
 | `agents.channel_map` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
+
+## LLM Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `llm.provider` | string | `"dummy"` | Named LLM provider. `"dummy"` echoes input prefixed with `[echo]`. Future: `"openai"`, `"anthropic"`. |
+
+Provider API keys are never stored in config — supply them via environment or `.env`:
 
 ## CLI Verbosity Flags
 

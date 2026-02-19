@@ -89,4 +89,4 @@ cargo run -- -vvv
 cargo test
 ```
 
-All 22 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.
+All 29 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.

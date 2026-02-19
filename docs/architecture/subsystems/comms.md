@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.0.4 — PTY channel implemented with agents-first routing. HTTP and channel plugins planned.
+**Status:** v0.1.0 — PTY channel implemented. HTTP and channel plugins planned.
 
 ---
 
@@ -53,20 +53,32 @@ src/
       pty.rs        — PTY channel task
 ```
 
-### Message flow (current — agents default basic_chat)
+### Message flow (current — basic_chat default)
 
 ```
 PTY stdin
   → BusHandle::request("agents", CommsMessage { channel_id: "pty0", content })
     → SupervisorBus::rx (mpsc, bounded 64)
       → supervisor::run  method prefix dispatch ("agents/*")
-        → agents subsystem resolves route (method agent_id, else channel_id map, else default)
-        → selected agent returns CommsMessage via reply_tx (oneshot)
-          (default: `basic_chat`; fallback: `echo` when `agents.enabled` is empty)
-    ← BusResult::Ok(CommsMessage { .. })
+        → agents.handle_request(method, payload, reply_tx)   ← supervisor returns immediately
+          → resolve agent → basic_chat
+          → tokio::spawn {
+              bus.request("llm/complete", LlmRequest { channel_id, content }).await
+                → supervisor::run  dispatch ("llm/*")
+                  → llm.handle_request(method, payload, reply_tx2)
+                    → tokio::spawn {
+                        DummyProvider::complete(content)
+                          → Ok("[echo] {content}")
+                        reply_tx2.send(Ok(CommsMessage { channel_id, content: reply }))
+                      }
+              reply_tx.send(Ok(CommsMessage { .. }))
+            }
+    ← BusResult::Ok(CommsMessage { channel_id: "pty0", content: "[echo] {input}" })
   → pty::run prints reply to stdout
 PTY stdout
 ```
+
+For the `echo` agent (or when `agents.enabled = []`): `reply_tx` is resolved inline with no spawn.
 
 ### Shutdown flow
 
@@ -92,17 +104,3 @@ enabled = true
 
 `Config::comms_pty_should_load()` is the hook for auto-enable logic —
 will return `true` when no other channel is configured, even if the key is absent.
-
----
-
-## Message Flow (future — with Agents)
-
-```
-Channel plugin (inbound)
-  → Comms subsystem
-    → Supervisor event bus
-      → Agents subsystem
-        → (response via event bus)
-      → Comms subsystem
-    → Channel plugin (outbound)
-```
