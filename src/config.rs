@@ -13,6 +13,19 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 
+/// PTY (console) channel configuration.
+#[derive(Debug, Clone)]
+pub struct PtyConfig {
+    /// Whether the PTY channel is explicitly enabled.
+    pub enabled: bool,
+}
+
+/// Comms subsystem configuration.
+#[derive(Debug, Clone)]
+pub struct CommsConfig {
+    pub pty: PtyConfig,
+}
+
 /// Fully-resolved supervisor configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -20,12 +33,26 @@ pub struct Config {
     /// Working directory for all persistent data (already expanded, no `~`).
     pub work_dir: PathBuf,
     pub log_level: String,
+    pub comms: CommsConfig,
+}
+
+impl Config {
+    /// Returns `true` if the PTY channel should be loaded.
+    ///
+    /// PTY is auto-enabled when no other comms channels are configured (always
+    /// true for now while PTY is the only channel). Explicit `enabled = false`
+    /// in config will still suppress it.
+    pub fn comms_pty_should_load(&self) -> bool {
+        self.comms.pty.enabled
+    }
 }
 
 /// Raw TOML shape — `serde` target before resolution.
 #[derive(Deserialize)]
 struct RawConfig {
     supervisor: RawSupervisor,
+    #[serde(default)]
+    comms: RawComms,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +60,29 @@ struct RawSupervisor {
     bot_name: String,
     work_dir: String,
     log_level: String,
+}
+
+#[derive(Deserialize, Default)]
+struct RawComms {
+    #[serde(default)]
+    pty: RawPty,
+}
+
+#[derive(Deserialize)]
+struct RawPty {
+    /// Defaults to `true`: PTY auto-enables when no other channel is present.
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+impl Default for RawPty {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Load config from `config/default.toml`, then apply env-var overrides.
@@ -68,6 +118,11 @@ pub fn load_from(
         bot_name: s.bot_name,
         work_dir: expand_home(&work_dir_str),
         log_level,
+        comms: CommsConfig {
+            pty: PtyConfig {
+                enabled: parsed.comms.pty.enabled,
+            },
+        },
     })
 }
 

@@ -154,7 +154,7 @@ fn find_existing_identity_dir(work_dir: &Path) -> Result<Option<PathBuf>, AppErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
+    use crate::config::{Config, CommsConfig, PtyConfig};
     use tempfile::TempDir;
 
     fn test_config(work_dir: &Path) -> Config {
@@ -162,6 +162,9 @@ mod tests {
             bot_name: "test".into(),
             work_dir: work_dir.to_path_buf(),
             log_level: "info".into(),
+            comms: CommsConfig {
+                pty: PtyConfig { enabled: true },
+            },
         }
     }
 
