@@ -16,10 +16,24 @@ cargo build
 For a release build:
 
 ```bash
-cargo build --release
+cargo build --release --locked
+```
+
+For CI/reproducible environments:
+
+```bash
+cargo build --release --locked --frozen
 ```
 
 Binary output: `target/debug/araliya-bot` or `target/release/araliya-bot`.
+
+Quick size checks:
+
+```bash
+ls -lh target/release/araliya-bot
+size target/release/araliya-bot
+readelf -S target/release/araliya-bot | grep -E '\.debug|\.symtab|\.strtab'
+```
 
 ## Run
 

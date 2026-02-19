@@ -22,8 +22,16 @@ ARALIYA_WORK_DIR=/tmp/araliya-dev cargo run
 Build a release binary:
 
 ```bash
-cargo build --release
+cargo build --release --locked
 cp target/release/araliya-bot /usr/local/bin/
+```
+
+Verify artifact details (optional):
+
+```bash
+ls -lh target/release/araliya-bot
+file target/release/araliya-bot
+ldd target/release/araliya-bot
 ```
 
 ### systemd User Service
