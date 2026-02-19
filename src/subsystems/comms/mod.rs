@@ -59,9 +59,12 @@ pub fn start(
     // Component::run signature only needs the shutdown token.
     let mut components: Vec<Box<dyn Component>> = Vec::new();
 
-    if config.comms_pty_should_load() {
-        info!("loading pty channel");
-        components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
+    #[cfg(feature = "channel-pty")]
+    {
+        if config.comms_pty_should_load() {
+            info!("loading pty channel");
+            components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
+        }
     }
 
     if components.is_empty() {

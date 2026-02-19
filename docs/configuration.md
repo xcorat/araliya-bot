@@ -21,6 +21,18 @@ enabled = ["basic_chat"]
 provider = "dummy"
 ```
 
+## Modular Features (Cargo Flags)
+
+Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin is disabled via Cargo feature, it will not be loaded even if configured in `default.toml`.
+
+| Feature | Enable/Disable | Mandatory |
+|---------|----------------|-----------|
+| `subsystem-agents` | `--features subsystem-agents` | Yes, for agent logic |
+| `subsystem-llm` | `--features subsystem-llm` | Yes, for completion tools |
+| `subsystem-comms` | `--features subsystem-comms` | Yes, for PTY/HTTP I/O |
+
+If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
+
 ### Fields
 
 | Field | Type | Default | Description |
@@ -34,14 +46,14 @@ provider = "dummy"
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agents.enabled` | array<string> | `["basic_chat"]` | Ordered enabled agents. First entry is default fallback agent. If empty, runtime auto-falls back to `echo`. |
+| `agents.enabled` | array<string> | `["basic_chat"]` | Ordered enabled agents. First entry is default fallback agent. Requires `plugin-echo` or `plugin-basic-chat` features for respective plugins. |
 | `agents.channel_map` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
 
 ## LLM Configuration
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.provider` | string | `"dummy"` | Named LLM provider. `"dummy"` echoes input prefixed with `[echo]`. Future: `"openai"`, `"anthropic"`. |
+| `llm.provider` | string | `"dummy"` | Named LLM provider. requires `subsystem-llm` feature. |
 
 Provider API keys are never stored in config — supply them via environment or `.env`:
 

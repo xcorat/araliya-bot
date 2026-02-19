@@ -22,6 +22,21 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 thiserror = "2"
 dotenvy = "0.15"
 
+[features]
+default = ["subsystem-agents", "subsystem-llm", "subsystem-comms", "plugin-echo", "plugin-basic-chat", "channel-pty"]
+
+# Subsystems
+subsystem-agents = []
+subsystem-llm = []
+subsystem-comms = []
+
+# Agent Plugins
+plugin-echo = ["subsystem-agents"]
+plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
+
+# Comms Channels
+channel-pty = ["subsystem-comms"]
+
 [dev-dependencies]
 tempfile = "3"
 

@@ -25,7 +25,11 @@ use tracing::info;
 
 use supervisor::bus::SupervisorBus;
 use supervisor::dispatch::BusHandler;
+
+#[cfg(feature = "subsystem-agents")]
 use subsystems::agents::AgentsSubsystem;
+
+#[cfg(feature = "subsystem-llm")]
 use subsystems::llm::LlmSubsystem;
 
 #[tokio::main]
@@ -79,14 +83,21 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Build subsystem handlers and register with supervisor.
-    let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
-        .map_err(|e| error::AppError::Config(e.to_string()))?;
-    let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
+    #[allow(unused_mut)]
+    let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
 
-    let handlers: Vec<Box<dyn BusHandler>> = vec![
-        Box::new(agents),
-        Box::new(llm),
-    ];
+    #[cfg(feature = "subsystem-llm")]
+    {
+        let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
+            .map_err(|e| error::AppError::Config(e.to_string()))?;
+        handlers.push(Box::new(llm));
+    }
+
+    #[cfg(feature = "subsystem-agents")]
+    {
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
+        handlers.push(Box::new(agents));
+    }
 
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
@@ -95,10 +106,19 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Start comms channels as independent concurrent tasks.
-    // Returns immediately — channels run in the background.
-    // Await the handle to block until all channels exit.
-    let comms = subsystems::comms::start(&config, bus_handle, shutdown.clone());
-    comms.join().await?;
+    #[cfg(feature = "subsystem-comms")]
+    {
+        let comms = subsystems::comms::start(&config, bus_handle, shutdown.clone());
+        comms.join().await?;
+    }
+
+    #[cfg(not(feature = "subsystem-comms"))]
+    {
+        // If no comms, we might want to wait for shutdown token or just exit
+        // For now, let's keep it running if the supervisor is active.
+        info!("no comms subsystem enabled — waiting for shutdown signal");
+        shutdown.cancelled().await;
+    }
 
     // If comms exited due to EOF (not Ctrl-C), still signal everything to stop.
     shutdown.cancel();

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.2.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state.
+**Status:** v0.2.1 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features**.
 
 ---
 
@@ -11,6 +11,7 @@
 - **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
 - **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
 - **Plugin-based extensibility** — subsystems can load and unload plugins at runtime
+- **Compile-time Modularity** — Subsystems (`agents`, `llm`, `comms`) and plugins can be disabled via Cargo features to optimize binary size and memory footprint.
 
 ---
 
@@ -43,6 +44,21 @@
 
 ---
 
+## Modularity (Features)
+
+Building on the ZeroClaw standard, Araliya supports swappable subsystems and plugins:
+
+| Feature | Scope | Description |
+|---------|-------|-------------|
+| `subsystem-agents` | Agents | Routing engine for agent workflows. |
+| `subsystem-llm` | LLM | Completion provider subsystem. |
+| `subsystem-comms` | Comms | I/O channel management. |
+| `plugin-echo` | Agent | Echo plugin for the Agents subsystem. |
+| `plugin-basic-chat` | Agent | Chat plugin for the Agents subsystem (requires `subsystem-llm`). |
+| `channel-pty` | Channel | Local console PTY channel. |
+
+---
+
 ## Modules
 
 | Module | File | Summary |
@@ -61,11 +77,11 @@
 
 | Subsystem | Doc | Status |
 |-----------|-----|--------|
-| Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented |
+| Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
 | Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
 | Memory Service | — | Planned |
-| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (`basic_chat` routes to LLM subsystem; `echo` fallback; channel mapping) |
-| LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (dummy provider; real provider support planned) |
+| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`) |
+| LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
 | Tools | — | Planned |
 
 ---
@@ -82,14 +98,12 @@ main()  [#[tokio::main]]
   ├─ CancellationToken::new()       shared shutdown signal
   ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle before move
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
-  ├─ LlmSubsystem::new(&config.llm) build LLM subsystem (provider from config)
-  ├─ AgentsSubsystem::new(config.agents, bus_handle.clone())
-  ├─ handlers = vec![Box::new(agents), Box::new(llm)]  register BusHandlers
+  ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
+  ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone())
+  ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
   ├─ spawn: supervisor::run(bus, handlers)  pure router, HashMap prefix dispatch
-  ├─ comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
-  ├─ comms.join().await             block until all channels exit
-  ├─ token.cancel()                 ensure all tasks stop if comms exits first
-  └─ join supervisor task
+  ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
+  ├─ (conditional) comms.join().await             block until all channels exit
 ```
 
 ---

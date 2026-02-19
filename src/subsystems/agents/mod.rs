@@ -78,8 +78,10 @@ pub trait AgentPlugin: Send + Sync {
 
 // ── Built-in plugins ──────────────────────────────────────────────────────────
 
+#[cfg(feature = "plugin-echo")]
 struct EchoPlugin;
 
+#[cfg(feature = "plugin-echo")]
 impl AgentPlugin for EchoPlugin {
     fn id(&self) -> &str { "echo" }
     fn handle(&self, channel_id: String, content: String, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
@@ -87,8 +89,10 @@ impl AgentPlugin for EchoPlugin {
     }
 }
 
+#[cfg(feature = "plugin-basic-chat")]
 struct BasicChatPlugin;
 
+#[cfg(feature = "plugin-basic-chat")]
 impl AgentPlugin for BasicChatPlugin {
     fn id(&self) -> &str { "basic_chat" }
     fn handle(&self, channel_id: String, content: String, reply_tx: oneshot::Sender<BusResult>, state: Arc<AgentsState>) {
@@ -130,7 +134,16 @@ impl AgentsSubsystem {
         // Uses plugin.id() as the HashMap key so the trait method is the
         // single source of truth for each plugin's identity.
         let mut plugins: HashMap<String, Box<dyn AgentPlugin>> = HashMap::new();
-        for plugin in [Box::new(EchoPlugin) as Box<dyn AgentPlugin>, Box::new(BasicChatPlugin)] {
+
+        #[cfg(feature = "plugin-echo")]
+        {
+            let plugin = Box::new(EchoPlugin);
+            plugins.insert(plugin.id().to_string(), plugin);
+        }
+
+        #[cfg(feature = "plugin-basic-chat")]
+        {
+            let plugin = Box::new(BasicChatPlugin);
             plugins.insert(plugin.id().to_string(), plugin);
         }
 

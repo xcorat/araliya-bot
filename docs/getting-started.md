@@ -13,8 +13,32 @@ cd araliya-bot
 cargo build
 ```
 
-For a release build:
+### Modular Features
 
+Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and channels at compile-time. This allows for lean builds on resource-constrained hardware.
+
+| Feature Group | Features | Description |
+|---------------|----------|-------------|
+| **Subsystems**| `subsystem-agents`, `subsystem-llm`, `subsystem-comms` | Main architectural blocks. |
+| **Plugins**   | `plugin-echo`, `plugin-basic-chat` | Capabilities for the `agents` subsystem. |
+| **Channels**  | `channel-pty` | I/O channels for the `comms` subsystem. |
+
+**Default build (All features enabled):**
+```bash
+cargo build
+```
+
+**Minimal build (No subsystems enabled):**
+```bash
+cargo build --no-default-features
+```
+
+**Custom build (LLM and Agents only):**
+```bash
+cargo build --no-default-features --features subsystem-llm,subsystem-agents,plugin-basic-chat
+```
+
+For a release build:
 ```bash
 cargo build --release --locked
 ```
