@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.1.0 — supervisor bootstrap + PTY comms + non-blocking method-dispatch + agents + LLM subsystem (dummy provider).
+**Status:** v0.2.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Channel` trait · `AgentPlugin` trait · capability-scoped state.
 
 ---
 
@@ -84,8 +84,10 @@ main()  [#[tokio::main]]
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ LlmSubsystem::new(&config.llm) build LLM subsystem (provider from config)
   ├─ AgentsSubsystem::new(config.agents, bus_handle.clone())
-  ├─ spawn: supervisor::run(bus, agents, llm)   pure router; never awaits handlers
-  ├─ subsystems::comms::run(...)    PTY channel — blocks until shutdown or EOF
+  ├─ handlers = vec![Box::new(agents), Box::new(llm)]  register BusHandlers
+  ├─ spawn: supervisor::run(bus, handlers)  pure router, HashMap prefix dispatch
+  ├─ comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
+  ├─ comms.join().await             block until all channels exit
   ├─ token.cancel()                 ensure all tasks stop if comms exits first
   └─ join supervisor task
 ```

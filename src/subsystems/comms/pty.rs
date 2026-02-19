@@ -1,24 +1,59 @@
 //! PTY (console) comms channel — reads lines from stdin, sends to supervisor,
 //! prints the reply to stdout.
 //!
+//! Implements [`Channel`] so the comms subsystem can spawn it as an
+//! independent task.  All supervisor communication goes through
+//! [`CommsState::send_message`] — this module has no direct bus access.
+//!
 //! Auto-loaded when no other comms channel is configured. Runs until the
 //! `shutdown` token is cancelled (Ctrl-C) or stdin is closed.
 
+use std::pin::Pin;
+use std::future::Future;
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use crate::supervisor::bus::BusPayload;
-
-use super::state::CommsState;
 use crate::error::AppError;
+use super::state::{CommsEvent, CommsState};
+use super::Channel;
 
-/// Run the PTY channel until `shutdown` is cancelled or stdin is closed.
-pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<(), AppError> {
-    // Stable ID for this PTY instance. Multiple PTYs would each get a unique id.
-    let channel_id = "pty0".to_string();
+// ── PtyChannel ───────────────────────────────────────────────────────────────
+
+/// A PTY channel instance.  Multiple instances would each get a unique id.
+pub struct PtyChannel {
+    channel_id: String,
+}
+
+impl PtyChannel {
+    pub fn new(channel_id: impl Into<String>) -> Self {
+        Self { channel_id: channel_id.into() }
+    }
+}
+
+impl Channel for PtyChannel {
+    fn id(&self) -> &str {
+        &self.channel_id
+    }
+
+    fn run(
+        self: Box<Self>,
+        state: Arc<CommsState>,
+        shutdown: CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>> {
+        Box::pin(run_pty(self.channel_id, state, shutdown))
+    }
+}
+
+// ── run_pty ──────────────────────────────────────────────────────────────────
+
+async fn run_pty(
+    channel_id: String,
+    state: Arc<CommsState>,
+    shutdown: CancellationToken,
+) -> Result<(), AppError> {
     info!(%channel_id, "pty channel started — type a message and press Enter. Ctrl-C to quit.");
     println!("─────────────────────────────────");
     println!(" Araliya console  (Ctrl-C to quit)");
@@ -29,7 +64,6 @@ pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<
 
     loop {
         print!("> ");
-        // flush the prompt — stdout is line-buffered by default
         use std::io::Write as _;
         let _ = std::io::stdout().flush();
 
@@ -49,30 +83,21 @@ pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<
                         break;
                     }
                     Ok(None) => {
-                        // stdin closed (EOF)
                         info!("pty stdin closed");
                         break;
                     }
                     Ok(Some(input)) => {
                         let input = input.trim().to_string();
-                        if input.is_empty() {
-                            continue;
-                        }
+                        if input.is_empty() { continue; }
 
                         debug!(input = %input, "pty received line");
 
-                        let payload = BusPayload::CommsMessage {
-                            channel_id: channel_id.clone(),
-                            content: input,
-                        };
-                        match state.bus.request("agents", payload).await {
+                        match state.send_message(&channel_id, input).await {
                             Err(e) => {
-                                warn!("bus error: {e}, pty exiting");
+                                warn!("send_message error: {e}, pty exiting");
                                 break;
                             }
-                            Ok(Err(e)) => warn!("supervisor error {}: {}", e.code, e.message),
-                            Ok(Ok(BusPayload::CommsMessage { content: reply, .. })) => println!("{reply}"),
-                            Ok(Ok(_)) => warn!("unexpected reply payload"),
+                            Ok(reply) => println!("{reply}"),
                         }
                     }
                 }
@@ -80,5 +105,6 @@ pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<
         }
     }
 
+    state.report_event(CommsEvent::ChannelShutdown { channel_id });
     Ok(())
 }

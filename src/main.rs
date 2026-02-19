@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use supervisor::bus::SupervisorBus;
+use supervisor::dispatch::BusHandler;
 use subsystems::agents::AgentsSubsystem;
 use subsystems::llm::LlmSubsystem;
 
@@ -77,21 +78,27 @@ async fn run() -> Result<(), error::AppError> {
         }
     });
 
-    // Build subsystem handlers used by supervisor dispatch.
+    // Build subsystem handlers and register with supervisor.
     let llm = LlmSubsystem::new(&config.llm)
         .map_err(|e| error::AppError::Config(e.to_string()))?;
     let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
 
+    let handlers: Vec<Box<dyn BusHandler>> = vec![
+        Box::new(agents),
+        Box::new(llm),
+    ];
+
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
     let sup_handle = tokio::spawn(async move {
-        supervisor::run(bus, sup_token, agents, llm).await;
+        supervisor::run(bus, sup_token, handlers).await;
     });
 
-    // Run comms subsystem — drives the console on this task until shutdown.
-    // When this returns (Ctrl-C or stdin EOF), we ensure shutdown is cancelled
-    // so the supervisor and any other tasks also stop.
-    subsystems::comms::run(&config, bus_handle, shutdown.clone()).await?;
+    // Start comms channels as independent concurrent tasks.
+    // Returns immediately — channels run in the background.
+    // Await the handle to block until all channels exit.
+    let comms = subsystems::comms::start(&config, bus_handle, shutdown.clone());
+    comms.join().await?;
 
     // If comms exited due to EOF (not Ctrl-C), still signal everything to stop.
     shutdown.cancel();

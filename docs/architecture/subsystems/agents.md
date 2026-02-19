@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** Implemented — `basic_chat` routes to LLM subsystem via bus; `echo` fallback; channel mapping.
+**Status:** v0.2.0 — `AgentPlugin` trait · `AgentsState` capability boundary · `BusHandler` impl · plugin dispatch via `HashMap`.
 
 ---
 
@@ -39,19 +39,12 @@ Agents are resolved in this priority order:
 
 ## Handle Request Contract
 
-```rust
-pub fn handle_request(
-    &self,
-    method: &str,
-    payload: BusPayload,
-    reply_tx: oneshot::Sender<BusResult>,
-)
-```
+`AgentsSubsystem` implements `BusHandler` with prefix `"agents"`. The supervisor
+calls `handle_request` and returns immediately:
 
-The supervisor passes `reply_tx` ownership here and returns immediately. The handler resolves it:
-
-- **`echo`** — calls `reply_tx.send(Ok(...))` inline; zero latency.
-- **`basic_chat`** — moves `reply_tx` into a `tokio::spawn`ed task; the task sends the reply when the LLM subsystem responds.
+- **`echo`** — `EchoPlugin::handle` resolves `reply_tx` inline; zero latency.
+- **`basic_chat`** — `BasicChatPlugin::handle` moves `reply_tx` into a
+  `tokio::spawn`ed task that calls `AgentsState::complete_via_llm`.
 
 ---
 
@@ -70,9 +63,44 @@ handle_request("agents", CommsMessage { channel_id, content }, reply_tx)
 
 ---
 
+## Plugin Architecture
+
+`AgentPlugin` is the extension trait for all agent implementations:
+
+```rust
+pub trait AgentPlugin: Send + Sync {
+    fn id(&self) -> &str;
+    fn handle(
+        &self,
+        channel_id: String,
+        content: String,
+        reply_tx: oneshot::Sender<BusResult>,
+        state: Arc<AgentsState>,
+    );
+}
+```
+
+Plugins are stored in a `HashMap<String, Box<dyn AgentPlugin>>` inside
+`AgentsSubsystem`. Resolution order (by `id()`) maps to the routing priority
+table above.
+
+### Capability boundary — `AgentsState`
+
+Plugins receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
+
+| Method | Description |
+|--------|-------------|
+| `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
+
+The raw bus is private to `AgentsState`. Plugins cannot call arbitrary bus
+targets.
+
 ## Initialisation
 
-`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle)` — the `BusHandle` is injected at init, consistent with the capability-passing pattern. Agents that need bus access use it; agents that do not (echo) ignore it.
+`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle)` — the `BusHandle`
+is injected at init and wrapped inside `AgentsState`. Built-in plugins
+(`EchoPlugin`, `BasicChatPlugin`) are registered unconditionally; the `enabled`
+list controls which ones are reachable via routing.
 
 ---
 

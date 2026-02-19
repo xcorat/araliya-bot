@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.1.0 — PTY channel implemented. HTTP and channel plugins planned.
+**Status:** v0.2.0 — `Channel` trait · concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle`.
 
 ---
 
@@ -42,47 +42,81 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 
 ```
 src/
-  supervisor/
-    bus.rs          — event bus protocol (BusMessage, BusPayload, BusHandle, SupervisorBus)
-    mod.rs          — supervisor run loop; routes on method string
   subsystems/
-    mod.rs
+    runtime.rs          — Component trait, SubsystemHandle, spawn_components
     comms/
-      mod.rs        — run(config, bus: BusHandle, shutdown)
-      state.rs      — CommsState { bus: BusHandle }
-      pty.rs        — PTY channel task
+      mod.rs            — Channel trait; start(config, bus, shutdown) → SubsystemHandle
+      state.rs          — CommsState (private bus, send_message, report_event, CommsEvent)
+      pty.rs            — PtyChannel: Channel
 ```
+
+### Capability boundary
+
+`CommsState` is the only surface channels see. The raw `BusHandle` is private;
+channels call typed methods:
+
+| Method | Description |
+|--------|-------------|
+| `send_message(channel_id, content)` | Route a message to the agents subsystem; return the reply string. |
+| `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
+
+`CommsEvent` variants: `ChannelShutdown { channel_id }`, `SessionStarted { channel_id }`.
+
+### Concurrent channel lanes
+
+`comms::start()` is **synchronous** — it spawns all enabled channels into a
+`JoinSet` and returns a `SubsystemHandle` immediately. Channels run as
+independent concurrent tasks. The manager task additionally `select!`s on an
+internal `mpsc` channel for `CommsEvent`s from running channels.
+
+If any channel exits with an error, the shared `CancellationToken` is cancelled
+so sibling channels and the supervisor all shut down cooperatively.
+
+### Channel trait
+
+```rust
+pub trait Channel: Send + 'static {
+    fn id(&self) -> &str;
+    fn run(
+        self: Box<Self>,
+        state: Arc<CommsState>,
+        shutdown: CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>>;
+}
+```
+
+Channels receive `Arc<CommsState>` at spawn time — they do not hold it in their
+struct. This keeps ownership clear: the subsystem creates and owns `CommsState`;
+channels borrow a reference-counted handle while they run.
 
 ### Message flow (current — basic_chat default)
 
 ```
 PTY stdin
-  → BusHandle::request("agents", CommsMessage { channel_id: "pty0", content })
-    → SupervisorBus::rx (mpsc, bounded 64)
-      → supervisor::run  method prefix dispatch ("agents/*")
-        → agents.handle_request(method, payload, reply_tx)   ← supervisor returns immediately
-          → resolve agent → basic_chat
-          → tokio::spawn {
-              bus.request("llm/complete", LlmRequest { channel_id, content }).await
-                → supervisor::run  dispatch ("llm/*")
-                  → llm.handle_request(method, payload, reply_tx2)
-                    → tokio::spawn {
-                        DummyProvider::complete(content)
-                          → Ok("[echo] {content}")
-                        reply_tx2.send(Ok(CommsMessage { channel_id, content: reply }))
-                      }
-              reply_tx.send(Ok(CommsMessage { .. }))
-            }
-    ← BusResult::Ok(CommsMessage { channel_id: "pty0", content: "[echo] {input}" })
-  → pty::run prints reply to stdout
+  → CommsState::send_message("pty0", content)           [typed — no raw bus]
+    → BusHandle::request("agents", CommsMessage { channel_id, content })
+      → SupervisorBus::rx (mpsc, bounded 64)
+        → supervisor: HashMap dispatch (prefix = "agents")
+          → AgentsSubsystem::handle_request   ← supervisor returns immediately
+            → resolve plugin → basic_chat
+              → tokio::spawn {
+                  AgentsState::complete_via_llm(channel_id, content)  [typed]
+                    → BusHandle::request("llm/complete", LlmRequest { .. })
+                      → supervisor: dispatch (prefix = "llm")
+                        → LlmSubsystem::handle_request
+                          → tokio::spawn {
+                              DummyProvider::complete(content)
+                                → Ok("[echo] {content}")
+                              reply_tx.send(Ok(CommsMessage { .. }))
+                            }
+                  reply_tx.send(Ok(CommsMessage { .. }))
+                }
+  ← Ok(reply)
+  → pty prints reply to stdout
 PTY stdout
 ```
 
-For the `echo` agent (or when `agents.enabled = []`): `reply_tx` is resolved inline with no spawn.
-
-### Shutdown flow
-
-```
+For `echo`: `reply_tx` resolved inline, no spawn.
 Ctrl-C
   → tokio::signal::ctrl_c()
     → CancellationToken::cancel()
