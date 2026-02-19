@@ -15,6 +15,7 @@
 mod config;
 mod error;
 mod identity;
+mod llm;
 mod logger;
 mod supervisor;
 mod subsystems;
@@ -24,6 +25,7 @@ use tracing::info;
 
 use supervisor::bus::SupervisorBus;
 use subsystems::agents::AgentsSubsystem;
+use subsystems::llm::LlmSubsystem;
 
 #[tokio::main]
 async fn main() {
@@ -76,12 +78,14 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Build subsystem handlers used by supervisor dispatch.
-    let agents = AgentsSubsystem::new(config.agents.clone());
+    let llm = LlmSubsystem::new(&config.llm)
+        .map_err(|e| error::AppError::Config(e.to_string()))?;
+    let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
 
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
     let sup_handle = tokio::spawn(async move {
-        supervisor::run(bus, sup_token, agents).await;
+        supervisor::run(bus, sup_token, agents, llm).await;
     });
 
     // Run comms subsystem — drives the console on this task until shutdown.

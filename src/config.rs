@@ -27,6 +27,13 @@ pub struct CommsConfig {
     pub pty: PtyConfig,
 }
 
+/// LLM provider configuration.
+#[derive(Debug, Clone)]
+pub struct LlmConfig {
+    /// Named provider to use (e.g. "dummy", "openai").
+    pub provider: String,
+}
+
 /// Agents subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct AgentsConfig {
@@ -47,6 +54,7 @@ pub struct Config {
     pub log_level: String,
     pub comms: CommsConfig,
     pub agents: AgentsConfig,
+    pub llm: LlmConfig,
 }
 
 impl Config {
@@ -68,6 +76,8 @@ struct RawConfig {
     comms: RawComms,
     #[serde(default)]
     agents: RawAgents,
+    #[serde(default)]
+    llm: RawLlm,
 }
 
 #[derive(Deserialize)]
@@ -90,6 +100,22 @@ struct RawPty {
     /// Defaults to `true`: PTY auto-enables when no other channel is present.
     #[serde(default = "default_true")]
     enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct RawLlm {
+    #[serde(default = "default_llm_provider")]
+    provider: String,
+}
+
+impl Default for RawLlm {
+    fn default() -> Self {
+        Self { provider: default_llm_provider() }
+    }
+}
+
+fn default_llm_provider() -> String {
+    "dummy".to_string()
 }
 
 #[derive(Deserialize, Default)]
@@ -165,6 +191,9 @@ pub fn load_from(
         agents: AgentsConfig {
             enabled: parsed.agents.enabled,
             channel_map: parsed.agents.channel_map,
+        },
+        llm: LlmConfig {
+            provider: parsed.llm.provider,
         },
     })
 }

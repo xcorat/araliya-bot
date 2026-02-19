@@ -30,6 +30,11 @@ pub enum BusPayload {
     /// always the `reply_tx` in the enclosing `Request` — `channel_id` is for
     /// routing/logging only, not for sending the reply.
     CommsMessage { channel_id: String, content: String },
+    /// A completion request to the LLM subsystem.
+    /// `channel_id` is threaded through so the LLM subsystem can attach it to
+    /// the `CommsMessage` it returns, allowing the caller to re-associate the
+    /// reply with the originating channel without extra bookkeeping.
+    LlmRequest { channel_id: String, content: String },
     /// Targets an in-flight request for cancellation.
     CancelRequest { id: Uuid },
     /// No payload — used by notifications whose meaning is in the method alone.

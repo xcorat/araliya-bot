@@ -20,3 +20,8 @@ enabled = ["basic_chat"]
 # Optional channel-specific routing overrides.
 # Example:
 # pty0 = "echo"
+
+[llm]
+# LLM provider to use. "dummy" returns [echo] {input} — useful for testing.
+# Future values: "openai", "anthropic", etc.
+provider = "dummy"
