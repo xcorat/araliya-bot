@@ -1,15 +1,12 @@
 //! PTY (console) comms channel — reads lines from stdin, sends to supervisor,
 //! prints the reply to stdout.
 //!
-//! Implements [`Channel`] so the comms subsystem can spawn it as an
-//! independent task.  All supervisor communication goes through
-//! [`CommsState::send_message`] — this module has no direct bus access.
-//!
-//! Auto-loaded when no other comms channel is configured. Runs until the
-//! `shutdown` token is cancelled (Ctrl-C) or stdin is closed.
+//! [`PtyChannel`] implements [`runtime::Component`] directly.  State
+//! (`Arc<CommsState>`) is captured at construction time so the generic
+//! `Component::run(self, shutdown)` signature applies without modification.
+//! All supervisor communication goes through [`CommsState::send_message`]
+//! — this module has no direct bus access.
 
-use std::pin::Pin;
-use std::future::Future;
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -17,33 +14,32 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::error::AppError;
+use crate::subsystems::runtime::{Component, ComponentFuture};
 use super::state::{CommsEvent, CommsState};
-use super::Channel;
 
 // ── PtyChannel ───────────────────────────────────────────────────────────────
 
 /// A PTY channel instance.  Multiple instances would each get a unique id.
+/// State is captured at construction; the generic `Component` interface
+/// is used for all lifecycle management.
 pub struct PtyChannel {
     channel_id: String,
+    state: Arc<CommsState>,
 }
 
 impl PtyChannel {
-    pub fn new(channel_id: impl Into<String>) -> Self {
-        Self { channel_id: channel_id.into() }
+    pub fn new(channel_id: impl Into<String>, state: Arc<CommsState>) -> Self {
+        Self { channel_id: channel_id.into(), state }
     }
 }
 
-impl Channel for PtyChannel {
+impl Component for PtyChannel {
     fn id(&self) -> &str {
         &self.channel_id
     }
 
-    fn run(
-        self: Box<Self>,
-        state: Arc<CommsState>,
-        shutdown: CancellationToken,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>> {
-        Box::pin(run_pty(self.channel_id, state, shutdown))
+    fn run(self: Box<Self>, shutdown: CancellationToken) -> ComponentFuture {
+        Box::pin(run_pty(self.channel_id, self.state, shutdown))
     }
 }
 

@@ -1,4 +1,4 @@
-//! Generic subsystem runtime — shared scaffolding for all subsystems.
+//! Generic subsystem runtime — shared scaffolding for all subsystems. — shared scaffolding for all subsystems.
 //!
 //! # Component model
 //!
@@ -66,8 +66,9 @@ pub struct SubsystemHandle {
 }
 
 impl SubsystemHandle {
-    /// Wrap an existing `JoinHandle` — used by subsystems that build their
-    /// own manager task (e.g. comms, which also services an event queue).
+    /// Wrap an existing `JoinHandle` — available for subsystems that build
+    /// a custom manager task outside of [`spawn_components`].
+    #[allow(dead_code)]
     pub fn from_handle(handle: JoinHandle<Result<(), AppError>>) -> Self {
         Self { inner: handle }
     }
@@ -103,6 +104,13 @@ pub fn spawn_components(
             let shutdown = shutdown.clone();
             debug!(component = %id, "spawning component");
             set.spawn(component.run(shutdown));
+        }
+
+        // If no components were registered, wait for the shutdown signal so
+        // the subsystem slot in main's task graph holds until shutdown.
+        if set.is_empty() {
+            shutdown.cancelled().await;
+            return Ok(());
         }
 
         let mut first_err: Option<AppError> = None;

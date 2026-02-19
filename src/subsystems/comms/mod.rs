@@ -2,67 +2,44 @@
 //!
 //! # Architecture
 //!
-//! Each channel (PTY, HTTP, Telegram…) is an independent task spawned by
-//! [`start`].  Channels share an `Arc<`[`CommsState`]`>` which provides:
+//! Each channel (PTY, HTTP, Telegram…) implements [`runtime::Component`] and
+//! is spawned as an independent concurrent task by [`start`] via
+//! [`runtime::spawn_components`].  Channels capture their shared
+//! [`Arc<CommsState>`] at construction time — no state is passed through the
+//! generic `Component::run` signature.
 //!
-//! - A **typed outbound API** (`send_message`) — channels cannot address the
-//!   supervisor bus directly.
-//! - An **intra-subsystem event queue** (`report_event`) for signalling back
-//!   to the subsystem manager (e.g. shutdown, session lifecycle).
+//! An intra-subsystem [`mpsc`] channel lets running channels signal the
+//! comms manager (lifecycle events, session tracking).  This is drained in a
+//! short-lived background task that dies naturally when all channel senders
+//! are dropped.
 //!
 //! # Starting
 //!
-//! [`start`] is a synchronous function that spawns all channels immediately
-//! and returns a [`SubsystemHandle`].  The caller can `.await` the handle to
-//! block until all channels exit, or hold it and continue working
-//! — channels run either way.
+//! [`start`] is synchronous — it returns a [`SubsystemHandle`] as soon as
+//! the tasks are spawned.  The caller decides when (or whether) to await it.
 
 mod state;
 pub mod pty;
 
 pub use state::{CommsEvent, CommsState};
 
-use std::pin::Pin;
-use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::config::Config;
-use crate::error::AppError;
 use crate::supervisor::bus::BusHandle;
-use crate::subsystems::runtime::SubsystemHandle;
-
-// ── Channel trait ───────────────────────────────────────────────────────────
-
-/// A comms channel that runs as an independent task.
-///
-/// Implementors receive `Arc<CommsState>` at spawn time from the subsystem
-/// manager — they do not store it themselves.  This keeps state ownership
-/// clear: the subsystem creates and owns `CommsState`; channels only borrow
-/// a reference-counted handle to it while they run.
-pub trait Channel: Send + 'static {
-    /// Stable identifier for this channel instance (e.g. `"pty0"`).
-    fn id(&self) -> &str;
-
-    /// Consume the channel and return its async run-loop as a boxed future.
-    fn run(
-        self: Box<Self>,
-        state: Arc<CommsState>,
-        shutdown: CancellationToken,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>>;
-}
+use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
 
 // ── start ───────────────────────────────────────────────────────────────────
 
 /// Spawn all configured comms channels and return a [`SubsystemHandle`].
 ///
-/// Channels start immediately.  If any channel exits with an error, the
-/// shared `shutdown` token is cancelled so siblings stop cooperatively.
-/// The handle resolves when all channels have exited.
+/// Channels start immediately.  If any channel exits with an error the shared
+/// `shutdown` token is cancelled so siblings stop cooperatively.  The handle
+/// resolves when all channels have exited.
 ///
 /// # Non-blocking
 ///
@@ -74,77 +51,41 @@ pub fn start(
     shutdown: CancellationToken,
 ) -> SubsystemHandle {
     // Intra-subsystem event channel: channels → manager.
-    let (event_tx, mut event_rx) = mpsc::channel::<CommsEvent>(32);
+    let (event_tx, event_rx) = mpsc::channel::<CommsEvent>(32);
     let state = Arc::new(CommsState::new(bus, event_tx));
 
-    // Build the channel list from config.
-    let mut channels: Vec<Box<dyn Channel>> = Vec::new();
+    // Build the component list from config.
+    // Each channel captures Arc<CommsState> at construction; the generic
+    // Component::run signature only needs the shutdown token.
+    let mut components: Vec<Box<dyn Component>> = Vec::new();
 
     if config.comms_pty_should_load() {
         info!("loading pty channel");
-        channels.push(Box::new(pty::PtyChannel::new("pty0")));
+        components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
     }
 
-    let handle = tokio::spawn(async move {
-        if channels.is_empty() {
-            info!("no comms channels configured — waiting for shutdown");
-            shutdown.cancelled().await;
-            return Ok(());
-        }
+    if components.is_empty() {
+        info!("no comms channels configured — waiting for shutdown");
+    }
 
-        let mut set: JoinSet<Result<(), AppError>> = JoinSet::new();
-
-        for channel in channels {
-            let id = channel.id().to_string();
-            let state = state.clone();
-            let shutdown = shutdown.clone();
-            debug!(channel = %id, "spawning channel task");
-            set.spawn(channel.run(state, shutdown));
-        }
-
-        let mut first_err: Option<AppError> = None;
-
-        loop {
-            tokio::select! {
-                // A channel task finished.
-                Some(res) = set.join_next() => {
-                    match res {
-                        Err(e) => {
-                            error!("channel task panicked: {e}");
-                            shutdown.cancel();
-                            first_err.get_or_insert_with(|| AppError::Comms(format!("channel panicked: {e}")));
-                        }
-                        Ok(Err(e)) => {
-                            error!("channel error: {e}");
-                            shutdown.cancel();
-                            first_err.get_or_insert(e);
-                        }
-                        Ok(Ok(())) => {}
-                    }
-                    if set.is_empty() { break; }
+    // Spawn a background event drain: consumes CommsEvent until all channel
+    // senders are dropped (i.e. all channels have exited).  Errors are
+    // non-fatal — this task is monitoring-only and does not affect lifecycle.
+    tokio::spawn(async move {
+        let mut rx = event_rx;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommsEvent::ChannelShutdown { ref channel_id } => {
+                    debug!(channel_id, "channel reported shutdown");
                 }
-
-                // An intra-subsystem event from a running channel.
-                Some(event) = event_rx.recv() => {
-                    match event {
-                        CommsEvent::ChannelShutdown { ref channel_id } => {
-                            debug!(channel_id, "channel reported shutdown");
-                        }
-                        CommsEvent::SessionStarted { ref channel_id } => {
-                            debug!(channel_id, "channel session started");
-                        }
-                    }
+                CommsEvent::SessionStarted { ref channel_id } => {
+                    debug!(channel_id, "channel session started");
                 }
-
-                else => break,
             }
-        }
-
-        match first_err {
-            Some(e) => Err(e),
-            None => Ok(()),
         }
     });
 
-    SubsystemHandle::from_handle(handle)
+    // Delegate component lifecycle (JoinSet + error propagation + shutdown
+    // cancellation) entirely to the generic runtime helper.
+    spawn_components(components, shutdown)
 }

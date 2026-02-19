@@ -127,9 +127,12 @@ impl AgentsSubsystem {
         let enabled_agents: HashSet<String> = enabled.into_iter().collect();
 
         // Register all known built-in plugins.
+        // Uses plugin.id() as the HashMap key so the trait method is the
+        // single source of truth for each plugin's identity.
         let mut plugins: HashMap<String, Box<dyn AgentPlugin>> = HashMap::new();
-        plugins.insert("echo".into(), Box::new(EchoPlugin));
-        plugins.insert("basic_chat".into(), Box::new(BasicChatPlugin));
+        for plugin in [Box::new(EchoPlugin) as Box<dyn AgentPlugin>, Box::new(BasicChatPlugin)] {
+            plugins.insert(plugin.id().to_string(), plugin);
+        }
 
         Self {
             state: Arc::new(AgentsState::new(bus)),
