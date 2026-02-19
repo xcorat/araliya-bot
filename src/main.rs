@@ -164,9 +164,16 @@ fn cli_log_level_override_from_args() -> Option<&'static str> {
         }
     }
 
+    // Each -v raises verbosity one tier from the config default:
+    //   -v      → warn   (suppress info noise, show warnings+errors only)
+    //   -vv     → info   (normal operational output — the typical default)
+    //   -vvv    → debug  (flow-level diagnostics: routing, handler registration)
+    //   -vvvv+  → trace  (full payload dumps, very verbose)
     match verbosity {
         0 => None,
-        1 => Some("debug"),
+        1 => Some("warn"),
+        2 => Some("info"),
+        3 => Some("debug"),
         _ => Some("trace"),
     }
 }
