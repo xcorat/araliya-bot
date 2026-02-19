@@ -1,0 +1,4 @@
+[supervisor]
+bot_name = "araliya"
+work_dir = "~/.araliya"
+log_level = "info"
