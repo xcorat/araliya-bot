@@ -182,7 +182,7 @@ fn find_existing_identity_dirs(work_dir: &Path) -> Result<Vec<PathBuf>, AppError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, CommsConfig, PtyConfig};
+    use crate::config::{AgentsConfig, CommsConfig, Config, PtyConfig};
     use tempfile::TempDir;
 
     fn test_config(work_dir: &Path) -> Config {
@@ -193,6 +193,10 @@ mod tests {
             log_level: "info".into(),
             comms: CommsConfig {
                 pty: PtyConfig { enabled: true },
+            },
+            agents: AgentsConfig {
+                enabled: vec!["echo".into()],
+                channel_map: std::collections::HashMap::new(),
             },
         }
     }

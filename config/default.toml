@@ -11,3 +11,12 @@ log_level = "info"
 # PTY (console) channel — auto-loads when no other channel is enabled.
 # Set to false to suppress even when no other channel is present.
 enabled = true
+
+[agents]
+# Ordered list of enabled agents. First entry is the default fallback.
+enabled = ["basic_chat"]
+
+[agents.channel_map]
+# Optional channel-specific routing overrides.
+# Example:
+# pty0 = "echo"

@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use supervisor::bus::SupervisorBus;
+use subsystems::agents::AgentsSubsystem;
 
 #[tokio::main]
 async fn main() {
@@ -74,10 +75,13 @@ async fn run() -> Result<(), error::AppError> {
         }
     });
 
+    // Build subsystem handlers used by supervisor dispatch.
+    let agents = AgentsSubsystem::new(config.agents.clone());
+
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
     let sup_handle = tokio::spawn(async move {
-        supervisor::run(bus, sup_token).await;
+        supervisor::run(bus, sup_token, agents).await;
     });
 
     // Run comms subsystem — drives the console on this task until shutdown.

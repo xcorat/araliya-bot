@@ -1,49 +1,63 @@
 # Agents Subsystem
 
-**Status:** Planned — not yet implemented.
+**Status:** v0.0.4 (minimal) — implemented with default `basic_chat` agent.
 
 ---
 
 ## Overview
 
-The Agents subsystem is responsible for all agent execution and orchestration. It receives work items from the supervisor, runs agent loops (LLM calls + tool execution), and manages session-level concurrency.
+The Agents subsystem receives agent-targeted requests from the supervisor messaging service and routes each message to an agent.
 
-Any plugin with an "agentic" role is initialized and managed here. Each agent can manage sub-agents, and each agent/sub-agent maintains its own state.
-
----
-
-## Responsibilities
-
-- Receive `AgentWork` from supervisor
-- Lane dispatcher: one active run per session, concurrent across sessions
-- Agent loop: build prompt → LLM call → parse tool calls → execute tools → append transcript → repeat
-- Run registry: track active runs, enforce timeouts, support abort
-- Sub-agent spawning (future)
-- Session log of all agents and sub-agents
+Current implementation is intentionally minimal:
+- implemented agents: `basic_chat`, `echo`
+- default agent: `basic_chat`
+- payload type: `CommsMessage { channel_id, content }`
+- method grammar: `agents/{agent_id?}/{action?}`
 
 ---
 
-## Run Lifecycle
+## Responsibilities (current)
+
+- Resolve target agent in this order:
+  1) explicit `{agent_id}` from method path
+  2) channel mapping `channel_id -> agent_id`
+  3) default agent (first enabled, `basic_chat` by default)
+- Execute selected agent handler
+- Return `BusResult` to supervisor for one-shot reply delivery
+
+---
+
+## Routing Lifecycle (current)
 
 ```
-AgentWork received
-  ├─ resolve session via Memory Service
-  ├─ register run in registry (timeout: 300s default)
-  ├─ build prompt (transcript + working memory)
-  ├─ LLM call
-  ├─ parse response
-  │   ├─ tool calls → execute via Tools subsystem
-  │   │   └─ append tool result to transcript
-  │   │   └─ loop
-  │   └─ final text → append to transcript
-  └─ return AgentResponse
+Request received (`agents/...`)
+  ├─ parse method path
+  ├─ resolve target agent (method agent > channel map > default)
+  ├─ run agent handler
+  └─ return `BusPayload::CommsMessage` reply
 ```
 
 ---
 
-## Message Protocol
+## Method Grammar
 
-- `AgentWork` — session_id, message, reply channel
-- `AgentResponse` — reply text, intermediate steps, usage
-- `AgentEvent` — streaming progress (tool calls, text chunks) (future)
-- `AgentControl` — abort, steer, list runs
+- `agents`
+  - Uses default agent + default action.
+- `agents/{agent_id}`
+  - Uses explicit agent + default action.
+- `agents/{agent_id}/{action}`
+  - Uses explicit agent + explicit action.
+
+`{action}` is currently accepted but not differentiated by implemented agents.
+
+## Config
+
+```toml
+[agents]
+enabled = ["basic_chat"]
+
+[agents.channel_map]
+# pty0 = "echo"
+```
+
+First entry in `enabled` is the default fallback agent. If `enabled` is empty, runtime auto-enables `echo` as a safety fallback.

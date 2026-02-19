@@ -10,6 +10,12 @@ bot_name = "araliya"
 work_dir = "~/.araliya"
 identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_dir
 log_level = "info"
+
+[agents]
+enabled = ["basic_chat"]
+
+[agents.channel_map]
+# pty0 = "echo"
 ```
 
 ### Fields
@@ -20,6 +26,13 @@ log_level = "info"
 | `work_dir` | path | `"~/.araliya"` | Root directory for all persistent data. `~` expands to `$HOME`. |
 | `identity_dir` | path (optional) | none | Explicit identity directory. Required to disambiguate when multiple `bot-pkey*` dirs exist. |
 | `log_level` | string | `"info"` | Log verbosity: `error`, `warn`, `info`, `debug`, `trace` |
+
+## Agents Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `agents.enabled` | array<string> | `["basic_chat"]` | Ordered enabled agents. First entry is default fallback agent. If empty, runtime auto-falls back to `echo`. |
+| `agents.channel_map` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
 
 ## CLI Verbosity Flags
 

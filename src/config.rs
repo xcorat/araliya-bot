@@ -5,6 +5,7 @@
 
 use std::{
     env,
+    collections::HashMap,
     path::{Path, PathBuf},
     fs,
 };
@@ -26,6 +27,15 @@ pub struct CommsConfig {
     pub pty: PtyConfig,
 }
 
+/// Agents subsystem configuration.
+#[derive(Debug, Clone)]
+pub struct AgentsConfig {
+    /// Ordered list of enabled agent IDs. The first entry is the default agent.
+    pub enabled: Vec<String>,
+    /// Optional channel-to-agent overrides (channel_id -> agent_id).
+    pub channel_map: HashMap<String, String>,
+}
+
 /// Fully-resolved supervisor configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -36,6 +46,7 @@ pub struct Config {
     pub identity_dir: Option<PathBuf>,
     pub log_level: String,
     pub comms: CommsConfig,
+    pub agents: AgentsConfig,
 }
 
 impl Config {
@@ -55,6 +66,8 @@ struct RawConfig {
     supervisor: RawSupervisor,
     #[serde(default)]
     comms: RawComms,
+    #[serde(default)]
+    agents: RawAgents,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +92,14 @@ struct RawPty {
     enabled: bool,
 }
 
+#[derive(Deserialize, Default)]
+struct RawAgents {
+    #[serde(default = "default_agents_enabled")]
+    enabled: Vec<String>,
+    #[serde(default)]
+    channel_map: HashMap<String, String>,
+}
+
 impl Default for RawPty {
     fn default() -> Self {
         Self { enabled: true }
@@ -87,6 +108,10 @@ impl Default for RawPty {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_agents_enabled() -> Vec<String> {
+    vec!["basic_chat".to_string()]
 }
 
 /// Load config from `config/default.toml`, then apply env-var overrides.
@@ -136,6 +161,10 @@ pub fn load_from(
             pty: PtyConfig {
                 enabled: parsed.comms.pty.enabled,
             },
+        },
+        agents: AgentsConfig {
+            enabled: parsed.agents.enabled,
+            channel_map: parsed.agents.channel_map,
         },
     })
 }

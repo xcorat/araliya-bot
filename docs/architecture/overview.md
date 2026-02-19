@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.3 — supervisor bootstrap + PTY comms channel + event bus protocol.
+**Status:** v0.0.4 — supervisor bootstrap + PTY comms + method-dispatch messaging service + agents (basic_chat default).
 
 ---
 
@@ -61,13 +61,13 @@
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented |
 | Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
 | Memory Service | — | Planned |
-| Agents | — | Planned |
+| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (minimal: basic_chat + echo fallback + channel mapping) |
 | Tools | — | Planned |
 | AI/LLM Provider | — | Planned |
 
 ---
 
-## Startup Sequence (v0.2)
+## Startup Sequence (v0.0.4)
 
 ```
 main()  [#[tokio::main]]

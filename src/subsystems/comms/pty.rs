@@ -65,7 +65,7 @@ pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<
                             channel_id: channel_id.clone(),
                             content: input,
                         };
-                        match state.bus.request("comms/pty/rx", payload).await {
+                        match state.bus.request("agents", payload).await {
                             Err(e) => {
                                 warn!("bus error: {e}, pty exiting");
                                 break;
