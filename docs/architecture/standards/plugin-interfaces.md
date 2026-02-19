@@ -1,15 +1,18 @@
 # Plugin Interfaces
 
-**Status:** Implemented — agents (`src/subsystems/agents/mod.rs`), LLM (`src/llm/mod.rs`), BusHandler (`src/supervisor/dispatch.rs`)
+**Status:** v0.3.0 — agents (`src/subsystems/agents/mod.rs`), LLM (`src/llm/mod.rs`), BusHandler (`src/supervisor/dispatch.rs`)
 
-This document specifies the three extension points in the architecture: how to add a new agent plugin, a new LLM provider, and how subsystems register on the bus.
+This document specifies the three extension points in the architecture: how to add a new agent, a new LLM provider, and how subsystems register on the bus.
+
+> **Naming convention:** `Agent` refers to autonomous actors in the agents subsystem.
+> `Plugin` is reserved for capability extensions in the future tools subsystem.
 
 ---
 
-## `AgentPlugin` — adding a new agent
+## `Agent` — adding a new agent
 
 ```rust
-pub trait AgentPlugin: Send + Sync {
+pub trait Agent: Send + Sync {
     fn id(&self) -> &str;
     fn handle(
         &self,
@@ -23,10 +26,10 @@ pub trait AgentPlugin: Send + Sync {
 
 ### Contract
 
-- `id()` must match the name used in `[agents].enabled` config and `[agents.channel_map]` values.
+- `id()` must match the name used in config routing and `[agents.routing]` values.
 - `handle` must **not block the caller**:
-  - Synchronous plugins resolve `reply_tx` immediately (see `EchoPlugin`).
-  - Async plugins `tokio::spawn` a task and resolve `reply_tx` from within it (see `BasicChatPlugin`).
+  - Synchronous agents resolve `reply_tx` immediately (see `EchoAgent`).
+  - Async agents `tokio::spawn` a task and resolve `reply_tx` from within it (see `BasicChatPlugin`, `SessionChatPlugin`).
 - `reply_tx` is `oneshot::Sender<BusResult>` — consume it exactly once. Dropping it without sending causes the caller to receive `BusCallError::Recv`.
 - `state: Arc<AgentsState>` is the capability surface. Do not circumvent it to access raw bus handles.
 
@@ -36,25 +39,30 @@ pub trait AgentPlugin: Send + Sync {
 impl AgentsState {
     pub async fn complete_via_llm(&self, channel_id: &str, content: &str) -> BusResult;
 }
+
+// Fields:
+pub memory: Option<Arc<MemorySystem>>,  // when subsystem-memory is enabled
+pub agent_memory: HashMap<String, Vec<String>>,  // per-agent store requirements
 ```
 
-Plugins call typed methods on `AgentsState` rather than addressing arbitrary bus targets. The raw `BusHandle` is private to the agents module.
+Agents call typed methods on `AgentsState` rather than addressing arbitrary bus targets. The raw `BusHandle` is private to the agents module.
 
-### Built-in plugins
+### Built-in agents
 
 | ID | Feature | Behaviour |
 |----|---------|----------|
 | `echo` | `plugin-echo` | Returns input unchanged; synchronous. |
 | `basic_chat` | `plugin-basic-chat` | Delegates to `ChatCore::basic_complete` in a spawned task. |
-| `chat` | `plugin-chat` | Session-aware chat via `SessionChatPlugin`; delegates to `ChatCore` with hooks for future session/memory/tool extensions. |
+| `chat` | `plugin-chat` | Session-aware chat via `SessionChatPlugin`; creates a memory session on first message, appends user/assistant transcript entries, injects recent history as LLM context. Requires `subsystem-memory`. |
 
-### Adding a plugin
+### Adding an agent
 
-1. Implement `AgentPlugin` in a new file under `src/subsystems/agents/`.
-   - For chat-family plugins, add to `src/subsystems/agents/chat/` and compose with `ChatCore`.
-2. Add a Cargo feature gate (e.g. `plugin-myplugin = ["subsystem-agents"]`).
-3. Register it in `AgentsSubsystem::new()` behind `#[cfg(feature = "plugin-myplugin")]`.
-4. Add `[agents.myplugin]` in `config/default.toml`.
+1. Implement `Agent` in a new file under `src/subsystems/agents/`.
+   - For chat-family agents, add to `src/subsystems/agents/chat/` and compose with `ChatCore`.
+2. Add a Cargo feature gate (e.g. `plugin-myagent = ["subsystem-agents"]`).
+3. Register it in `AgentsSubsystem::new()` behind `#[cfg(feature = "plugin-myagent")]`.
+4. Add `[agents.myagent]` in `config/default.toml`.
+5. If the agent needs memory, add `memory = ["basic_session"]` to its config section.
 
 ---
 

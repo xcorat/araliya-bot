@@ -18,6 +18,9 @@ pub enum AppError {
 
     #[error("comms error: {0}")]
     Comms(String),
+
+    #[error("memory error: {0}")]
+    Memory(String),
 }
 
 #[cfg(test)]

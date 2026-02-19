@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.2.1 — `AgentPlugin` trait · `AgentsState` capability boundary · `BusHandler` impl · plugin dispatch · **`ChatCore` composition layer** · `SessionChatPlugin`.
+**Status:** v0.3.0 — `Agent` trait · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration.
 
 ---
 
@@ -15,7 +15,7 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 | Agent | Behaviour |
 |-------|-----------|
 | `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. Default agent. |
-| `chat` | Session-aware chat via `SessionChatPlugin`. Delegates to `ChatCore` today; extension point for session management, memory, prompt templating, and tool use. |
+| `chat` | Session-aware chat via `SessionChatPlugin`. Creates a memory session on first message, appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Configured with `memory = ["basic_session"]`. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -43,9 +43,12 @@ Agents are resolved in this priority order:
 `AgentsSubsystem` implements `BusHandler` with prefix `"agents"`. The supervisor
 calls `handle_request` and returns immediately:
 
-- **`echo`** — `EchoPlugin::handle` resolves `reply_tx` inline; zero latency.
+- **`echo`** — `EchoAgent::handle` resolves `reply_tx` inline; zero latency.
 - **`basic_chat`** — `BasicChatPlugin::handle` moves `reply_tx` into a
   `tokio::spawn`ed task that calls `AgentsState::complete_via_llm`.
+- **`chat`** — `SessionChatPlugin::handle` spawns a task that initialises a
+  memory session on first use, appends to transcript, builds context, calls
+  `ChatCore::basic_complete`, and appends the LLM reply.
 
 ---
 
@@ -64,12 +67,12 @@ handle_request("agents", CommsMessage { channel_id, content }, reply_tx)
 
 ---
 
-## Plugin Architecture
+## Agent Architecture
 
-`AgentPlugin` is the extension trait for all agent implementations:
+`Agent` is the extension trait for all agent implementations:
 
 ```rust
-pub trait AgentPlugin: Send + Sync {
+pub trait Agent: Send + Sync {
     fn id(&self) -> &str;
     fn handle(
         &self,
@@ -81,13 +84,16 @@ pub trait AgentPlugin: Send + Sync {
 }
 ```
 
-Plugins are stored in a `HashMap<String, Box<dyn AgentPlugin>>` inside
+Agents are stored in a `HashMap<String, Box<dyn Agent>>` inside
 `AgentsSubsystem`. Resolution order (by `id()`) maps to the routing priority
 table above.
 
+> **Naming convention:** `Agent` for autonomous actors in the agents subsystem;
+> `Plugin` is reserved for capability extensions in the future tools subsystem.
+
 ### Chat-family composition (`ChatCore`)
 
-Chat-family plugins (`basic_chat`, `chat`, and future variants) share logic
+Chat-family agents (`basic_chat`, `chat`, and future variants) share logic
 through composition rather than inheritance:
 
 ```
@@ -107,7 +113,7 @@ impl ChatCore {
 }
 ```
 
-Each chat plugin calls `ChatCore` methods and layers its own behaviour on top.
+Each chat agent calls `ChatCore` methods and layers its own behaviour on top.
 This avoids code duplication while allowing progressive enhancement:
 
 ```
@@ -120,20 +126,22 @@ BasicChatPlugin     SessionChatPlugin  (core + session/memory/tools)
 
 ### Capability boundary — `AgentsState`
 
-Plugins receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
+Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
 
 | Method | Description |
 |--------|-------------|
 | `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
+| `memory` (field) | `Option<Arc<MemorySystem>>` — create/load sessions. Only present when `subsystem-memory` feature is enabled. |
+| `agent_memory` (field) | `HashMap<String, Vec<String>>` — per-agent memory store requirements from config. |
 
-The raw bus is private to `AgentsState`. Plugins cannot call arbitrary bus
+The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
 targets.
 
 ## Initialisation
 
-`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle)` — the `BusHandle`
-is injected at init and wrapped inside `AgentsState`. Built-in plugins
-(`EchoPlugin`, `BasicChatPlugin`, `SessionChatPlugin`) are registered behind
+`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle, memory: Option<Arc<MemorySystem>>)` — the `BusHandle`
+is injected at init and wrapped inside `AgentsState`. The optional `MemorySystem` is passed through when the `subsystem-memory` feature is enabled. Built-in agents
+(`EchoAgent`, `BasicChatPlugin`, `SessionChatPlugin`) are registered behind
 Cargo feature gates; the `enabled` list controls which ones are reachable via
 routing.
 
@@ -143,13 +151,18 @@ routing.
 
 ```toml
 [agents]
-enabled = ["basic_chat"]
+default = "basic_chat"
 
-[agents.channel_map]
+[agents.routing]
 # pty0 = "echo"
+
+[agents.chat]
+memory = ["basic_session"]
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agents.enabled` | array\<string\> | `["basic_chat"]` | Ordered enabled agents. First entry is the default fallback. |
-| `agents.channel_map` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
+| `agents.default` | string | `"basic_chat"` | Which agent handles unrouted messages. |
+| `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
+| `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
+| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |

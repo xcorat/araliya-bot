@@ -69,6 +69,8 @@ pub struct AgentsConfig {
     pub channel_map: HashMap<String, String>,
     /// Set of agent IDs whose config section has `enabled` != false.
     pub enabled: HashSet<String>,
+    /// Per-agent memory store requirements: agent_id -> list of store type names.
+    pub agent_memory: HashMap<String, Vec<String>>,
 }
 
 /// Fully-resolved supervisor configuration.
@@ -86,6 +88,9 @@ pub struct Config {
     /// API key from `LLM_API_KEY` env var — `None` for keyless local models.
     /// Never sourced from TOML.
     pub llm_api_key: Option<String>,
+    /// Memory subsystem caps (from `[memory.basic_session]`).
+    pub memory_kv_cap: Option<usize>,
+    pub memory_transcript_cap: Option<usize>,
 }
 
 impl Config {
@@ -114,6 +119,8 @@ struct RawConfig {
     agents: RawAgents,
     #[serde(default)]
     llm: RawLlm,
+    #[serde(default)]
+    memory: RawMemory,
 }
 
 #[derive(Deserialize)]
@@ -209,9 +216,24 @@ struct RawAgentEntry {
     /// Defaults to `true`; set to `false` to disable without removing the section.
     #[serde(default = "default_true")]
     enabled: bool,
+    /// Memory store types this agent requires (e.g. `["basic_session"]`).
+    #[serde(default)]
+    memory: Vec<String>,
 }
 
 fn default_agent_name() -> String { "basic_chat".to_string() }
+
+#[derive(Deserialize, Default)]
+struct RawMemory {
+    #[serde(default)]
+    basic_session: RawBasicSessionConfig,
+}
+
+#[derive(Deserialize, Default)]
+struct RawBasicSessionConfig {
+    kv_cap: Option<usize>,
+    transcript_cap: Option<usize>,
+}
 
 impl Default for RawPty {
     fn default() -> Self {
@@ -288,9 +310,14 @@ pub fn load_from(
             default_agent: parsed.agents.default_agent,
             channel_map: parsed.agents.routing,
             enabled: parsed.agents.entries
-                .into_iter()
+                .iter()
                 .filter(|(_, e)| e.enabled)
-                .map(|(id, _)| id)
+                .map(|(id, _)| id.clone())
+                .collect(),
+            agent_memory: parsed.agents.entries
+                .into_iter()
+                .filter(|(_, e)| !e.memory.is_empty())
+                .map(|(id, e)| (id, e.memory))
                 .collect(),
         },
         llm: LlmConfig {
@@ -303,6 +330,8 @@ pub fn load_from(
             },
         },
         llm_api_key: env::var("LLM_API_KEY").ok(),
+        memory_kv_cap: parsed.memory.basic_session.kv_cap,
+        memory_transcript_cap: parsed.memory.basic_session.transcript_cap,
     })
 }
 
@@ -320,6 +349,43 @@ pub fn expand_home(path: &str) -> PathBuf {
         }
     }
     PathBuf::from(path)
+}
+
+// ── test helpers ──────────────────────────────────────────────────────────────
+
+/// Safe `Config` for unit tests — dummy LLM, no API keys, no external calls.
+#[cfg(test)]
+impl Config {
+    pub fn test_default(work_dir: &Path) -> Self {
+        Self {
+            bot_name: "test".into(),
+            work_dir: work_dir.to_path_buf(),
+            identity_dir: None,
+            log_level: "info".into(),
+            comms: CommsConfig {
+                pty: PtyConfig { enabled: true },
+                telegram: TelegramConfig { enabled: false },
+            },
+            agents: AgentsConfig {
+                default_agent: "echo".into(),
+                enabled: HashSet::from(["echo".to_string()]),
+                channel_map: HashMap::new(),
+                agent_memory: HashMap::new(),
+            },
+            llm: LlmConfig {
+                provider: "dummy".into(),
+                openai: OpenAiConfig {
+                    api_base_url: "http://localhost:0/v1/chat/completions".into(),
+                    model: "test-model".into(),
+                    temperature: 0.0,
+                    timeout_seconds: 1,
+                },
+            },
+            llm_api_key: None,
+            memory_kv_cap: None,
+            memory_transcript_cap: None,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ This section contains normative specifications for the fundamental contracts tha
 |------|---------------|--------|
 | [Bus Protocol](bus-protocol.md) | Method naming, `BusMessage` variants, payload enum, error codes, `BusHandle` API, `BusHandler` registration | Implemented |
 | [Component Runtime](runtime.md) | `Component` trait, `ComponentFuture`, `spawn_components`, cancellation / fail-fast model | Implemented |
-| [Plugin Interfaces](plugin-interfaces.md) | `AgentPlugin`, `BusHandler`, `LlmProvider` enum-dispatch extension pattern | Implemented |
+| [Plugin Interfaces](plugin-interfaces.md) | `Agent`, `BusHandler`, `LlmProvider` enum-dispatch extension pattern | Implemented |
 | [Capabilities Model](capabilities.md) | Typed capability objects, planned permission enforcement | Planned |
 
 ---

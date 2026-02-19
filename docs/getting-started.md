@@ -19,8 +19,8 @@ Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and ch
 
 | Feature Group | Features | Description |
 |---------------|----------|-------------|
-| **Subsystems**| `subsystem-agents`, `subsystem-llm`, `subsystem-comms` | Main architectural blocks. |
-| **Plugins**   | `plugin-echo`, `plugin-basic-chat` | Capabilities for the `agents` subsystem. |
+| **Subsystems**| `subsystem-agents`, `subsystem-llm`, `subsystem-comms`, `subsystem-memory` | Main architectural blocks. |
+| **Agents**    | `plugin-echo`, `plugin-basic-chat`, `plugin-chat` | Capabilities for the `agents` subsystem. |
 | **Channels**  | `channel-pty` | I/O channels for the `comms` subsystem. |
 
 **Default build (All features enabled):**
@@ -127,4 +127,4 @@ cargo run -- -vvv
 cargo test
 ```
 
-All 29 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.
+All 41 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.

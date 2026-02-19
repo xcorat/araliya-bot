@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.2.2 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family plugin composition (`ChatCore`).**
+**Status:** v0.3.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`).**
 
 ---
 
@@ -11,7 +11,8 @@
 - **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
 - **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
 - **Plugin-based extensibility** — subsystems can load and unload plugins at runtime
-- **Compile-time Modularity** — Subsystems (`agents`, `llm`, `comms`) and plugins can be disabled via Cargo features to optimize binary size and memory footprint.
+- **Agent / Plugin distinction** — `Agent` trait for autonomous actors in the agents subsystem; `Plugin` (future) for capability extensions in the tools subsystem
+- **Compile-time Modularity** — Subsystems (`agents`, `llm`, `comms`, `memory`) and agents can be disabled via Cargo features to optimize binary size and memory footprint.
 
 ---
 
@@ -24,9 +25,9 @@
 ├──────────────────────────────────────────────────────┤
 │                                                      │
 │  ┌─────────────┐   ┌─────────────┐                  │
-│  │   Comms     │   │   Memory    │   (planned)       │
-│  │  Subsystem  │   │   Service   │                   │
-│  │ PTY│HTTP│Ch.│   │             │                   │
+│  │   Comms     │   │   Memory    │   Implemented     │
+│  │  Subsystem  │   │   System    │                   │
+│  │ PTY│HTTP│Ch.│   │basic_session│                   │
 │  └──────┬──────┘   └──────┬──────┘                   │
 │         │                 │                          │
 │  ┌──────┴─────────────────┴──────────────────┐       │
@@ -53,9 +54,10 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `subsystem-agents` | Agents | Routing engine for agent workflows. |
 | `subsystem-llm` | LLM | Completion provider subsystem. |
 | `subsystem-comms` | Comms | I/O channel management. |
-| `plugin-echo` | Agent | Echo plugin for the Agents subsystem. |
-| `plugin-basic-chat` | Agent | Basic chat plugin — minimal LLM pass-through (requires `subsystem-llm`). |
-| `plugin-chat` | Agent | Session-aware chat plugin — extends `ChatCore` with session management hooks (requires `subsystem-llm`). |
+| `subsystem-memory` | Memory | Session management and pluggable memory stores. |
+| `plugin-echo` | Agent | Echo agent for the Agents subsystem. |
+| `plugin-basic-chat` | Agent | Basic chat agent — minimal LLM pass-through (requires `subsystem-llm`). |
+| `plugin-chat` | Agent | Session-aware chat agent — extends `ChatCore` with memory integration (requires `subsystem-llm`, `subsystem-memory`). |
 | `channel-pty` | Channel | Local console PTY channel. |
 
 ---
@@ -66,7 +68,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 |--------|------|---------|
 | Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; routes messages between subsystems |
 | Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
-| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[agents]`, `[llm]` sections |
+| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[agents]`, `[llm]`, `[memory]` sections |
 | Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
 | Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
 | Error | `error.rs` | Typed error enum with thiserror |
@@ -80,7 +82,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 |-----------|-----|--------|
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
 | Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
-| Memory Service | — | Planned |
+| Memory System | [subsystems/memory.md](subsystems/memory.md) | Implemented — `basic_session` store (Optional feature: `subsystem-memory`) |
 | Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |
 | LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
 | Tools | — | Planned |
@@ -96,11 +98,12 @@ main()  [#[tokio::main]]
   ├─ parse CLI `-v` flags           resolve verbosity override
   ├─ logger::init(...)              initialize logger once
   ├─ identity::setup(&config)       load or generate ed25519 keypair
+  ├─ (conditional) MemorySystem::new(identity_dir, config)  init memory
   ├─ CancellationToken::new()       shared shutdown signal
   ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle before move
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
-  ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone())
+  ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
   ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
   ├─ spawn: supervisor::run(bus, handlers)  pure router, HashMap prefix dispatch
   ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately

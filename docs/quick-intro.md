@@ -5,8 +5,8 @@
 ## ✨ Highlights
 
 - **Modular Architecture:** The bot acts as the main entry point (supervisor), owning the event bus and managing global events.
-- **Pluggable Subsystems:** Subsystems are separate modules that can be toggled on/off at startup. They can dynamically load, unload, and manage multiple plugins at runtime.
-- **Event-Driven Communication:** Subsystems and plugins communicate seamlessly with each other and the supervisor via a central event bus.
+- **Pluggable Subsystems:** Subsystems are separate modules that can be toggled on/off at startup. They can dynamically load, unload, and manage multiple agents at runtime.
+- **Event-Driven Communication:** Subsystems and agents communicate seamlessly with each other and the supervisor via a central event bus.
 - **Secure Identity:** Automatically generates a persistent cryptographic identity (ed25519 keypair) on the first run, ensuring secure and verifiable operations.
 - **Lean & Fast:** Built in Rust for minimal overhead, fast cold starts, and memory safety.
 
@@ -47,8 +47,8 @@ Araliya Bot is designed around a flexible, event-driven architecture:
 
 1. **Supervisor:** The core application. It holds the primary public-key identity, handles global events, and owns the event bus.
 2. **Subsystems:** Independent modules that provide specific capabilities. They can be enabled or disabled via configuration.
-3. **Plugins:** Loaded and managed by subsystems at runtime. Subsystems can grant plugins direct access to the event bus for deep integration.
-4. **Event Bus:** The central nervous system of the bot, routing messages between the supervisor, subsystems, and plugins.
+3. **Agents:** Autonomous actors loaded and managed by the agents subsystem at runtime. Each agent can be granted access to the event bus and memory system.
+4. **Event Bus:** The central nervous system of the bot, routing messages between the supervisor, subsystems, and agents.
 
 ## 📊 Comparison
 
@@ -61,11 +61,11 @@ Araliya Bot is designed around a flexible, event-driven architecture:
 | **Binary Size** | ~3.5 MB  | ~3.4 MB | ~28MB (dist) |
 | **Identity** | ed25519 keypair persisted, Markdown identity | AIEOS (JSON) or OpenClaw (Markdown) | Markdown files (IDENTITY.md, SOUL.md, etc.) |
 | **Security** | Persistent ed25519 identity implemented; pairing/sandboxing/allowlists not implemented (see `notes/` for design) | Gateway pairing, strict sandboxing, explicit allowlists | Gateway pairing, sandboxing, allowlists |
-| **Channels** | PTY console channel (`pty0`), Telegram channel (`telegram0`) | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
-| **Memory System** | Not implemented (design notes in `notes/`); TODO: add SQLite/embedding backend | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
-| **Tools** | No general tool subsystem; built-in agents: `echo`, `basic_chat` (`src/subsystems/agents/mod.rs`) | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
+| **Channels** | PTY console channel (`pty0`) (Telegram etc WIP) | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
+| **Memory System** | Basic session store: capped k-v JSON + capped Markdown transcript, UUIDv7 sessions under identity dir | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
+| **Tools** | No general tool subsystem; built-in agents: `echo`, `basic_chat`, `chat` (`src/subsystems/agents/`) | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
 
-## 📈 Benchmarks (CI)
+## 📈 Benchmarks (CI) - NOT SETUP [TODO]
 
 A GitHub Actions workflow has been added at `.github/workflows/benchmarks.yml` that measures:
 

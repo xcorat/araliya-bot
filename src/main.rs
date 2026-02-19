@@ -32,6 +32,9 @@ use subsystems::agents::AgentsSubsystem;
 #[cfg(feature = "subsystem-llm")]
 use subsystems::llm::LlmSubsystem;
 
+#[cfg(feature = "subsystem-memory")]
+use subsystems::memory::{MemoryConfig, MemorySystem};
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -64,6 +67,18 @@ async fn run() -> Result<(), error::AppError> {
 
     info!(bot_id = %identity.bot_id, "identity ready — starting subsystems");
 
+    // Optionally build the memory system.
+    #[cfg(feature = "subsystem-memory")]
+    let memory = {
+        let mem_config = MemoryConfig {
+            kv_cap: config.memory_kv_cap,
+            transcript_cap: config.memory_transcript_cap,
+        };
+        let mem = MemorySystem::new(&identity.identity_dir, mem_config)
+            .map_err(|e| error::AppError::Memory(e.to_string()))?;
+        std::sync::Arc::new(mem)
+    };
+
     // Shared shutdown token — Ctrl-C cancels it, all tasks watch it.
     let shutdown = CancellationToken::new();
 
@@ -95,7 +110,10 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(feature = "subsystem-agents")]
     {
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
+        #[cfg(feature = "subsystem-memory")]
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), Some(memory.clone()));
+        #[cfg(not(feature = "subsystem-memory"))]
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), None);
         handlers.push(Box::new(agents));
     }
 

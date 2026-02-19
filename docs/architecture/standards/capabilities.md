@@ -16,7 +16,7 @@ Each subsystem constructs a typed state struct that hides the raw `BusHandle` an
 
 | State type | Used by | Permitted operations |
 |------------|---------|----------------------|
-| `AgentsState` | `AgentPlugin` implementations | `complete_via_llm(channel_id, content)` |
+| `AgentsState` | `Agent` implementations | `complete_via_llm(channel_id, content)`, `memory` field (`Option<Arc<MemorySystem>>`), `agent_memory` field |
 | `CommsState` | `Component` implementations in the Comms subsystem | `send_message(channel_id, content)`, `report_event(CommsEvent)` |
 
 The raw `BusHandle` is private within the owning module. Plugins cannot address arbitrary bus methods directly.

@@ -182,36 +182,11 @@ fn find_existing_identity_dirs(work_dir: &Path) -> Result<Vec<PathBuf>, AppError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{HashMap, HashSet};
-    use crate::config::{AgentsConfig, CommsConfig, Config, LlmConfig, OpenAiConfig, PtyConfig, TelegramConfig};
+    use crate::config::Config;
     use tempfile::TempDir;
 
     fn test_config(work_dir: &Path) -> Config {
-        Config {
-            bot_name: "test".into(),
-            work_dir: work_dir.to_path_buf(),
-            identity_dir: None,
-            log_level: "info".into(),
-            comms: CommsConfig {
-                pty: PtyConfig { enabled: true },
-                telegram: TelegramConfig { enabled: false },
-            },
-            agents: AgentsConfig {
-                default_agent: "echo".into(),
-                enabled: HashSet::from(["echo".to_string()]),
-                channel_map: HashMap::new(),
-            },
-            llm: LlmConfig {
-                provider: "dummy".into(),
-                openai: OpenAiConfig {
-                    api_base_url: "https://api.openai.com/v1/chat/completions".into(),
-                    model: "gpt-4o-mini".into(),
-                    temperature: 0.2,
-                    timeout_seconds: 60,
-                },
-            },
-            llm_api_key: None,
-        }
+        Config::test_default(work_dir)
     }
 
     #[test]

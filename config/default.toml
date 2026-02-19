@@ -33,10 +33,18 @@ default = "basic_chat"
 
 [agents.chat]
 # Session-aware chat agent — extends basic_chat with session management.
+memory = ["basic_session"]
 
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false
+
+[memory]
+# Global memory subsystem configuration.
+
+[memory.basic_session]
+# kv_cap = 200
+# transcript_cap = 500
 
 [llm]
 # Which LLM component to activate. Each component has its own config section below.

@@ -1,15 +1,15 @@
-//! Agents subsystem — receives agent-targeted requests and routes to plugins.
+//! Agents subsystem — receives agent-targeted requests and routes to agents.
 //!
-//! [`AgentPlugin`] is the extension point: each plugin is a `Send + Sync`
-//! struct registered in the subsystem by name.  Built-in plugins (`echo`,
-//! `basic_chat`, `chat`) live in this module.  Third-party plugins can be
+//! [`Agent`] is the extension trait: each agent is a `Send + Sync` struct
+//! registered in the subsystem by name.  Built-in agents (`echo`,
+//! `basic_chat`, `chat`) live in this module.  Third-party agents can be
 //! added later.
 //!
-//! Chat-family plugins share logic through the [`chat::core::ChatCore`]
+//! Chat-family agents share logic through the [`chat::core::ChatCore`]
 //! composition layer — see the `chat/` submodule.
 //!
 //! [`AgentsSubsystem`] implements [`BusHandler`] with prefix `"agents"` and
-//! is never blocked: sync plugins resolve immediately, async ones spawn tasks.
+//! is never blocked: sync agents resolve immediately, async ones spawn tasks.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -19,6 +19,9 @@ use tokio::sync::oneshot;
 use crate::config::AgentsConfig;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
+
+#[cfg(feature = "subsystem-memory")]
+use crate::subsystems::memory::MemorySystem;
 
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
 #[cfg(any(feature = "plugin-basic-chat", feature = "plugin-chat"))]
@@ -33,11 +36,25 @@ mod chat;
 pub struct AgentsState {
     /// Supervisor bus — private to this module.
     bus: BusHandle,
+    /// Memory system — agents can create/load sessions through this.
+    #[cfg(feature = "subsystem-memory")]
+    pub memory: Option<Arc<MemorySystem>>,
+    /// Per-agent memory store requirements from config.
+    pub agent_memory: HashMap<String, Vec<String>>,
 }
 
 impl AgentsState {
-    fn new(bus: BusHandle) -> Self {
-        Self { bus }
+    fn new(
+        bus: BusHandle,
+        #[cfg(feature = "subsystem-memory")] memory: Option<Arc<MemorySystem>>,
+        agent_memory: HashMap<String, Vec<String>>,
+    ) -> Self {
+        Self {
+            bus,
+            #[cfg(feature = "subsystem-memory")]
+            memory,
+            agent_memory,
+        }
     }
 
     /// Forward content to the LLM subsystem and return the completion.
@@ -63,15 +80,15 @@ impl AgentsState {
     }
 }
 
-// ── AgentPlugin ───────────────────────────────────────────────────────────────
+// ── Agent trait ───────────────────────────────────────────────────────────────
 
-/// A plugin loaded by the agents subsystem.
+/// An agent loaded by the agents subsystem.
 ///
 /// Implementations must be `Send + Sync` and must not block the caller:
 /// synchronous work resolves `reply_tx` immediately; async work spawns a task
 /// and resolves it when done.
-pub trait AgentPlugin: Send + Sync {
-    /// Unique plugin identifier (matches config name, e.g. `"echo"`).
+pub trait Agent: Send + Sync {
+    /// Unique agent identifier (matches config name, e.g. `"echo"`).
     fn id(&self) -> &str;
 
     /// Handle an incoming request.
@@ -84,13 +101,13 @@ pub trait AgentPlugin: Send + Sync {
     );
 }
 
-// ── Built-in plugins ──────────────────────────────────────────────────────────
+// ── Built-in agents ───────────────────────────────────────────────────────────
 
 #[cfg(feature = "plugin-echo")]
-struct EchoPlugin;
+struct EchoAgent;
 
 #[cfg(feature = "plugin-echo")]
-impl AgentPlugin for EchoPlugin {
+impl Agent for EchoAgent {
     fn id(&self) -> &str { "echo" }
     fn handle(&self, channel_id: String, content: String, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
         let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content }));
@@ -109,14 +126,18 @@ impl AgentPlugin for EchoPlugin {
 /// - `agents/{agent_id}/{action}`     -> explicit agent + action
 pub struct AgentsSubsystem {
     state: Arc<AgentsState>,
-    plugins: HashMap<String, Box<dyn AgentPlugin>>,
+    agents: HashMap<String, Box<dyn Agent>>,
     default_agent: String,
     channel_map: HashMap<String, String>,
     enabled_agents: HashSet<String>,
 }
 
 impl AgentsSubsystem {
-    pub fn new(config: AgentsConfig, bus: BusHandle) -> Self {
+    pub fn new(
+        config: AgentsConfig,
+        bus: BusHandle,
+        #[cfg(feature = "subsystem-memory")] memory: Option<Arc<MemorySystem>>,
+    ) -> Self {
         // Default falls back to "echo" if config omits the default entirely.
         let default_agent = if config.default_agent.is_empty() {
             "echo".to_string()
@@ -124,33 +145,39 @@ impl AgentsSubsystem {
             config.default_agent
         };
         let enabled_agents = config.enabled;
+        let agent_memory = config.agent_memory;
 
-        // Register all known built-in plugins.
-        // Uses plugin.id() as the HashMap key so the trait method is the
-        // single source of truth for each plugin's identity.
-        let mut plugins: HashMap<String, Box<dyn AgentPlugin>> = HashMap::new();
+        // Register all known built-in agents.
+        // Uses agent.id() as the HashMap key so the trait method is the
+        // single source of truth for each agent's identity.
+        let mut agents: HashMap<String, Box<dyn Agent>> = HashMap::new();
 
         #[cfg(feature = "plugin-echo")]
         {
-            let plugin = Box::new(EchoPlugin);
-            plugins.insert(plugin.id().to_string(), plugin);
+            let agent: Box<dyn Agent> = Box::new(EchoAgent);
+            agents.insert(agent.id().to_string(), agent);
         }
 
         #[cfg(feature = "plugin-basic-chat")]
         {
-            let plugin = Box::new(chat::BasicChatPlugin);
-            plugins.insert(plugin.id().to_string(), plugin);
+            let agent: Box<dyn Agent> = Box::new(chat::BasicChatPlugin);
+            agents.insert(agent.id().to_string(), agent);
         }
 
         #[cfg(feature = "plugin-chat")]
         {
-            let plugin = Box::new(chat::SessionChatPlugin);
-            plugins.insert(plugin.id().to_string(), plugin);
+            let agent: Box<dyn Agent> = Box::new(chat::SessionChatPlugin::new());
+            agents.insert(agent.id().to_string(), agent);
         }
 
         Self {
-            state: Arc::new(AgentsState::new(bus)),
-            plugins,
+            state: Arc::new(AgentsState::new(
+                bus,
+                #[cfg(feature = "subsystem-memory")]
+                memory,
+                agent_memory,
+            )),
+            agents,
             default_agent,
             channel_map: config.channel_map,
             enabled_agents,
@@ -184,7 +211,7 @@ impl BusHandler for AgentsSubsystem {
         "agents"
     }
 
-    /// Route a request. Ownership of `reply_tx` is forwarded to the plugin —
+    /// Route a request. Ownership of `reply_tx` is forwarded to the agent —
     /// the supervisor loop returns immediately after this call.
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let (method_agent_id, _action) = match parse_method(method) {
@@ -198,12 +225,12 @@ impl BusHandler for AgentsSubsystem {
                     Ok(id) => id,
                     Err(e) => { let _ = reply_tx.send(Err(e)); return; }
                 };
-                match self.plugins.get(agent_id) {
-                    Some(plugin) => plugin.handle(channel_id, content, reply_tx, self.state.clone()),
+                match self.agents.get(agent_id) {
+                    Some(agent) => agent.handle(channel_id, content, reply_tx, self.state.clone()),
                     None => {
                         let _ = reply_tx.send(Err(BusError::new(
                             ERR_METHOD_NOT_FOUND,
-                            format!("agent plugin not loaded: {agent_id}"),
+                            format!("agent not loaded: {agent_id}"),
                         )));
                     }
                 }
@@ -259,8 +286,14 @@ mod tests {
             default_agent: "echo".to_string(),
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle);
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            None,
+        );
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -285,8 +318,14 @@ mod tests {
             default_agent: "echo".to_string(),
             enabled: HashSet::from(["echo".to_string()]),
             channel_map,
+            agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle);
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            None,
+        );
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -308,8 +347,14 @@ mod tests {
             default_agent: "echo".to_string(),
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle);
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            None,
+        );
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -328,8 +373,14 @@ mod tests {
             default_agent: "echo".to_string(),
             enabled: HashSet::new(),
             channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle);
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            None,
+        );
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -368,8 +419,14 @@ mod tests {
             default_agent: "basic_chat".to_string(),
             enabled: HashSet::from(["basic_chat".to_string()]),
             channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle);
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            None,
+        );
 
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
