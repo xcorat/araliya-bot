@@ -2,9 +2,9 @@
 //!
 //! Startup sequence:
 //!   1. Load .env (if present)
-//!   2. Init logger at default level
-//!   3. Load config
-//!   4. Re-init logger at configured level
+//!   2. Load config
+//!   3. Resolve effective log level (CLI `-v` flags > env > config)
+//!   4. Init logger once
 //!   5. Setup bot identity
 //!   6. Start supervisor bus
 //!   7. Spawn Ctrl-C → shutdown signal watcher
@@ -36,15 +36,19 @@ async fn run() -> Result<(), error::AppError> {
     // Load .env if present — ignore errors (file is optional).
     let _ = dotenvy::dotenv();
 
-    // Bootstrap logger at "info" before config is available.
-    logger::init("info")?;
-
     let config = config::load()?;
+
+    let cli_log_level = cli_log_level_override_from_args();
+    let effective_log_level = cli_log_level.unwrap_or(config.log_level.as_str());
+    let force_cli_level = cli_log_level.is_some();
+
+    logger::init(effective_log_level, force_cli_level)?;
 
     info!(
         bot_name = %config.bot_name,
         work_dir = %config.work_dir.display(),
-        log_level = %config.log_level,
+        configured_log_level = %config.log_level,
+        effective_log_level = %effective_log_level,
         "config loaded"
     );
 
@@ -58,8 +62,8 @@ async fn run() -> Result<(), error::AppError> {
     // Build the supervisor bus (buffer = 64 messages).
     let bus = SupervisorBus::new(64);
 
-    // Clone the sender before moving bus into the supervisor task.
-    let comms_tx = bus.comms_tx.clone();
+    // Clone the handle before moving bus into the supervisor task.
+    let bus_handle = bus.handle.clone();
 
     // Ctrl-C handler — cancels the token so all tasks shut down.
     let ctrlc_token = shutdown.clone();
@@ -79,7 +83,7 @@ async fn run() -> Result<(), error::AppError> {
     // Run comms subsystem — drives the console on this task until shutdown.
     // When this returns (Ctrl-C or stdin EOF), we ensure shutdown is cancelled
     // so the supervisor and any other tasks also stop.
-    subsystems::comms::run(&config, comms_tx, shutdown.clone()).await?;
+    subsystems::comms::run(&config, bus_handle, shutdown.clone()).await?;
 
     // If comms exited due to EOF (not Ctrl-C), still signal everything to stop.
     shutdown.cancel();
@@ -87,5 +91,30 @@ async fn run() -> Result<(), error::AppError> {
     sup_handle.await.ok();
 
     Ok(())
+}
+
+fn cli_log_level_override_from_args() -> Option<&'static str> {
+    let mut verbosity = 0u8;
+
+    for arg in std::env::args().skip(1) {
+        if arg == "--" {
+            break;
+        }
+
+        if arg == "--verbose" {
+            verbosity = verbosity.saturating_add(1);
+            continue;
+        }
+
+        if arg.starts_with('-') && arg.len() > 1 && arg.chars().skip(1).all(|c| c == 'v') {
+            verbosity = verbosity.saturating_add((arg.len() - 1) as u8);
+        }
+    }
+
+    match verbosity {
+        0 => None,
+        1 => Some("debug"),
+        _ => Some("trace"),
+    }
 }
 

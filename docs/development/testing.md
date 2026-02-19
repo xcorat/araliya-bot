@@ -15,7 +15,7 @@ cargo test
 | `config.rs` | 6 | Parse, tilde expansion, absolute/relative paths, missing file, env overrides |
 | `identity.rs` | 6 | bot_id format, unique keygen, save/load round-trip, dir creation, idempotency, file permissions |
 
-**Total: 20 tests**
+**Total: 22 tests**
 
 ## Filesystem Tests
 

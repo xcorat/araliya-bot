@@ -24,8 +24,8 @@ The LLM provider client handles all communication with language model APIs. It i
 
 | Provider | Auth | Notes |
 |----------|------|-------|
-| Anthropic | API key | Primary recommended provider |
-| OpenAI | API key | Compatible fallback |
+| OpenAI | API key | Primary recommended provider |
+| Anthropic | API key | Compatible fallback |
 | OpenAI-compatible | API key | Azure, local Ollama, etc. |
 
 ---

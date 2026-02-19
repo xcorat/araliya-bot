@@ -20,7 +20,14 @@ cargo run
 On first run, a persistent bot identity is generated at `~/.araliya/bot-pkey{id}/`.
 
 ```
-✓ Bot initialized: bot_id=5d16993c
+INFO araliya_bot: identity ready — starting subsystems bot_id=51aee87e
+```
+
+Log verbosity can be increased at runtime:
+
+```bash
+cargo run -- -v    # debug
+cargo run -- -vvv  # trace
 ```
 
 ---

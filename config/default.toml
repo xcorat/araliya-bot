@@ -1,6 +1,10 @@
 [supervisor]
 bot_name = "araliya"
 work_dir = "~/.araliya"
+# Optional explicit identity directory.
+# Absolute path or relative to work_dir (example: "bot-pkey51aee87e").
+# Useful when multiple bot-pkey* directories exist.
+# identity_dir = "bot-pkey51aee87e"
 log_level = "info"
 
 [comms.pty]

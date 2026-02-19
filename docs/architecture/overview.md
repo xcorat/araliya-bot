@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.2 — supervisor bootstrap + PTY comms channel.
+**Status:** v0.3 — supervisor bootstrap + PTY comms channel + event bus protocol.
 
 ---
 
@@ -46,10 +46,10 @@
 | Module | File | Summary |
 |--------|------|---------|
 | Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; supervises subsystem tasks |
-| Supervisor bus | `supervisor/bus.rs` | `CommsMessage` (oneshot reply slot) + `SupervisorBus` (mpsc channel pair) |
+| Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
 | Config | `config.rs` | TOML load, env overrides, path expansion, `[comms.pty]` section |
 | Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
-| Logger | `logger.rs` | tracing-subscriber init, level parsing |
+| Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
 | Error | `error.rs` | Typed error enum with thiserror |
 
 ---
@@ -72,11 +72,12 @@
 ```
 main()  [#[tokio::main]]
   ├─ dotenvy::dotenv()              load .env if present
-  ├─ logger::init("info")           bootstrap logger
   ├─ config::load()                 read default.toml + env overrides
+  ├─ parse CLI `-v` flags           resolve verbosity override
+  ├─ logger::init(...)              initialize logger once
   ├─ identity::setup(&config)       load or generate ed25519 keypair
   ├─ CancellationToken::new()       shared shutdown signal
-  ├─ SupervisorBus::new(64)         mpsc channel; clone comms_tx for comms
+  ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle for comms
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ spawn: supervisor::run(bus)    supervisor message loop
   ├─ subsystems::comms::run(...)    PTY channel — blocks until shutdown or EOF

@@ -29,6 +29,7 @@ Always run `cargo check` and `cargo test` before committing changes.
 - `main.rs` is an orchestrator only — no business logic
 - Errors via `thiserror` — no `unwrap()` in non-test code, no `Box<dyn Error>` in public APIs
 - Logging via `tracing` macros (`info!`, `debug!`, `warn!`, `error!`) — not `println!`
+- PTY user-facing console I/O is the exception and may write to stdout/stderr directly; keep it separate from diagnostic logs
 
 ## Adding a New Module
 

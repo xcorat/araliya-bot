@@ -38,7 +38,7 @@ Or directly:
 On first run the bot generates a persistent ed25519 keypair and saves it to `~/.araliya/bot-pkey{id}/`. Expected output:
 
 ```
-✓ Bot initialized: bot_id=5d16993c
+INFO araliya_bot: identity ready — starting subsystems bot_id=51aee87e
 ```
 
 ### Subsequent Runs
@@ -46,7 +46,7 @@ On first run the bot generates a persistent ed25519 keypair and saves it to `~/.
 The existing keypair is loaded. The same `bot_id` is printed every time:
 
 ```
-✓ Bot initialized: bot_id=5d16993c
+INFO araliya_bot: identity ready — starting subsystems bot_id=51aee87e
 ```
 
 ## Verify
@@ -71,11 +71,16 @@ stat -c "%a %n" ~/.araliya/bot-pkey5d16993c/id_ed25519
 | `ARALIYA_WORK_DIR` | Override working directory (default: `~/.araliya`) |
 | `ARALIYA_LOG_LEVEL` | Override log level (default: `info`) |
 | `RUST_LOG` | Standard tracing env filter (overrides `log_level`) |
+| `-v` / `--verbose` | CLI debug verbosity override |
+| `-vv` / `-vvv` | CLI trace verbosity override |
 
 Example:
 
 ```bash
 ARALIYA_WORK_DIR=/tmp/test-bot RUST_LOG=debug cargo run
+
+# CLI verbosity override
+cargo run -- -vvv
 ```
 
 ## Run Tests
@@ -84,4 +89,4 @@ ARALIYA_WORK_DIR=/tmp/test-bot RUST_LOG=debug cargo run
 cargo test
 ```
 
-All 20 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.
+All 22 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.

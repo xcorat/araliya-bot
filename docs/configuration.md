@@ -8,6 +8,7 @@ Primary config: `config/default.toml` (relative to working directory).
 [supervisor]
 bot_name = "araliya"
 work_dir = "~/.araliya"
+identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_dir
 log_level = "info"
 ```
 
@@ -17,7 +18,18 @@ log_level = "info"
 |-------|------|---------|-------------|
 | `bot_name` | string | `"araliya"` | Human-readable name for this instance |
 | `work_dir` | path | `"~/.araliya"` | Root directory for all persistent data. `~` expands to `$HOME`. |
+| `identity_dir` | path (optional) | none | Explicit identity directory. Required to disambiguate when multiple `bot-pkey*` dirs exist. |
 | `log_level` | string | `"info"` | Log verbosity: `error`, `warn`, `info`, `debug`, `trace` |
+
+## CLI Verbosity Flags
+
+You can override log level at runtime with `-v` flags:
+
+| Flags | Effective level |
+|-------|------------------|
+| *(none)* | config/env resolution |
+| `-v` / `--verbose` | `debug` |
+| `-vv` / `-vvv` | `trace` |
 
 ## Environment Variable Overrides
 
@@ -51,11 +63,12 @@ LLM_API_KEY=sk-...
 
 Highest precedence wins:
 
-1. `RUST_LOG` env var (log level only)
-2. `ARALIYA_*` env vars
-3. `.env` file values
-4. `config/default.toml`
-5. Built-in defaults
+1. CLI `-v` / `-vv` / `-vvv` flags (log level only)
+2. `RUST_LOG` env var (log level only)
+3. `ARALIYA_*` env vars
+4. `.env` file values
+5. `config/default.toml`
+6. Built-in defaults
 
 ## Data Directory Layout
 

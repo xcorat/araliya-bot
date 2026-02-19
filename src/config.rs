@@ -32,6 +32,8 @@ pub struct Config {
     pub bot_name: String,
     /// Working directory for all persistent data (already expanded, no `~`).
     pub work_dir: PathBuf,
+    /// Optional explicit identity directory (absolute path or relative to `work_dir`).
+    pub identity_dir: Option<PathBuf>,
     pub log_level: String,
     pub comms: CommsConfig,
 }
@@ -59,6 +61,8 @@ struct RawConfig {
 struct RawSupervisor {
     bot_name: String,
     work_dir: String,
+    #[serde(default)]
+    identity_dir: Option<String>,
     log_level: String,
 }
 
@@ -112,11 +116,21 @@ pub fn load_from(
     let s = parsed.supervisor;
 
     let work_dir_str = work_dir_override.unwrap_or(&s.work_dir).to_string();
+    let work_dir = expand_home(&work_dir_str);
     let log_level = log_level_override.unwrap_or(&s.log_level).to_string();
+    let identity_dir = s.identity_dir.map(|identity_dir| {
+        let path = PathBuf::from(identity_dir);
+        if path.is_absolute() {
+            path
+        } else {
+            work_dir.join(path)
+        }
+    });
 
     Ok(Config {
         bot_name: s.bot_name,
-        work_dir: expand_home(&work_dir_str),
+        work_dir,
+        identity_dir,
         log_level,
         comms: CommsConfig {
             pty: PtyConfig {

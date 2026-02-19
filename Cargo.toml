@@ -8,6 +8,7 @@ description = "Modular agentic assistant — supervisor bootstrap"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 toml = "0.8"
 ed25519-dalek = { version = "2", default-features = false, features = ["rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }

@@ -1,7 +1,6 @@
 //! Logging initialisation via tracing-subscriber.
 //!
-//! Call [`init`] once at startup, before loading config.
-//! Call [`reinit`] after config is loaded to apply the configured log level.
+//! Call [`init`] once at startup, after runtime settings are resolved.
 
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -11,11 +10,27 @@ use crate::error::AppError;
 /// Initialise the global tracing subscriber.
 ///
 /// `level` accepts standard level strings: `"error"`, `"warn"`, `"info"`,
-/// `"debug"`, `"trace"`. The `RUST_LOG` env var overrides `level` if set.
-pub fn init(level: &str) -> Result<(), AppError> {
-    let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new(level))
-        .map_err(|e| AppError::Logger(format!("invalid log level '{level}': {e}")))?;
+/// `"debug"`, `"trace"`.
+///
+/// If `prefer_level` is `true`, `level` takes precedence and `RUST_LOG` is only
+/// used as a fallback when `level` is invalid. If `prefer_level` is `false`,
+/// `RUST_LOG` takes precedence and `level` is the fallback.
+pub fn init(level: &str, prefer_level: bool) -> Result<(), AppError> {
+    let filter = if prefer_level {
+        match EnvFilter::try_new(level) {
+            Ok(filter) => filter,
+            Err(level_err) => EnvFilter::try_from_default_env()
+                .map_err(|env_err| {
+                    AppError::Logger(format!(
+                        "invalid log level '{level}': {level_err}; RUST_LOG parse failed: {env_err}"
+                    ))
+                })?,
+        }
+    } else {
+        EnvFilter::try_from_default_env()
+            .or_else(|_| EnvFilter::try_new(level))
+            .map_err(|e| AppError::Logger(format!("invalid log level '{level}': {e}")))?
+    };
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -58,7 +73,7 @@ mod tests {
     #[test]
     fn init_info_succeeds_or_already_init() {
         // May already be set by a prior test run in the same process — both outcomes are fine.
-        let result = init("info");
+        let result = init("info", false);
         match result {
             Ok(()) => {}
             Err(AppError::Logger(msg)) if msg.contains("set subscriber") => {}

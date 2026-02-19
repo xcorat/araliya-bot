@@ -9,7 +9,7 @@ pub mod bus;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use bus::SupervisorBus;
+use bus::{BusError, BusMessage, BusPayload, ERR_METHOD_NOT_FOUND, SupervisorBus};
 
 /// Run the supervisor message loop until `shutdown` is cancelled.
 pub async fn run(mut bus: SupervisorBus, shutdown: CancellationToken) {
@@ -24,17 +24,25 @@ pub async fn run(mut bus: SupervisorBus, shutdown: CancellationToken) {
                 break;
             }
 
-            msg = bus.comms_rx.recv() => {
+            msg = bus.rx.recv() => {
                 match msg {
-                    Some(m) => {
-                        debug!(content = %m.content, "supervisor received message");
-                        // Stub: echo the message back. Replace with agent dispatch later.
-                        if m.reply_tx.send(m.content).is_err() {
-                            warn!("comms channel dropped reply receiver before reply was sent");
-                        }
+                    Some(BusMessage::Request { method, payload: BusPayload::CommsMessage { channel_id, content }, reply_tx, .. }) if method == "comms/pty/rx" => {
+                        debug!(%channel_id, content = %content, "supervisor received comms message");
+                        // Stub: echo back. Replace with agent dispatch later.
+                        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content }));
+                    }
+                    Some(BusMessage::Request { method, reply_tx, .. }) => {
+                        warn!(%method, "unhandled request method");
+                        let _ = reply_tx.send(Err(BusError::new(
+                            ERR_METHOD_NOT_FOUND,
+                            format!("method not found: {method}"),
+                        )));
+                    }
+                    Some(BusMessage::Notification { method, .. }) => {
+                        debug!(%method, "notification received");
                     }
                     None => {
-                        info!("comms channel closed, supervisor exiting");
+                        info!("bus closed, supervisor exiting");
                         break;
                     }
                 }

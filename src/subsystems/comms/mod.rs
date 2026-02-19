@@ -10,24 +10,23 @@ pub use state::CommsState;
 
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::config::Config;
 use crate::error::AppError;
-use crate::supervisor::bus::CommsMessage;
+use crate::supervisor::bus::BusHandle;
 
 /// Start comms channels according to `config`, run until shutdown.
 ///
-/// `comms_tx` is the sender side of the supervisor bus — pre-cloned by main
-/// before the bus receiver is moved into the supervisor task.
+/// `bus` is a cloned handle to the supervisor bus, distributed before the
+/// supervisor task is spawned.
 pub async fn run(
     config: &Config,
-    comms_tx: mpsc::Sender<CommsMessage>,
+    bus: BusHandle,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
-    let state = Arc::new(CommsState::new(comms_tx));
+    let state = Arc::new(CommsState::new(bus));
 
     if config.comms_pty_should_load() {
         info!("loading pty channel");

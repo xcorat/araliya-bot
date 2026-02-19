@@ -40,26 +40,52 @@ impl Identity {
 
 /// Load or create the bot identity under `config.work_dir`.
 pub fn setup(config: &Config) -> Result<Identity, AppError> {
-    // We need the bot_id to name the directory, but the id comes from the key.
-    // Strategy: probe for any existing bot-pkey* directory first, else generate.
-    let existing = find_existing_identity_dir(&config.work_dir)?;
+    let explicit_identity_dir = config.identity_dir.clone();
 
-    let (signing_seed, verifying_bytes) = match existing {
-        Some(ref dir) => load_keypair(dir)?,
-        None => {
-            // Generate and save to a temp-named dir; rename once we know the bot_id.
+    let (signing_seed, verifying_bytes, identity_dir) = if let Some(dir) = explicit_identity_dir {
+        if dir.exists() {
+            let (seed, vk) = load_keypair(&dir)?;
+            (seed, vk, dir)
+        } else {
             let (seed, vk) = generate_keypair();
-            let bot_id = compute_bot_id(&vk);
-            let dir = config.work_dir.join(format!("bot-pkey{}", bot_id));
             fs::create_dir_all(&dir)
                 .map_err(|e| AppError::Identity(format!("cannot create identity dir: {e}")))?;
             save_keypair(&dir, &seed, &vk)?;
-            (seed, vk)
+            (seed, vk, dir)
+        }
+    } else {
+        // We need the bot_id to name the directory, but the id comes from the key.
+        // Strategy: use a single discovered `bot-pkey*` directory if unambiguous, else generate.
+        let dirs = find_existing_identity_dirs(&config.work_dir)?;
+        match dirs.len() {
+            0 => {
+                let (seed, vk) = generate_keypair();
+                let bot_id = compute_bot_id(&vk);
+                let dir = config.work_dir.join(format!("bot-pkey{}", bot_id));
+                fs::create_dir_all(&dir)
+                    .map_err(|e| AppError::Identity(format!("cannot create identity dir: {e}")))?;
+                save_keypair(&dir, &seed, &vk)?;
+                (seed, vk, dir)
+            }
+            1 => {
+                let dir = &dirs[0];
+                let (seed, vk) = load_keypair(dir)?;
+                (seed, vk, dir.clone())
+            }
+            _ => {
+                return Err(AppError::Identity(format!(
+                    "multiple identity directories found in {} ({}); set [supervisor].identity_dir explicitly",
+                    config.work_dir.display(),
+                    dirs.iter()
+                        .map(|d| d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| d.display().to_string()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
         }
     };
 
     let bot_id = compute_bot_id(&verifying_bytes);
-    let identity_dir = config.work_dir.join(format!("bot-pkey{}", bot_id));
 
     Ok(Identity {
         bot_id,
@@ -132,21 +158,23 @@ fn load_keypair(dir: &Path) -> Result<([u8; 32], [u8; 32]), AppError> {
     Ok((seed, vk))
 }
 
-/// Scan `work_dir` for a `bot-pkey*` subdirectory containing `id_ed25519`.
-fn find_existing_identity_dir(work_dir: &Path) -> Result<Option<PathBuf>, AppError> {
+/// Scan `work_dir` for `bot-pkey*` subdirectories containing `id_ed25519`.
+fn find_existing_identity_dirs(work_dir: &Path) -> Result<Vec<PathBuf>, AppError> {
     if !work_dir.exists() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let entries = fs::read_dir(work_dir)
         .map_err(|e| AppError::Identity(format!("cannot read work_dir: {e}")))?;
+    let mut candidates = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         if name_str.starts_with("bot-pkey") && entry.path().join("id_ed25519").exists() {
-            return Ok(Some(entry.path()));
+            candidates.push(entry.path());
         }
     }
-    Ok(None)
+    candidates.sort();
+    Ok(candidates)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -161,6 +189,7 @@ mod tests {
         Config {
             bot_name: "test".into(),
             work_dir: work_dir.to_path_buf(),
+            identity_dir: None,
             log_level: "info".into(),
             comms: CommsConfig {
                 pty: PtyConfig { enabled: true },
@@ -212,6 +241,46 @@ mod tests {
         let id1 = setup(&cfg).unwrap();
         let id2 = setup(&cfg).unwrap();
         assert_eq!(id1.bot_id, id2.bot_id);
+    }
+
+    #[test]
+    fn setup_errors_when_multiple_identity_dirs_exist_without_explicit_config() {
+        let tmp = TempDir::new().unwrap();
+
+        let (seed_a, vk_a) = generate_keypair();
+        let dir_a = tmp.path().join("bot-pkeyaaaa1111");
+        fs::create_dir_all(&dir_a).unwrap();
+        save_keypair(&dir_a, &seed_a, &vk_a).unwrap();
+
+        let (seed_b, vk_b) = generate_keypair();
+        let dir_b = tmp.path().join("bot-pkeybbbb2222");
+        fs::create_dir_all(&dir_b).unwrap();
+        save_keypair(&dir_b, &seed_b, &vk_b).unwrap();
+
+        let cfg = test_config(tmp.path());
+        let err = setup(&cfg).unwrap_err();
+        assert!(err.to_string().contains("multiple identity directories found"));
+    }
+
+    #[test]
+    fn setup_uses_explicit_identity_dir_when_configured() {
+        let tmp = TempDir::new().unwrap();
+
+        let (seed_a, vk_a) = generate_keypair();
+        let dir_a = tmp.path().join("bot-pkeyaaaa1111");
+        fs::create_dir_all(&dir_a).unwrap();
+        save_keypair(&dir_a, &seed_a, &vk_a).unwrap();
+
+        let (seed_b, vk_b) = generate_keypair();
+        let dir_b = tmp.path().join("bot-pkeybbbb2222");
+        fs::create_dir_all(&dir_b).unwrap();
+        save_keypair(&dir_b, &seed_b, &vk_b).unwrap();
+
+        let mut cfg = test_config(tmp.path());
+        cfg.identity_dir = Some(dir_b.clone());
+
+        let identity = setup(&cfg).unwrap();
+        assert_eq!(identity.identity_dir, dir_b);
     }
 
     #[cfg(unix)]

@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** PTY channel implemented. HTTP and channel plugins planned.
+**Status:** v0.3 — PTY channel implemented. HTTP and channel plugins planned.
 
 ---
 
@@ -18,7 +18,8 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 - Console I/O (stdin/stdout)
 - Auto-loads when no other channel is enabled (`[comms.pty] enabled = true` in config)
 - Can be force-disabled with `enabled = false`
-- Reads lines from stdin, routes each through the supervisor bus, prints the reply
+- Reads lines from stdin, routes each through the supervisor bus via `BusHandle::request`, prints the reply
+- Multiple PTY instances are supported: each sends `"comms/pty/rx"` with its own `channel_id` (e.g. `"pty0"`, `"pty1"`); the embedded `oneshot` in each request carries the correct return address independently
 - Ctrl-C sends a shutdown signal via `CancellationToken`; all tasks shut down gracefully
 - Used for local testing and development
 
@@ -42,13 +43,13 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 ```
 src/
   supervisor/
-    bus.rs          — CommsMessage, SupervisorBus (mpsc + oneshot)
-    mod.rs          — supervisor run loop (stub echo handler)
+    bus.rs          — event bus protocol (BusMessage, BusPayload, BusHandle, SupervisorBus)
+    mod.rs          — supervisor run loop; routes on method string
   subsystems/
     mod.rs
     comms/
-      mod.rs        — run(config, comms_tx, shutdown)
-      state.rs      — CommsState { comms_tx }
+      mod.rs        — run(config, bus: BusHandle, shutdown)
+      state.rs      — CommsState { bus: BusHandle }
       pty.rs        — PTY channel task
 ```
 
@@ -56,11 +57,11 @@ src/
 
 ```
 PTY stdin
-  → pty::run  (builds CommsMessage { content, reply_tx: oneshot })
-    → supervisor bus (mpsc channel)
-      → supervisor::run  (stub: echoes content back via reply_tx)
-    ← oneshot reply received
-  → pty::run  prints reply to stdout
+  → BusHandle::request("comms/pty/rx", CommsMessage { channel_id: "pty0", content })
+    → SupervisorBus::rx (mpsc, bounded 64)
+      → supervisor::run  match "comms/pty/rx" → stub echo via reply_tx (oneshot)
+    ← BusResult::Ok(CommsMessage { .. })
+  → pty::run prints reply to stdout
 PTY stdout
 ```
 

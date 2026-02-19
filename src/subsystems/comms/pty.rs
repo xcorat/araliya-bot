@@ -7,16 +7,19 @@
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
+
+use crate::supervisor::bus::BusPayload;
 
 use super::state::CommsState;
 use crate::error::AppError;
 
 /// Run the PTY channel until `shutdown` is cancelled or stdin is closed.
 pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<(), AppError> {
-    info!("pty channel started — type a message and press Enter. Ctrl-C to quit.");
+    // Stable ID for this PTY instance. Multiple PTYs would each get a unique id.
+    let channel_id = "pty0".to_string();
+    info!(%channel_id, "pty channel started — type a message and press Enter. Ctrl-C to quit.");
     println!("─────────────────────────────────");
     println!(" Araliya console  (Ctrl-C to quit)");
     println!("─────────────────────────────────");
@@ -58,18 +61,18 @@ pub async fn run(state: Arc<CommsState>, shutdown: CancellationToken) -> Result<
 
                         debug!(input = %input, "pty received line");
 
-                        let (reply_tx, reply_rx) = oneshot::channel();
-                        if state.comms_tx.send(crate::supervisor::bus::CommsMessage {
+                        let payload = BusPayload::CommsMessage {
+                            channel_id: channel_id.clone(),
                             content: input,
-                            reply_tx,
-                        }).await.is_err() {
-                            warn!("supervisor bus closed, pty exiting");
-                            break;
-                        }
-
-                        match reply_rx.await {
-                            Ok(reply) => println!("{reply}"),
-                            Err(_) => warn!("supervisor dropped reply sender"),
+                        };
+                        match state.bus.request("comms/pty/rx", payload).await {
+                            Err(e) => {
+                                warn!("bus error: {e}, pty exiting");
+                                break;
+                            }
+                            Ok(Err(e)) => warn!("supervisor error {}: {}", e.code, e.message),
+                            Ok(Ok(BusPayload::CommsMessage { content: reply, .. })) => println!("{reply}"),
+                            Ok(Ok(_)) => warn!("unexpected reply payload"),
                         }
                     }
                 }
