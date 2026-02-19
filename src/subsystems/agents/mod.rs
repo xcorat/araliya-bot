@@ -2,7 +2,11 @@
 //!
 //! [`AgentPlugin`] is the extension point: each plugin is a `Send + Sync`
 //! struct registered in the subsystem by name.  Built-in plugins (`echo`,
-//! `basic_chat`) live in this module.  Third-party plugins can be added later.
+//! `basic_chat`, `chat`) live in this module.  Third-party plugins can be
+//! added later.
+//!
+//! Chat-family plugins share logic through the [`chat::core::ChatCore`]
+//! composition layer — see the `chat/` submodule.
 //!
 //! [`AgentsSubsystem`] implements [`BusHandler`] with prefix `"agents"` and
 //! is never blocked: sync plugins resolve immediately, async ones spawn tasks.
@@ -15,6 +19,10 @@ use tokio::sync::oneshot;
 use crate::config::AgentsConfig;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
+
+// Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
+#[cfg(any(feature = "plugin-basic-chat", feature = "plugin-chat"))]
+mod chat;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -89,20 +97,7 @@ impl AgentPlugin for EchoPlugin {
     }
 }
 
-#[cfg(feature = "plugin-basic-chat")]
-struct BasicChatPlugin;
 
-#[cfg(feature = "plugin-basic-chat")]
-impl AgentPlugin for BasicChatPlugin {
-    fn id(&self) -> &str { "basic_chat" }
-    fn handle(&self, channel_id: String, content: String, reply_tx: oneshot::Sender<BusResult>, state: Arc<AgentsState>) {
-        // Spawn so the supervisor loop is not blocked on the LLM round-trip.
-        tokio::spawn(async move {
-            let result = state.complete_via_llm(&channel_id, &content).await;
-            let _ = reply_tx.send(result);
-        });
-    }
-}
 
 // ── AgentsSubsystem ───────────────────────────────────────────────────────────
 
@@ -143,7 +138,13 @@ impl AgentsSubsystem {
 
         #[cfg(feature = "plugin-basic-chat")]
         {
-            let plugin = Box::new(BasicChatPlugin);
+            let plugin = Box::new(chat::BasicChatPlugin);
+            plugins.insert(plugin.id().to_string(), plugin);
+        }
+
+        #[cfg(feature = "plugin-chat")]
+        {
+            let plugin = Box::new(chat::SessionChatPlugin);
             plugins.insert(plugin.id().to_string(), plugin);
         }
 

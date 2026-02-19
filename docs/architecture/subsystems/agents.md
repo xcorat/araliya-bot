@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.2.0 — `AgentPlugin` trait · `AgentsState` capability boundary · `BusHandler` impl · plugin dispatch via `HashMap`.
+**Status:** v0.2.1 — `AgentPlugin` trait · `AgentsState` capability boundary · `BusHandler` impl · plugin dispatch · **`ChatCore` composition layer** · `SessionChatPlugin`.
 
 ---
 
@@ -14,7 +14,8 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 
 | Agent | Behaviour |
 |-------|-----------|
-| `basic_chat` | Calls `llm/complete` on the bus and forwards the reply. Default agent. |
+| `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. Default agent. |
+| `chat` | Session-aware chat via `SessionChatPlugin`. Delegates to `ChatCore` today; extension point for session management, memory, prompt templating, and tool use. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -84,6 +85,39 @@ Plugins are stored in a `HashMap<String, Box<dyn AgentPlugin>>` inside
 `AgentsSubsystem`. Resolution order (by `id()`) maps to the routing priority
 table above.
 
+### Chat-family composition (`ChatCore`)
+
+Chat-family plugins (`basic_chat`, `chat`, and future variants) share logic
+through composition rather than inheritance:
+
+```
+src/subsystems/agents/chat/
+├── mod.rs           # feature-gated re-exports
+├── core.rs          # ChatCore — shared building blocks
+├── basic_chat.rs    # BasicChatPlugin (thin wrapper over ChatCore)
+└── session_chat.rs  # SessionChatPlugin (ChatCore + future extensions)
+```
+
+`ChatCore` is a stateless struct providing composable methods:
+
+```rust
+impl ChatCore {
+    pub async fn basic_complete(state, channel_id, content) -> BusResult;
+    // Future: prompt_template(), inject_memory(), tool_dispatch(), ...
+}
+```
+
+Each chat plugin calls `ChatCore` methods and layers its own behaviour on top.
+This avoids code duplication while allowing progressive enhancement:
+
+```
+ChatCore::basic_complete()        ← shared logic
+    ↑                    ↑
+BasicChatPlugin     SessionChatPlugin  (core + session/memory/tools)
+                         ↑
+                  AdvancedChatPlugin   (future — further extensions)
+```
+
 ### Capability boundary — `AgentsState`
 
 Plugins receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
@@ -99,8 +133,9 @@ targets.
 
 `AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle)` — the `BusHandle`
 is injected at init and wrapped inside `AgentsState`. Built-in plugins
-(`EchoPlugin`, `BasicChatPlugin`) are registered unconditionally; the `enabled`
-list controls which ones are reachable via routing.
+(`EchoPlugin`, `BasicChatPlugin`, `SessionChatPlugin`) are registered behind
+Cargo feature gates; the `enabled` list controls which ones are reachable via
+routing.
 
 ---
 

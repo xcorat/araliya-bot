@@ -31,6 +31,9 @@ default = "basic_chat"
 [agents.basic_chat]
 # Default conversational agent — routes messages to the active LLM provider.
 
+[agents.chat]
+# Session-aware chat agent — extends basic_chat with session management.
+
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false

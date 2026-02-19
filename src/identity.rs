@@ -183,7 +183,7 @@ fn find_existing_identity_dirs(work_dir: &Path) -> Result<Vec<PathBuf>, AppError
 mod tests {
     use super::*;
     use std::collections::{HashMap, HashSet};
-    use crate::config::{AgentsConfig, CommsConfig, Config, LlmConfig, OpenAiConfig, PtyConfig};
+    use crate::config::{AgentsConfig, CommsConfig, Config, LlmConfig, OpenAiConfig, PtyConfig, TelegramConfig};
     use tempfile::TempDir;
 
     fn test_config(work_dir: &Path) -> Config {
@@ -194,6 +194,7 @@ mod tests {
             log_level: "info".into(),
             comms: CommsConfig {
                 pty: PtyConfig { enabled: true },
+                telegram: TelegramConfig { enabled: false },
             },
             agents: AgentsConfig {
                 default_agent: "echo".into(),

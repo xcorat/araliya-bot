@@ -47,12 +47,19 @@ cargo run -- -vvv  # trace
 ```
 araliya-bot/
 ├── config/
-│   └── default.toml       main config
+│   └── default.toml           main config
 ├── src/
-│   ├── main.rs            entry point / supervisor bootstrap
-│   ├── config.rs          TOML loading + env overrides
-│   ├── identity.rs        ed25519 keypair, bot_id derivation
-│   ├── logger.rs          tracing-subscriber init
-│   └── error.rs           error types
-└── docs/                  documentation (this tree)
+│   ├── main.rs                entry point / supervisor bootstrap
+│   ├── config.rs              TOML loading + env overrides
+│   ├── identity.rs            ed25519 keypair, bot_id derivation
+│   ├── logger.rs              tracing-subscriber init
+│   ├── error.rs               error types
+│   ├── llm/                   LLM provider abstraction
+│   ├── supervisor/            bus, dispatch, run-loop
+│   └── subsystems/
+│       ├── agents/            agent routing + plugins
+│       │   └── chat/          chat-family plugins (ChatCore composition)
+│       ├── comms/             communication channels (PTY, Telegram)
+│       └── llm/               LLM subsystem (BusHandler)
+└── docs/                      documentation
 ```

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.2.1 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features**.
+**Status:** v0.2.2 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family plugin composition (`ChatCore`).**
 
 ---
 
@@ -54,7 +54,8 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `subsystem-llm` | LLM | Completion provider subsystem. |
 | `subsystem-comms` | Comms | I/O channel management. |
 | `plugin-echo` | Agent | Echo plugin for the Agents subsystem. |
-| `plugin-basic-chat` | Agent | Chat plugin for the Agents subsystem (requires `subsystem-llm`). |
+| `plugin-basic-chat` | Agent | Basic chat plugin — minimal LLM pass-through (requires `subsystem-llm`). |
+| `plugin-chat` | Agent | Session-aware chat plugin — extends `ChatCore` with session management hooks (requires `subsystem-llm`). |
 | `channel-pty` | Channel | Local console PTY channel. |
 
 ---
@@ -80,7 +81,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
 | Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
 | Memory Service | — | Planned |
-| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`) |
+| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |
 | LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
 | Tools | — | Planned |
 

@@ -42,16 +42,19 @@ Plugins call typed methods on `AgentsState` rather than addressing arbitrary bus
 
 ### Built-in plugins
 
-| ID | Behaviour |
-|----|-----------|
-| `echo` | Returns input unchanged; synchronous. |
-| `basic_chat` | Calls `complete_via_llm` in a `tokio::spawn` task. |
+| ID | Feature | Behaviour |
+|----|---------|----------|
+| `echo` | `plugin-echo` | Returns input unchanged; synchronous. |
+| `basic_chat` | `plugin-basic-chat` | Delegates to `ChatCore::basic_complete` in a spawned task. |
+| `chat` | `plugin-chat` | Session-aware chat via `SessionChatPlugin`; delegates to `ChatCore` with hooks for future session/memory/tool extensions. |
 
 ### Adding a plugin
 
 1. Implement `AgentPlugin` in a new file under `src/subsystems/agents/`.
-2. Register it in `AgentsSubsystem::new()` (the `plugins` `HashMap`).
-3. Add the plugin ID to `[agents].enabled` in `config/default.toml`.
+   - For chat-family plugins, add to `src/subsystems/agents/chat/` and compose with `ChatCore`.
+2. Add a Cargo feature gate (e.g. `plugin-myplugin = ["subsystem-agents"]`).
+3. Register it in `AgentsSubsystem::new()` behind `#[cfg(feature = "plugin-myplugin")]`.
+4. Add `[agents.myplugin]` in `config/default.toml`.
 
 ---
 
