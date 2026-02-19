@@ -1,6 +1,6 @@
 # LLM Subsystem
 
-**Status:** Implemented — dummy provider. Real provider support (OpenAI, Anthropic, Ollama) planned.
+**Status:** v0.2.0 — dummy provider implemented · `OpenAiCompatibleProvider` implemented · Anthropic / Ollama planned.
 
 ---
 
@@ -44,7 +44,7 @@ src/
 ```rust
 pub enum LlmProvider {
     Dummy(DummyProvider),
-    // OpenAi(OpenAiProvider),  ← future
+    OpenAiCompatible(OpenAiCompatibleProvider),  // reqwest-based; configurable base URL
 }
 
 impl LlmProvider {

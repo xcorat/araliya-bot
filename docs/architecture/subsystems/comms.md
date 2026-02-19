@@ -72,22 +72,18 @@ internal `mpsc` channel for `CommsEvent`s from running channels.
 If any channel exits with an error, the shared `CancellationToken` is cancelled
 so sibling channels and the supervisor all shut down cooperatively.
 
-### Channel trait
+### Channel implementation
+
+Channels implement the generic [`Component` trait](../standards/runtime.md) from `subsystems/runtime.rs`:
 
 ```rust
-pub trait Channel: Send + 'static {
+pub trait Component: Send + 'static {
     fn id(&self) -> &str;
-    fn run(
-        self: Box<Self>,
-        state: Arc<CommsState>,
-        shutdown: CancellationToken,
-    ) -> Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>>;
+    fn run(self: Box<Self>, shutdown: CancellationToken) -> ComponentFuture;
 }
 ```
 
-Channels receive `Arc<CommsState>` at spawn time — they do not hold it in their
-struct. This keeps ownership clear: the subsystem creates and owns `CommsState`;
-channels borrow a reference-counted handle while they run.
+`Arc<CommsState>` and any other shared state are captured at construction — not passed to `run`. This is the same pattern used by all subsystem components; there is no separate `Channel` trait in the codebase.
 
 ### Message flow (current — basic_chat default)
 

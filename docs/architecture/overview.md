@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.2.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Channel` trait · `AgentPlugin` trait · capability-scoped state.
+**Status:** v0.2.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `AgentPlugin` trait · `OpenAiCompatibleProvider` · capability-scoped state.
 
 ---
 
@@ -129,3 +129,4 @@ See [identity.md](identity.md) for full details.
 - [subsystems/llm.md](subsystems/llm.md) — LLM provider abstraction, dummy provider, adding real providers
 - [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned)
 - [subsystems/tools.md](subsystems/tools.md) — tool registry, sandboxing (planned)
+- **Standards & Protocols** — [standards/index.md](standards/index.md) — bus protocol, component runtime, plugin interfaces, capabilities model
