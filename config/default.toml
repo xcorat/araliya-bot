@@ -13,15 +13,36 @@ log_level = "info"
 enabled = true
 
 [agents]
-# Ordered list of enabled agents. First entry is the default fallback.
-enabled = ["basic_chat"]
+# Which agent handles unrouted messages.
+default = "basic_chat"
 
-[agents.channel_map]
-# Optional channel-specific routing overrides.
+[agents.routing]
+# Optional channel_id -> agent_id overrides.
 # Example:
 # pty0 = "echo"
 
+[agents.echo]
+# Built-in echo agent. Reflects messages back verbatim.
+
+[agents.basic_chat]
+# Default conversational agent — routes messages to the active LLM provider.
+
+[agents.dummy]
+# Disabled — placeholder to show the section shape.
+enabled = false
+
 [llm]
-# LLM provider to use. "dummy" returns [echo] {input} — useful for testing.
-# Future values: "openai", "anthropic", etc.
-provider = "dummy"
+# Which LLM component to activate. Each component has its own config section below.
+# Options: "dummy", "openai"
+default = "openai"
+
+[llm.dummy]
+# No config — echoes input back as "[echo] {input}". Useful for testing.
+
+[llm.openai]
+# Used when default = "openai". API key must be set via LLM_API_KEY env var (never in TOML).
+# "openai-compatible" also uses this section (e.g. for local Ollama / LM Studio endpoints).
+api_base_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-4o-mini"
+temperature = 0.2
+timeout_seconds = 60

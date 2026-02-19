@@ -18,8 +18,9 @@ pub struct LlmSubsystem {
 }
 
 impl LlmSubsystem {
-    pub fn new(config: &LlmConfig) -> Result<Self, ProviderError> {
-        let provider = providers::build(&config.provider)?;
+    /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
+    pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
+        let provider = providers::build(config, api_key)?;
         Ok(Self { provider })
     }
 }

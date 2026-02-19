@@ -79,7 +79,7 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Build subsystem handlers and register with supervisor.
-    let llm = LlmSubsystem::new(&config.llm)
+    let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
         .map_err(|e| error::AppError::Config(e.to_string()))?;
     let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
 

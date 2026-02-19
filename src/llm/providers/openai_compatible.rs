@@ -1,0 +1,186 @@
+//! OpenAI-compatible chat completion provider (`/v1/chat/completions`).
+//!
+//! Exposes a single `complete(&str) -> String` interface matching the rest of
+//! the `LlmProvider` abstraction. All OpenAI wire types are private to this
+//! module — callers never see them. Tool-call handling belongs at the agent
+//! layer (agent plugins manage the loop); this provider is stateless.
+
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error, trace};
+
+use crate::llm::ProviderError;
+
+// ── Public provider ───────────────────────────────────────────────────────────
+
+/// Adapter for any HTTP endpoint implementing `/v1/chat/completions`.
+///
+/// Covers OpenAI, OpenAI-compatible local servers (Ollama, LM Studio…),
+/// and hosted alternatives. Constructed once at startup, then cheaply cloned
+/// because `reqwest::Client` is an `Arc` internally.
+#[derive(Debug, Clone)]
+pub struct OpenAiCompatibleProvider {
+    client: Client,
+    api_base_url: String,
+    model: String,
+    temperature: f32,
+    api_key: Option<String>,
+}
+
+impl OpenAiCompatibleProvider {
+    /// Build a provider from config values and an optional API key.
+    ///
+    /// `api_key` is `None` for keyless local models. When present it is sent
+    /// as `Authorization: Bearer <key>` on every request.
+    pub fn new(
+        api_base_url: String,
+        model: String,
+        temperature: f32,
+        timeout_seconds: u64,
+        api_key: Option<String>,
+    ) -> Result<Self, ProviderError> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(timeout_seconds))
+            .build()
+            .map_err(|e| ProviderError::Request(format!("failed to build HTTP client: {e}")))?;
+
+        Ok(Self { client, api_base_url, model, temperature, api_key })
+    }
+
+    /// Send `content` as a single user message and return the assistant's reply.
+    ///
+    /// History management and tool-call loops are intentionally the agent's
+    /// responsibility — this method is one round-trip only.
+    pub async fn complete(&self, content: &str) -> Result<String, ProviderError> {
+        // Some models (gpt-5 family) do not accept a temperature parameter.
+        let temperature = if self.model.starts_with("gpt-5") {
+            None
+        } else {
+            Some(self.temperature)
+        };
+
+        let payload = ChatCompletionRequest {
+            model: self.model.clone(),
+            messages: vec![Message { role: "user".to_string(), content: content.to_string() }],
+            temperature,
+        };
+
+        debug!(
+            model = %payload.model,
+            temperature = ?payload.temperature,
+            content_len = content.len(),
+            "sending LLM request"
+        );
+        if tracing::enabled!(tracing::Level::TRACE) {
+            let json = serde_json::to_string_pretty(&payload)
+                .unwrap_or_else(|e| format!("<serialization failed: {e}>"));
+            trace!(payload = %json, "full LLM request payload");
+        }
+
+        let mut req = self.client.post(&self.api_base_url).json(&payload);
+        if let Some(key) = &self.api_key {
+            req = req.bearer_auth(key);
+        }
+
+        let response = req.send().await.map_err(|e| {
+            error!(url = %self.api_base_url, error = %e, "LLM HTTP request failed (transport)");
+            ProviderError::Request(e.to_string())
+        })?;
+
+        let response = check_status(response).await?;
+
+        let parsed = response.json::<ChatCompletionResponse>().await.map_err(|e| {
+            error!(error = %e, "failed to deserialize LLM response");
+            ProviderError::Request(format!("failed to parse response body: {e}"))
+        })?;
+
+        debug!(choices = parsed.choices.len(), "received LLM response");
+        if tracing::enabled!(tracing::Level::TRACE) {
+            let json = serde_json::to_string_pretty(&parsed)
+                .unwrap_or_else(|e| format!("<serialization failed: {e}>"));
+            trace!(response = %json, "full LLM response payload");
+        }
+
+        let text = parsed
+            .choices
+            .into_iter()
+            .next()
+            .and_then(|c| c.message.content)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| ProviderError::Request("empty or missing content in response".into()))?;
+
+        Ok(text)
+    }
+}
+
+// ── Private wire types ────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatCompletionRequest {
+    model: String,
+    messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Choice {
+    message: ChoiceMessage,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ChoiceMessage {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+// Error envelope used by OpenAI and compatible APIs.
+#[derive(Debug, Deserialize)]
+struct ErrorEnvelope {
+    error: ErrorBody,
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorBody {
+    message: String,
+    #[serde(default)]
+    code: Option<serde_json::Value>,
+}
+
+/// Consume the response and return it if successful, or a structured error.
+async fn check_status(response: reqwest::Response) -> Result<reqwest::Response, ProviderError> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<failed to read error body>".to_string());
+
+    let message = if let Ok(env) = serde_json::from_str::<ErrorEnvelope>(&body) {
+        let code = env.error.code.map(|v| match v {
+            serde_json::Value::String(s) => format!(" [code={s}]"),
+            other => format!(" [code={other}]"),
+        }).unwrap_or_default();
+        format!("HTTP {status}{code}: {}", env.error.message)
+    } else {
+        format!("HTTP {status}: {body}")
+    };
+
+    error!(%status, %message, "LLM request returned HTTP error");
+    Err(ProviderError::Request(message))
+}

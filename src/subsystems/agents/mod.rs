@@ -118,13 +118,13 @@ pub struct AgentsSubsystem {
 
 impl AgentsSubsystem {
     pub fn new(config: AgentsConfig, bus: BusHandle) -> Self {
-        let mut enabled = config.enabled;
-        if enabled.is_empty() {
-            enabled.push("echo".to_string());
-        }
-
-        let default_agent = enabled[0].clone();
-        let enabled_agents: HashSet<String> = enabled.into_iter().collect();
+        // Default falls back to "echo" if config omits the default entirely.
+        let default_agent = if config.default_agent.is_empty() {
+            "echo".to_string()
+        } else {
+            config.default_agent
+        };
+        let enabled_agents = config.enabled;
 
         // Register all known built-in plugins.
         // Uses plugin.id() as the HashMap key so the trait method is the
@@ -242,7 +242,8 @@ mod tests {
     async fn routes_to_default_agent_when_unmapped() {
         let (_bus, handle) = echo_bus();
         let cfg = AgentsConfig {
-            enabled: vec!["echo".to_string()],
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle);
@@ -267,7 +268,8 @@ mod tests {
         channel_map.insert("pty0".to_string(), "echo".to_string());
 
         let cfg = AgentsConfig {
-            enabled: vec!["echo".to_string()],
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
             channel_map,
         };
         let agents = AgentsSubsystem::new(cfg, handle);
@@ -289,7 +291,8 @@ mod tests {
     async fn explicit_unknown_agent_errors() {
         let (_bus, handle) = echo_bus();
         let cfg = AgentsConfig {
-            enabled: vec!["echo".to_string()],
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle);
@@ -308,7 +311,8 @@ mod tests {
     async fn empty_enabled_falls_back_to_echo() {
         let (_bus, handle) = echo_bus();
         let cfg = AgentsConfig {
-            enabled: vec![],
+            default_agent: "echo".to_string(),
+            enabled: HashSet::new(),
             channel_map: HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle);
@@ -347,7 +351,8 @@ mod tests {
         });
 
         let cfg = AgentsConfig {
-            enabled: vec!["basic_chat".to_string()],
+            default_agent: "basic_chat".to_string(),
+            enabled: HashSet::from(["basic_chat".to_string()]),
             channel_map: HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle);

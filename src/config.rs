@@ -5,7 +5,7 @@
 
 use std::{
     env,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     fs,
 };
@@ -27,20 +27,40 @@ pub struct CommsConfig {
     pub pty: PtyConfig,
 }
 
-/// LLM provider configuration.
+/// OpenAI / OpenAI-compatible provider configuration.
+/// Populated from `[llm.openai]` in the TOML.
+#[derive(Debug, Clone)]
+pub struct OpenAiConfig {
+    /// Full chat completions endpoint URL.
+    pub api_base_url: String,
+    /// Model name passed in the request body.
+    pub model: String,
+    /// Sampling temperature (ignored for models that forbid it).
+    pub temperature: f32,
+    /// Per-request HTTP timeout in seconds.
+    pub timeout_seconds: u64,
+}
+
+/// LLM subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
-    /// Named provider to use (e.g. "dummy", "openai").
+    /// Which provider is active (e.g. `"dummy"`, `"openai"`).
+    /// Maps to `default` in `[llm]` TOML — named `default` there to signal
+    /// that other provider sections can coexist without being loaded.
     pub provider: String,
+    /// Config for the OpenAI / OpenAI-compatible provider (`[llm.openai]`).
+    pub openai: OpenAiConfig,
 }
 
 /// Agents subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct AgentsConfig {
-    /// Ordered list of enabled agent IDs. The first entry is the default agent.
-    pub enabled: Vec<String>,
-    /// Optional channel-to-agent overrides (channel_id -> agent_id).
+    /// Agent that handles messages with no explicit routing.
+    pub default_agent: String,
+    /// channel_id -> agent_id overrides (from `[agents.routing]`).
     pub channel_map: HashMap<String, String>,
+    /// Set of agent IDs whose config section has `enabled` != false.
+    pub enabled: HashSet<String>,
 }
 
 /// Fully-resolved supervisor configuration.
@@ -55,6 +75,9 @@ pub struct Config {
     pub comms: CommsConfig,
     pub agents: AgentsConfig,
     pub llm: LlmConfig,
+    /// API key from `LLM_API_KEY` env var — `None` for keyless local models.
+    /// Never sourced from TOML.
+    pub llm_api_key: Option<String>,
 }
 
 impl Config {
@@ -104,27 +127,69 @@ struct RawPty {
 
 #[derive(Deserialize)]
 struct RawLlm {
-    #[serde(default = "default_llm_provider")]
+    /// Maps to `default = "..."` in `[llm]`.
+    #[serde(rename = "default", default = "default_llm_provider")]
     provider: String,
+    #[serde(default)]
+    openai: RawOpenAiConfig,
 }
 
 impl Default for RawLlm {
     fn default() -> Self {
-        Self { provider: default_llm_provider() }
+        Self { provider: default_llm_provider(), openai: RawOpenAiConfig::default() }
     }
 }
 
-fn default_llm_provider() -> String {
-    "dummy".to_string()
+#[derive(Deserialize)]
+struct RawOpenAiConfig {
+    #[serde(default = "default_openai_api_base_url")]
+    api_base_url: String,
+    #[serde(default = "default_openai_model")]
+    model: String,
+    #[serde(default = "default_openai_temperature")]
+    temperature: f32,
+    #[serde(default = "default_openai_timeout_seconds")]
+    timeout_seconds: u64,
 }
+
+impl Default for RawOpenAiConfig {
+    fn default() -> Self {
+        Self {
+            api_base_url: default_openai_api_base_url(),
+            model: default_openai_model(),
+            temperature: default_openai_temperature(),
+            timeout_seconds: default_openai_timeout_seconds(),
+        }
+    }
+}
+
+fn default_llm_provider() -> String { "dummy".to_string() }
+fn default_openai_api_base_url() -> String { "https://api.openai.com/v1/chat/completions".to_string() }
+fn default_openai_model() -> String { "gpt-4o-mini".to_string() }
+fn default_openai_temperature() -> f32 { 0.2 }
+fn default_openai_timeout_seconds() -> u64 { 60 }
 
 #[derive(Deserialize, Default)]
 struct RawAgents {
-    #[serde(default = "default_agents_enabled")]
-    enabled: Vec<String>,
+    /// `default = "..."` in `[agents]` — which agent handles unrouted messages.
+    #[serde(rename = "default", default = "default_agent_name")]
+    default_agent: String,
+    /// `[agents.routing]` — channel_id -> agent_id overrides.
     #[serde(default)]
-    channel_map: HashMap<String, String>,
+    routing: HashMap<String, String>,
+    /// All other `[agents.<id>]` subsections — one entry per configured agent.
+    #[serde(flatten)]
+    entries: HashMap<String, RawAgentEntry>,
 }
+
+#[derive(Deserialize)]
+struct RawAgentEntry {
+    /// Defaults to `true`; set to `false` to disable without removing the section.
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+fn default_agent_name() -> String { "basic_chat".to_string() }
 
 impl Default for RawPty {
     fn default() -> Self {
@@ -134,10 +199,6 @@ impl Default for RawPty {
 
 fn default_true() -> bool {
     true
-}
-
-fn default_agents_enabled() -> Vec<String> {
-    vec!["basic_chat".to_string()]
 }
 
 /// Load config from `config/default.toml`, then apply env-var overrides.
@@ -189,12 +250,24 @@ pub fn load_from(
             },
         },
         agents: AgentsConfig {
-            enabled: parsed.agents.enabled,
-            channel_map: parsed.agents.channel_map,
+            default_agent: parsed.agents.default_agent,
+            channel_map: parsed.agents.routing,
+            enabled: parsed.agents.entries
+                .into_iter()
+                .filter(|(_, e)| e.enabled)
+                .map(|(id, _)| id)
+                .collect(),
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,
+            openai: OpenAiConfig {
+                api_base_url: parsed.llm.openai.api_base_url,
+                model: parsed.llm.openai.model,
+                temperature: parsed.llm.openai.temperature,
+                timeout_seconds: parsed.llm.openai.timeout_seconds,
+            },
         },
+        llm_api_key: env::var("LLM_API_KEY").ok(),
     })
 }
 

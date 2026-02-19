@@ -27,9 +27,16 @@ pub enum ProviderError {
 ///
 /// Enum dispatch avoids `dyn` trait objects and the `async-trait` dependency.
 /// Adding a backend = new module + new variant + new `complete` arm.
+///
+/// # Architecture note
+///
+/// This is a **stateless one-shot text completer**: sends a single user message
+/// and returns the assistant text. Conversation history, tool-call loops, and
+/// multi-turn state are the responsibility of agent plugins — not providers.
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     Dummy(providers::dummy::DummyProvider),
+    OpenAiCompatible(providers::openai_compatible::OpenAiCompatibleProvider),
 }
 
 impl LlmProvider {
@@ -37,6 +44,7 @@ impl LlmProvider {
     pub async fn complete(&self, content: &str) -> Result<String, ProviderError> {
         match self {
             LlmProvider::Dummy(p) => p.complete(content).await,
+            LlmProvider::OpenAiCompatible(p) => p.complete(content).await,
         }
     }
 }

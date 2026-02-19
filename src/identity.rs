@@ -182,7 +182,8 @@ fn find_existing_identity_dirs(work_dir: &Path) -> Result<Vec<PathBuf>, AppError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AgentsConfig, CommsConfig, Config, LlmConfig, PtyConfig};
+    use std::collections::{HashMap, HashSet};
+    use crate::config::{AgentsConfig, CommsConfig, Config, LlmConfig, OpenAiConfig, PtyConfig};
     use tempfile::TempDir;
 
     fn test_config(work_dir: &Path) -> Config {
@@ -195,12 +196,20 @@ mod tests {
                 pty: PtyConfig { enabled: true },
             },
             agents: AgentsConfig {
-                enabled: vec!["echo".into()],
-                channel_map: std::collections::HashMap::new(),
+                default_agent: "echo".into(),
+                enabled: HashSet::from(["echo".to_string()]),
+                channel_map: HashMap::new(),
             },
             llm: LlmConfig {
                 provider: "dummy".into(),
+                openai: OpenAiConfig {
+                    api_base_url: "https://api.openai.com/v1/chat/completions".into(),
+                    model: "gpt-4o-mini".into(),
+                    temperature: 0.2,
+                    timeout_seconds: 60,
+                },
             },
+            llm_api_key: None,
         }
     }
 
