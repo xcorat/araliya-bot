@@ -8,6 +8,8 @@ import type {
 } from './types';
 import * as api from './api';
 
+const NO_SESSION_ID = '00000000-0000-0000-0000-000000000000';
+
 function generateId(): string {
 	return crypto.randomUUID();
 }
@@ -146,10 +148,13 @@ export async function doSendMessage(text: string) {
 	isLoading = true;
 
 	try {
-		const res = await api.sendMessage(baseUrl, text.trim(), sessionId || undefined);
+		const outgoingSessionId = sessionId && sessionId !== NO_SESSION_ID ? sessionId : undefined;
+		const res = await api.sendMessage(baseUrl, text.trim(), outgoingSessionId);
 
-		if (res.session_id) {
+		if (res.session_id && res.session_id !== NO_SESSION_ID) {
 			sessionId = res.session_id;
+		} else {
+			sessionId = '';
 		}
 
 		const assistantMsg: ChatMessage = {
@@ -212,8 +217,8 @@ export async function loadSessionHistory(targetSessionId: string) {
 	try {
 		const res = await api.getSessionById(baseUrl, targetSessionId);
 
-		sessionId = res.session.session_id;
-		messages = mapTranscriptToChatMessages(res.session.session_id, res.messages);
+		sessionId = res.session_id;
+		messages = mapTranscriptToChatMessages(res.session_id, res.transcript);
 
 		lastUsage = null;
 		sessionUsageTotals = null;

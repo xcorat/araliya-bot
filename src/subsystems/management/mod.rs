@@ -74,6 +74,7 @@ impl BusHandler for ManagementSubsystem {
                     Ok(BusPayload::CommsMessage {
                         channel_id: "manage-http".to_string(),
                         content: body.to_string(),
+                        session_id: None,
                     })
                 }
                 Ok(Ok(_)) => Err(BusError::new(

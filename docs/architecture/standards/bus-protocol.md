@@ -71,14 +71,20 @@ All known message bodies are variants of `BusPayload`. Every variant derives `Se
 
 ```rust
 pub enum BusPayload {
-    CommsMessage  { channel_id: String, content: String },
+    CommsMessage  { channel_id: String, content: String, session_id: Option<String> },
     LlmRequest    { channel_id: String, content: String },
     CancelRequest { id: Uuid },
+    SessionQuery  { session_id: String },
+    JsonResponse  { data: String },
     Empty,
 }
 ```
 
 `channel_id` is threaded through `LlmRequest` so the LLM subsystem can re-attach it to the `CommsMessage` reply, enabling callers to correlate replies with the originating channel without extra bookkeeping.
+
+`session_id` on `CommsMessage` threads session identity end-to-end: comms channels send an optional `session_id` inbound, agents attach the memory session id on the reply, and the HTTP API returns it to the client.
+
+`SessionQuery` / `JsonResponse` support structured subsystem queries (e.g. session list, session detail) without overloading `CommsMessage`.
 
 When adding a new message type, add a new variant here. Do not reuse an existing variant for a semantically different message.
 

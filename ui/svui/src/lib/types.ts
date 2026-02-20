@@ -77,8 +77,8 @@ export interface SessionToolCall {
 }
 
 export interface SessionDetailResponse {
-	session: SessionInfo;
-	messages: SessionTranscriptMessage[];
+	session_id: string;
+	transcript: SessionTranscriptMessage[];
 }
 
 export interface ApiError {

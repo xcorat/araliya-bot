@@ -66,7 +66,7 @@ export async function getSessionById(
 	baseUrl: string,
 	sessionId: string
 ): Promise<SessionDetailResponse> {
-	const response = await fetch(`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}`);
+	const response = await fetch(`${baseUrl}/api/session/${encodeURIComponent(sessionId)}`);
 	if (!response.ok) return handleError(response);
 	return readResponse<SessionDetailResponse>(response);
 }
@@ -75,20 +75,22 @@ export async function getSessionMemory(
 	baseUrl: string,
 	sessionId: string
 ): Promise<SessionMemoryResponse> {
-	const response = await fetch(
-		`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/memory`
-	);
-	if (!response.ok) return handleError(response);
-	return readResponse<SessionMemoryResponse>(response);
+	const detail = await getSessionById(baseUrl, sessionId);
+	const content = detail.transcript
+		.map((entry) => `[${entry.timestamp}] ${entry.role}: ${entry.content}`)
+		.join('\n');
+	return {
+		session_id: detail.session_id,
+		content
+	};
 }
 
 export async function getSessionFiles(
 	baseUrl: string,
 	sessionId: string
 ): Promise<SessionFilesResponse> {
-	const response = await fetch(
-		`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/files`
-	);
-	if (!response.ok) return handleError(response);
-	return readResponse<SessionFilesResponse>(response);
+	return {
+		session_id: sessionId,
+		files: []
+	};
 }

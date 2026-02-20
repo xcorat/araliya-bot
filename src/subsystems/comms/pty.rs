@@ -91,12 +91,12 @@ async fn run_pty(
 
                         debug!(input = %input, "pty received line");
 
-                        match state.send_message(&channel_id, input).await {
+                        match state.send_message(&channel_id, input, None).await {
                             Err(e) => {
                                 warn!("send_message error: {e}, pty exiting");
                                 break;
                             }
-                            Ok(reply) => println!("{reply}"),
+                            Ok(reply) => println!("{}", reply.reply),
                         }
                     }
                 }

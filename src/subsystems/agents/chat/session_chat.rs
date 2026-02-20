@@ -41,6 +41,7 @@ impl Agent for SessionChatPlugin {
         &self,
         channel_id: String,
         content: String,
+        session_id: Option<String>,
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
@@ -63,6 +64,7 @@ impl Agent for SessionChatPlugin {
                     &state,
                     &channel_id,
                     &content,
+                    session_id.as_deref(),
                 ).await;
                 let _ = reply_tx.send(result);
             });
@@ -76,11 +78,32 @@ async fn handle_with_memory(
     state: &Arc<AgentsState>,
     channel_id: &str,
     content: &str,
+    requested_session_id: Option<&str>,
 ) -> BusResult {
-    // Ensure session exists (lazy init).
+    // Ensure session exists (reuse requested session when provided).
     let handle = {
         let mut guard = session_mutex.lock().await;
-        if guard.is_none() {
+        if let Some(session_id) = requested_session_id {
+            let must_load = guard
+                .as_ref()
+                .map(|h| h.session_id.as_str() != session_id)
+                .unwrap_or(true);
+
+            if must_load {
+                match load_session(state, session_id) {
+                    Ok(h) => {
+                        info!(session_id = %h.session_id, "session_chat: session loaded from request");
+                        *guard = Some(h);
+                    }
+                    Err(e) => {
+                        return Err(crate::supervisor::bus::BusError::new(
+                            -32000,
+                            format!("session load failed: {e}"),
+                        ));
+                    }
+                }
+            }
+        } else {
             match init_session(state) {
                 Ok(h) => {
                     info!(session_id = %h.session_id, "session_chat: session created");
@@ -137,7 +160,14 @@ async fn handle_with_memory(
         }
     }
 
-    result
+    match result {
+        Ok(BusPayload::CommsMessage { channel_id, content, .. }) => Ok(BusPayload::CommsMessage {
+            channel_id,
+            content,
+            session_id: Some(handle.session_id.clone()),
+        }),
+        other => other,
+    }
 }
 
 #[cfg(feature = "subsystem-memory")]
@@ -154,4 +184,13 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
         .unwrap_or_else(|| vec!["basic_session"]);
 
     memory.create_session(&store_types, Some("chat"))
+}
+
+#[cfg(feature = "subsystem-memory")]
+fn load_session(state: &AgentsState, session_id: &str) -> Result<SessionHandle, crate::error::AppError> {
+    let memory = state.memory.as_ref().ok_or_else(|| {
+        crate::error::AppError::Memory("memory system not available".into())
+    })?;
+
+    memory.load_session(session_id, Some("chat"))
 }

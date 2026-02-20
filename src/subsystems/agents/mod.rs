@@ -96,6 +96,7 @@ pub trait Agent: Send + Sync {
         &self,
         channel_id: String,
         content: String,
+        session_id: Option<String>,
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     );
@@ -109,8 +110,8 @@ struct EchoAgent;
 #[cfg(feature = "plugin-echo")]
 impl Agent for EchoAgent {
     fn id(&self) -> &str { "echo" }
-    fn handle(&self, channel_id: String, content: String, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
-        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content }));
+    fn handle(&self, channel_id: String, content: String, session_id: Option<String>, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
+        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content, session_id }));
     }
 }
 
@@ -204,6 +205,130 @@ impl AgentsSubsystem {
 
         Ok(self.default_agent.as_str())
     }
+
+    // ── Session query handlers ─────────────────────────────────────────────
+
+    /// Handle `agents/sessions` — return a JSON list of all sessions.
+    fn handle_session_list(&self, reply_tx: oneshot::Sender<BusResult>) {
+        #[cfg(feature = "subsystem-memory")]
+        {
+            let memory = match self.state.memory.as_ref() {
+                Some(m) => m.clone(),
+                None => {
+                    let body = serde_json::json!({ "sessions": [] });
+                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                        data: body.to_string(),
+                    }));
+                    return;
+                }
+            };
+
+            let sessions = match memory.list_sessions() {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("memory error: {e}"))));
+                    return;
+                }
+            };
+
+            let body = serde_json::json!({
+                "sessions": sessions.iter().map(|s| serde_json::json!({
+                    "session_id": s.session_id,
+                    "created_at": s.created_at,
+                    "store_types": s.store_types,
+                    "last_agent": s.last_agent,
+                })).collect::<Vec<_>>()
+            });
+
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        }
+
+        #[cfg(not(feature = "subsystem-memory"))]
+        {
+            let body = serde_json::json!({ "sessions": [] });
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        }
+    }
+
+    /// Handle `agents/sessions/detail` — return session metadata + transcript.
+    fn handle_session_detail(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        let session_id = match payload {
+            BusPayload::SessionQuery { session_id } => session_id,
+            _ => {
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32600,
+                    "expected SessionQuery payload",
+                )));
+                return;
+            }
+        };
+
+        #[cfg(feature = "subsystem-memory")]
+        {
+            let memory = match self.state.memory.as_ref() {
+                Some(m) => m.clone(),
+                None => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        "memory system not available",
+                    )));
+                    return;
+                }
+            };
+
+            let handle = match memory.load_session(&session_id, None) {
+                Ok(h) => h,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    return;
+                }
+            };
+
+            // Read transcript asynchronously and reply.
+            tokio::spawn(async move {
+                let transcript = match handle.transcript_read_last(1000).await {
+                    Ok(entries) => entries
+                        .into_iter()
+                        .map(|e| {
+                            serde_json::json!({
+                                "role": e.role,
+                                "timestamp": e.timestamp,
+                                "content": e.content,
+                            })
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(e) => {
+                        let _ = reply_tx.send(Err(BusError::new(
+                            -32000,
+                            format!("transcript read failed: {e}"),
+                        )));
+                        return;
+                    }
+                };
+
+                let body = serde_json::json!({
+                    "session_id": session_id,
+                    "transcript": transcript,
+                });
+
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: body.to_string(),
+                }));
+            });
+        }
+
+        #[cfg(not(feature = "subsystem-memory"))]
+        {
+            let _ = reply_tx.send(Err(BusError::new(
+                -32000,
+                format!("session not found: {session_id} (memory system disabled)"),
+            )));
+        }
+    }
 }
 
 impl BusHandler for AgentsSubsystem {
@@ -213,20 +338,34 @@ impl BusHandler for AgentsSubsystem {
 
     /// Route a request. Ownership of `reply_tx` is forwarded to the agent —
     /// the supervisor loop returns immediately after this call.
+    ///
+    /// Session queries (`agents/sessions`, `agents/sessions/detail`) are
+    /// intercepted before agent routing to return session metadata.
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        // ── Session queries (intercepted before agent routing) ──────
+        if method == "agents/sessions" {
+            self.handle_session_list(reply_tx);
+            return;
+        }
+        if method == "agents/sessions/detail" {
+            self.handle_session_detail(payload, reply_tx);
+            return;
+        }
+
+        // ── Agent routing ───────────────────────────────────────────
         let (method_agent_id, _action) = match parse_method(method) {
             Ok(v) => v,
             Err(e) => { let _ = reply_tx.send(Err(e)); return; }
         };
 
         match payload {
-            BusPayload::CommsMessage { channel_id, content } => {
+            BusPayload::CommsMessage { channel_id, content, session_id } => {
                 let agent_id = match self.resolve_agent(method_agent_id.as_deref(), &channel_id) {
                     Ok(id) => id,
                     Err(e) => { let _ = reply_tx.send(Err(e)); return; }
                 };
                 match self.agents.get(agent_id) {
-                    Some(agent) => agent.handle(channel_id, content, reply_tx, self.state.clone()),
+                    Some(agent) => agent.handle(channel_id, content, session_id, reply_tx, self.state.clone()),
                     None => {
                         let _ = reply_tx.send(Err(BusError::new(
                             ERR_METHOD_NOT_FOUND,
@@ -298,7 +437,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string() },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None },
             tx,
         );
 
@@ -330,7 +469,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "mapped".to_string() },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "mapped".to_string(), session_id: None },
             tx,
         );
 
@@ -359,7 +498,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/unknown",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string() },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None },
             tx,
         );
 
@@ -385,7 +524,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "fallback".to_string() },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "fallback".to_string(), session_id: None },
             tx,
         );
 
@@ -410,6 +549,7 @@ mod tests {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: format!("[fake] {content}"),
+                        session_id: None,
                     }));
                 }
             }
@@ -431,7 +571,7 @@ mod tests {
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string() },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None },
             tx,
         );
 

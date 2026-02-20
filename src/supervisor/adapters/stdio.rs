@@ -87,6 +87,7 @@ pub fn start(
                                     BusPayload::CommsMessage {
                                         channel_id: VIRTUAL_PTY_CHANNEL_ID.to_string(),
                                         content,
+                                        session_id: None,
                                     },
                                 )
                                 .await

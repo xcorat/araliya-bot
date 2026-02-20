@@ -41,7 +41,11 @@ impl BusHandler for LlmSubsystem {
                     let result = provider
                         .complete(&content)
                         .await
-                        .map(|reply| BusPayload::CommsMessage { channel_id, content: reply })
+                        .map(|reply| BusPayload::CommsMessage {
+                            channel_id,
+                            content: reply,
+                            session_id: None,
+                        })
                         .map_err(|e| BusError::new(-32000, e.to_string()));
                     let _ = reply_tx.send(result);
                 });

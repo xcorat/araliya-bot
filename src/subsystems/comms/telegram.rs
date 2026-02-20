@@ -66,9 +66,9 @@ async fn run_telegram(
                 if let Some(text) = msg.text() {
                     debug!(%channel_id, from = ?msg.from.as_ref().and_then(|u| u.username.as_ref()), "telegram received message");
                     
-                    match state.send_message(&channel_id, text.to_string()).await {
+                    match state.send_message(&channel_id, text.to_string(), None).await {
                         Ok(reply) => {
-                            if let Err(e) = bot.send_message(msg.chat.id, reply).await {
+                            if let Err(e) = bot.send_message(msg.chat.id, reply.reply).await {
                                 warn!("failed to send telegram reply: {e}");
                             }
                         }

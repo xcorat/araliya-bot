@@ -16,6 +16,12 @@ use tracing::warn;
 use crate::error::AppError;
 use crate::supervisor::bus::{BusHandle, BusPayload};
 
+#[derive(Debug, Clone)]
+pub struct CommsReply {
+    pub reply: String,
+    pub session_id: Option<String>,
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 /// Events a channel sends back to the comms subsystem manager.
@@ -53,10 +59,12 @@ impl CommsState {
         &self,
         channel_id: &str,
         content: String,
-    ) -> Result<String, AppError> {
+        session_id: Option<String>,
+    ) -> Result<CommsReply, AppError> {
         let payload = BusPayload::CommsMessage {
             channel_id: channel_id.to_string(),
             content,
+            session_id,
         };
 
         match self.bus.request("agents", payload).await {
@@ -65,7 +73,10 @@ impl CommsState {
                 "agent error {}: {}",
                 e.code, e.message
             ))),
-            Ok(Ok(BusPayload::CommsMessage { content: reply, .. })) => Ok(reply),
+            Ok(Ok(BusPayload::CommsMessage { content: reply, session_id, .. })) => Ok(CommsReply {
+                reply,
+                session_id,
+            }),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
         }
     }
@@ -82,6 +93,41 @@ impl CommsState {
             ))),
             Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+        }
+    }
+
+    /// Request a list of all sessions from the agents subsystem.
+    pub async fn request_sessions(&self) -> Result<String, AppError> {
+        match self.bus.request("agents/sessions", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    /// Request detail (metadata + transcript) for a specific session.
+    pub async fn request_session_detail(&self, session_id: &str) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/sessions/detail",
+                BusPayload::SessionQuery {
+                    session_id: session_id.to_string(),
+                },
+            )
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
         }
     }
 

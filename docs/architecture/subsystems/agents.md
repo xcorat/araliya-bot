@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.3.0 — `Agent` trait · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration.
+**Status:** v0.4.0 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`).
 
 ---
 
@@ -14,8 +14,8 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 
 | Agent | Behaviour |
 |-------|-----------|
-| `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. Default agent. |
-| `chat` | Session-aware chat via `SessionChatPlugin`. Creates a memory session on first message, appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Configured with `memory = ["basic_session"]`. |
+| `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
+| `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -78,6 +78,7 @@ pub trait Agent: Send + Sync {
         &self,
         channel_id: String,
         content: String,
+        session_id: Option<String>,
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     );
@@ -137,6 +138,17 @@ Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
 The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
 targets.
 
+## Session queries
+
+The agents subsystem intercepts two bus methods before agent routing:
+
+| Method | Payload | Response |
+|--------|---------|----------|
+| `agents/sessions` | `Empty` | `JsonResponse` — JSON array of all sessions (id, created_at, store_types, last_agent) |
+| `agents/sessions/detail` | `SessionQuery { session_id }` | `JsonResponse` — session metadata + full transcript |
+
+These are handled directly by `AgentsSubsystem` (not routed to individual agents). When the `subsystem-memory` feature is disabled, sessions returns `[]` and detail returns an error.
+
 ## Initialisation
 
 `AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle, memory: Option<Arc<MemorySystem>>)` — the `BusHandle`
@@ -151,7 +163,7 @@ routing.
 
 ```toml
 [agents]
-default = "basic_chat"
+default = "chat"
 
 [agents.routing]
 # pty0 = "echo"
@@ -162,7 +174,7 @@ memory = ["basic_session"]
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agents.default` | string | `"basic_chat"` | Which agent handles unrouted messages. |
+| `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |

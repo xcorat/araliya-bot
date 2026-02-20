@@ -19,6 +19,7 @@ impl Agent for BasicChatPlugin {
         &self,
         channel_id: String,
         content: String,
+        _session_id: Option<String>,
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
