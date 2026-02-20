@@ -2,11 +2,11 @@
 	import { onMount } from 'svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import SessionSidebar from '$lib/components/SessionSidebar.svelte';
-	import { ChatHeader, ChatMessages, ChatInput } from '$lib/components/chat';
+	import StatusView from '$lib/components/StatusView.svelte';
+	import { ChatHeader } from '$lib/components/chat';
 	import {
 		initBaseUrl,
 		doCheckHealth,
-		getMessages,
 		getSessionId,
 		getSessions,
 		getIsLoadingSessions,
@@ -21,7 +21,6 @@
 		void refreshSessions({ force: true });
 	});
 
-	const messages = $derived(getMessages());
 	const sessionId = $derived(getSessionId());
 	const sessions = $derived(getSessions());
 	const loadingSessions = $derived(getIsLoadingSessions());
@@ -36,7 +35,7 @@
 </script>
 
 <svelte:head>
-	<title>Araliya</title>
+	<title>Araliya · Status</title>
 </svelte:head>
 
 <Sidebar.SidebarProvider>
@@ -51,8 +50,7 @@
 	<Sidebar.SidebarInset>
 		<div class="flex h-dvh flex-col">
 			<ChatHeader />
-			<ChatMessages {messages} />
-			<ChatInput />
+			<StatusView />
 		</div>
 	</Sidebar.SidebarInset>
 </Sidebar.SidebarProvider>

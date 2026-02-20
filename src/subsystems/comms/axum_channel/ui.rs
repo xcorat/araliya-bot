@@ -9,7 +9,7 @@ use axum::{
     body::Body,
     extract::State,
     http::{header, Response, StatusCode},
-    response::{Html, IntoResponse},
+  response::{Html, IntoResponse},
 };
 
 use super::AxumState;

@@ -1,5 +1,7 @@
 <script lang="ts">
-	import type { ActiveView } from '$lib/types';
+	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
+	import { page } from '$app/state';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -9,10 +11,8 @@
 		getLastUsage,
 		getSessionUsageTotals,
 		getWorkingMemoryUpdated,
-		getActiveView,
 		doCheckHealth,
-		resetSession,
-		setActiveView
+		resetSession
 	} from '$lib/state.svelte';
 	import { RotateCcw, Flower2, Activity, MessageSquare } from '@lucide/svelte';
 
@@ -20,7 +20,11 @@
 	const sid = $derived(getSessionId());
 	const totals = $derived(getSessionUsageTotals());
 	const wmUpdated = $derived(getWorkingMemoryUpdated());
-	const view = $derived(getActiveView());
+
+	const basePath = $derived(base || '');
+	const chatPath = $derived(basePath ? `${basePath}/` : '/');
+	const statusPath = $derived(basePath ? `${basePath}/status` : '/status');
+	const isStatusRoute = $derived(page.url.pathname === statusPath);
 
 	const healthColor = $derived(
 		health === 'ok'
@@ -38,6 +42,18 @@
 
 	function formatCost(usd: number) {
 		return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
+	}
+
+	function openChat() {
+		if (page.url.pathname !== chatPath) {
+			void goto(chatPath);
+		}
+	}
+
+	function openStatus() {
+		if (page.url.pathname !== statusPath) {
+			void goto(statusPath);
+		}
 	}
 </script>
 
@@ -63,9 +79,8 @@
 		<!-- View toggle -->
 		<div class="flex items-center rounded-lg border bg-muted/50 p-0.5">
 			<button
-				onclick={() => setActiveView('chat')}
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {view ===
-				'chat'
+				onclick={openChat}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {!isStatusRoute
 					? 'bg-background text-foreground shadow-sm'
 					: 'text-muted-foreground hover:text-foreground'}"
 			>
@@ -73,9 +88,8 @@
 				Chat
 			</button>
 			<button
-				onclick={() => setActiveView('status')}
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {view ===
-				'status'
+				onclick={openStatus}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {isStatusRoute
 					? 'bg-background text-foreground shadow-sm'
 					: 'text-muted-foreground hover:text-foreground'}"
 			>
@@ -93,7 +107,7 @@
 			<Badge variant="outline" class="text-[10px]">WM updated</Badge>
 		{/if}
 		{#if totals}
-			<Badge variant="outline" class="hidden text-[10px] sm:inline-flex">
+			<Badge variant="outline" class="hidden text-[10px] lg:inline-flex">
 				{totals.total_tokens} tok &middot; {formatCost(totals.estimated_cost_usd)}
 			</Badge>
 		{/if}

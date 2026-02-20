@@ -46,6 +46,25 @@ export interface HealthResponse {
 	enabled_tools: string[];
 	max_tool_rounds: number;
 	session_count: number;
+	uptime_ms?: number;
+	main_process?: MainProcessStatus;
+	subsystems?: SubsystemStatus[];
+}
+
+export interface MainProcessStatus {
+	id: string;
+	name: string;
+	status: string;
+	uptime_ms: number;
+	details?: Record<string, unknown>;
+}
+
+export interface SubsystemStatus {
+	id: string;
+	name: string;
+	status: string;
+	state?: string;
+	details?: Record<string, unknown>;
 }
 
 export interface SessionInfo {
@@ -103,7 +122,3 @@ export interface SessionFilesResponse {
 	session_id: string;
 	files: SessionFileInfo[];
 }
-
-// ── View types ──────────────────────────────────────────────
-
-export type ActiveView = 'chat' | 'status';

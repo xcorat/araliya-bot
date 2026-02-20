@@ -58,11 +58,36 @@ impl BusHandler for ManagementSubsystem {
         let control = self.control.clone();
         let info = self.info.clone();
         tokio::spawn(async move {
-            let result = match control.request(ControlCommand::Health).await {
-                Ok(Ok(ControlResponse::Health { uptime_ms })) => {
+            let result = match control.request(ControlCommand::Status).await {
+                Ok(Ok(ControlResponse::Status { uptime_ms, handlers })) => {
+                    let subsystems: Vec<_> = handlers
+                        .iter()
+                        .map(|handler| {
+                            serde_json::json!({
+                                "id": handler,
+                                "name": handler,
+                                "status": "running",
+                                "state": "loaded",
+                                "details": {
+                                    "handler": handler
+                                }
+                            })
+                        })
+                        .collect();
+
                     let body = serde_json::json!({
                         "status": "ok",
                         "uptime_ms": uptime_ms,
+                        "main_process": {
+                            "id": "supervisor",
+                            "name": "Supervisor",
+                            "status": "running",
+                            "uptime_ms": uptime_ms,
+                            "details": {
+                                "handler_count": handlers.len()
+                            }
+                        },
+                        "subsystems": subsystems,
                         "bot_id": info.bot_id,
                         "llm_provider": info.llm_provider,
                         "llm_model": info.llm_model,
@@ -77,10 +102,7 @@ impl BusHandler for ManagementSubsystem {
                         session_id: None,
                     })
                 }
-                Ok(Ok(_)) => Err(BusError::new(
-                    -32000,
-                    "unexpected control response for health",
-                )),
+                Ok(Ok(_)) => Err(BusError::new(-32000, "unexpected control response for status")),
                 Ok(Err(e)) => Err(BusError::new(
                     -32000,
                     format!("control error: {e:?}"),

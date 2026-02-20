@@ -1,5 +1,4 @@
 import type {
-	ActiveView,
 	ChatMessage,
 	SessionInfo,
 	SessionTranscriptMessage,
@@ -32,7 +31,6 @@ let lastUsage = $state<UsageInfo | null>(null);
 let sessionUsageTotals = $state<UsageInfo | null>(null);
 let workingMemoryUpdated = $state<boolean>(false);
 let debugExpanded = $state<boolean>(false);
-let activeView = $state<ActiveView>('chat');
 
 let sessionsRequest: Promise<void> | null = null;
 let lastSessionsRefreshAt = 0;
@@ -97,10 +95,6 @@ export function getDebugExpanded(): boolean {
 	return debugExpanded;
 }
 
-export function getActiveView(): ActiveView {
-	return activeView;
-}
-
 // ── Setters ─────────────────────────────────────────────────
 
 export function setBaseUrl(url: string) {
@@ -113,10 +107,6 @@ export function setSessionId(id: string) {
 
 export function setDebugExpanded(open: boolean) {
 	debugExpanded = open;
-}
-
-export function setActiveView(view: ActiveView) {
-	activeView = view;
 }
 
 // ── Actions ─────────────────────────────────────────────────
