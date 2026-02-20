@@ -39,6 +39,7 @@ impl Agent for SessionChatPlugin {
 
     fn handle(
         &self,
+        _action: String,
         channel_id: String,
         content: String,
         session_id: Option<String>,

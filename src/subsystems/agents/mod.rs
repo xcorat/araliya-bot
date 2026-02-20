@@ -26,6 +26,8 @@ use crate::subsystems::memory::MemorySystem;
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
 #[cfg(any(feature = "plugin-basic-chat", feature = "plugin-chat"))]
 mod chat;
+#[cfg(feature = "plugin-gmail-agent")]
+mod gmail;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -78,6 +80,35 @@ impl AgentsState {
             Err(e) => Err(BusError::new(-32000, e.to_string())),
         }
     }
+
+    /// Execute a tool through the tools subsystem.
+    pub async fn execute_tool(
+        &self,
+        tool: &str,
+        action: &str,
+        args_json: String,
+        channel_id: &str,
+        session_id: Option<String>,
+    ) -> BusResult {
+        let result = self
+            .bus
+            .request(
+                "tools/execute",
+                BusPayload::ToolRequest {
+                    tool: tool.to_string(),
+                    action: action.to_string(),
+                    args_json,
+                    channel_id: channel_id.to_string(),
+                    session_id,
+                },
+            )
+            .await;
+
+        match result {
+            Ok(r) => r,
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
 }
 
 // ── Agent trait ───────────────────────────────────────────────────────────────
@@ -94,6 +125,7 @@ pub trait Agent: Send + Sync {
     /// Handle an incoming request.
     fn handle(
         &self,
+        action: String,
         channel_id: String,
         content: String,
         session_id: Option<String>,
@@ -110,7 +142,7 @@ struct EchoAgent;
 #[cfg(feature = "plugin-echo")]
 impl Agent for EchoAgent {
     fn id(&self) -> &str { "echo" }
-    fn handle(&self, channel_id: String, content: String, session_id: Option<String>, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
+    fn handle(&self, _action: String, channel_id: String, content: String, session_id: Option<String>, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
         let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content, session_id }));
     }
 }
@@ -168,6 +200,12 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-chat")]
         {
             let agent: Box<dyn Agent> = Box::new(chat::SessionChatPlugin::new());
+            agents.insert(agent.id().to_string(), agent);
+        }
+
+        #[cfg(feature = "plugin-gmail-agent")]
+        {
+            let agent: Box<dyn Agent> = Box::new(gmail::GmailAgentPlugin);
             agents.insert(agent.id().to_string(), agent);
         }
 
@@ -498,7 +536,7 @@ impl BusHandler for AgentsSubsystem {
         }
 
         // ── Agent routing ───────────────────────────────────────────
-        let (method_agent_id, _action) = match parse_method(method) {
+        let (method_agent_id, action) = match parse_method(method) {
             Ok(v) => v,
             Err(e) => { let _ = reply_tx.send(Err(e)); return; }
         };
@@ -510,7 +548,7 @@ impl BusHandler for AgentsSubsystem {
                     Err(e) => { let _ = reply_tx.send(Err(e)); return; }
                 };
                 match self.agents.get(agent_id) {
-                    Some(agent) => agent.handle(channel_id, content, session_id, reply_tx, self.state.clone()),
+                    Some(agent) => agent.handle(action, channel_id, content, session_id, reply_tx, self.state.clone()),
                     None => {
                         let _ = reply_tx.send(Err(BusError::new(
                             ERR_METHOD_NOT_FOUND,

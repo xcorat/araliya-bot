@@ -3,6 +3,7 @@ name = "araliya-bot"
 version = "0.0.5"
 edition = "2024"
 description = "Modular agentic assistant — supervisor bootstrap"
+default-run = "araliya-bot"
 
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time"] }
@@ -15,6 +16,7 @@ toml = "0.8"
 ed25519-dalek = { version = "2", default-features = false, features = ["rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
+base64 = "0.22"
 hex = "0.4"
 dirs = "5"
 tracing = "0.1"
@@ -31,9 +33,12 @@ default = [
     "subsystem-comms",
     "subsystem-memory",
     "subsystem-ui",
+    "subsystem-tools",
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
+    "plugin-gmail-tool",
+    "plugin-gmail-agent",
     "channel-pty",
     "channel-telegram",
     "channel-axum",
@@ -47,11 +52,14 @@ subsystem-llm = []
 subsystem-comms = []
 subsystem-memory = []
 subsystem-ui = []
+subsystem-tools = []
 
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-llm", "subsystem-memory"]
+plugin-gmail-tool = ["subsystem-tools"]
+plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 
 # Comms Channels
 channel-pty = ["subsystem-comms"]

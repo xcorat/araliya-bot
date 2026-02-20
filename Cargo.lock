@@ -36,6 +36,7 @@ name = "araliya-bot"
 version = "0.0.5"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "dirs",
  "dotenvy",
  "ed25519-dalek",

@@ -17,6 +17,7 @@ impl Agent for BasicChatPlugin {
 
     fn handle(
         &self,
+        _action: String,
         channel_id: String,
         content: String,
         _session_id: Option<String>,

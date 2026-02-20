@@ -33,6 +33,9 @@ use subsystems::agents::AgentsSubsystem;
 #[cfg(feature = "subsystem-llm")]
 use subsystems::llm::LlmSubsystem;
 
+#[cfg(feature = "subsystem-tools")]
+use subsystems::tools::ToolsSubsystem;
+
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
@@ -123,6 +126,11 @@ async fn run() -> Result<(), error::AppError> {
         let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
             .map_err(|e| error::AppError::Config(e.to_string()))?;
         handlers.push(Box::new(llm));
+    }
+
+    #[cfg(feature = "subsystem-tools")]
+    {
+        handlers.push(Box::new(ToolsSubsystem::new()));
     }
 
     #[cfg(feature = "subsystem-agents")]

@@ -40,6 +40,22 @@ pub enum BusPayload {
     /// the `CommsMessage` it returns, allowing the caller to re-associate the
     /// reply with the originating channel without extra bookkeeping.
     LlmRequest { channel_id: String, content: String },
+        /// Request tool execution in the tools subsystem.
+        ToolRequest {
+            tool: String,
+            action: String,
+            args_json: String,
+            channel_id: String,
+            session_id: Option<String>,
+        },
+        /// Structured tool execution reply.
+        ToolResponse {
+            tool: String,
+            action: String,
+            ok: bool,
+            data_json: Option<String>,
+            error: Option<String>,
+        },
     /// Targets an in-flight request for cancellation.
     CancelRequest { id: Uuid },
     /// Query a specific session by ID.

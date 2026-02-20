@@ -51,6 +51,10 @@ default = "chat"
 # Session-aware chat agent — extends basic_chat with session management.
 memory = ["basic_session"]
 
+[agents.gmail]
+# Gmail agent — calls tools/gmail to read the latest email.
+# Bus method: agents/gmail/read
+
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false
