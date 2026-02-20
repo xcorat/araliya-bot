@@ -143,6 +143,15 @@ async fn run() -> Result<(), error::AppError> {
 
     sup_handle.await.ok();
 
+    // Final newline + flush so the shell prompt appears on a clean line
+    // after all tracing output (stderr) has been written.
+    {
+        use std::io::Write as _;
+        println!("\nBye :)");
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+    }
+
     Ok(())
 }
 

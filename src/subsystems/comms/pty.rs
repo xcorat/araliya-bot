@@ -76,9 +76,12 @@ async fn run_pty(
                 match line {
                     Err(e) => {
                         warn!("pty read error: {e}");
+                        println!();
                         break;
                     }
                     Ok(None) => {
+                        // Ctrl-D / EOF — move past the "> " prompt.
+                        println!();
                         info!("pty stdin closed");
                         break;
                     }

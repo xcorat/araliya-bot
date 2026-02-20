@@ -145,7 +145,7 @@ Rules:
 The supervisor owns handlers as `Vec<Box<dyn BusHandler>>` and builds a `HashMap<&str, usize>` index at startup for O(1) prefix lookup.
 
 ---
-
+TODO: check this section, code and doc
 ## Observability
 
 The bus and supervisor emit structured `tracing` logs at `debug` and `trace` levels:

@@ -58,6 +58,6 @@ default = "openai"
 # Used when default = "openai". API key must be set via LLM_API_KEY env var (never in TOML).
 # "openai-compatible" also uses this section (e.g. for local Ollama / LM Studio endpoints).
 api_base_url = "https://api.openai.com/v1/chat/completions"
-model = "gpt-4o-mini"
+model = "gpt-5-nano"
 temperature = 0.2
 timeout_seconds = 60
