@@ -329,6 +329,142 @@ impl AgentsSubsystem {
             )));
         }
     }
+
+    /// Handle `agents/sessions/memory` — return working memory content.
+    fn handle_session_memory(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        let session_id = match payload {
+            BusPayload::SessionQuery { session_id } => session_id,
+            _ => {
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32600,
+                    "expected SessionQuery payload",
+                )));
+                return;
+            }
+        };
+
+        #[cfg(feature = "subsystem-memory")]
+        {
+            let memory = match self.state.memory.as_ref() {
+                Some(m) => m.clone(),
+                None => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        "memory system not available",
+                    )));
+                    return;
+                }
+            };
+
+            let handle = match memory.load_session(&session_id, None) {
+                Ok(h) => h,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    return;
+                }
+            };
+
+            tokio::spawn(async move {
+                let content = match handle.working_memory_read().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = reply_tx.send(Err(BusError::new(
+                            -32000,
+                            format!("working memory read failed: {e}"),
+                        )));
+                        return;
+                    }
+                };
+
+                let body = serde_json::json!({
+                    "session_id": session_id,
+                    "content": content,
+                });
+
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: body.to_string(),
+                }));
+            });
+        }
+
+        #[cfg(not(feature = "subsystem-memory"))]
+        {
+            let _ = reply_tx.send(Err(BusError::new(
+                -32000,
+                format!("session not found: {session_id} (memory system disabled)"),
+            )));
+        }
+    }
+
+    /// Handle `agents/sessions/files` — return files in the session directory.
+    fn handle_session_files(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        let session_id = match payload {
+            BusPayload::SessionQuery { session_id } => session_id,
+            _ => {
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32600,
+                    "expected SessionQuery payload",
+                )));
+                return;
+            }
+        };
+
+        #[cfg(feature = "subsystem-memory")]
+        {
+            let memory = match self.state.memory.as_ref() {
+                Some(m) => m.clone(),
+                None => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        "memory system not available",
+                    )));
+                    return;
+                }
+            };
+
+            let handle = match memory.load_session(&session_id, None) {
+                Ok(h) => h,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    return;
+                }
+            };
+
+            tokio::spawn(async move {
+                let files = match handle.list_files().await {
+                    Ok(files) => files,
+                    Err(e) => {
+                        let _ = reply_tx.send(Err(BusError::new(
+                            -32000,
+                            format!("session file listing failed: {e}"),
+                        )));
+                        return;
+                    }
+                };
+
+                let body = serde_json::json!({
+                    "session_id": session_id,
+                    "files": files.into_iter().map(|f| serde_json::json!({
+                        "name": f.name,
+                        "size_bytes": f.size_bytes,
+                        "modified": f.modified,
+                    })).collect::<Vec<_>>(),
+                });
+
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: body.to_string(),
+                }));
+            });
+        }
+
+        #[cfg(not(feature = "subsystem-memory"))]
+        {
+            let _ = reply_tx.send(Err(BusError::new(
+                -32000,
+                format!("session not found: {session_id} (memory system disabled)"),
+            )));
+        }
+    }
 }
 
 impl BusHandler for AgentsSubsystem {
@@ -339,7 +475,8 @@ impl BusHandler for AgentsSubsystem {
     /// Route a request. Ownership of `reply_tx` is forwarded to the agent —
     /// the supervisor loop returns immediately after this call.
     ///
-    /// Session queries (`agents/sessions`, `agents/sessions/detail`) are
+    /// Session queries (`agents/sessions`, `agents/sessions/detail`,
+    /// `agents/sessions/memory`, `agents/sessions/files`) are
     /// intercepted before agent routing to return session metadata.
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         // ── Session queries (intercepted before agent routing) ──────
@@ -349,6 +486,14 @@ impl BusHandler for AgentsSubsystem {
         }
         if method == "agents/sessions/detail" {
             self.handle_session_detail(payload, reply_tx);
+            return;
+        }
+        if method == "agents/sessions/memory" {
+            self.handle_session_memory(payload, reply_tx);
+            return;
+        }
+        if method == "agents/sessions/files" {
+            self.handle_session_files(payload, reply_tx);
             return;
         }
 

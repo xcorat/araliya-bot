@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.4.0 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`).
+**Status:** v0.4.1 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`).
 
 ---
 
@@ -140,14 +140,16 @@ targets.
 
 ## Session queries
 
-The agents subsystem intercepts two bus methods before agent routing:
+The agents subsystem intercepts session query bus methods before agent routing:
 
 | Method | Payload | Response |
 |--------|---------|----------|
 | `agents/sessions` | `Empty` | `JsonResponse` — JSON array of all sessions (id, created_at, store_types, last_agent) |
 | `agents/sessions/detail` | `SessionQuery { session_id }` | `JsonResponse` — session metadata + full transcript |
+| `agents/sessions/memory` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, content }`, where `content` is current working memory |
+| `agents/sessions/files` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, files[] }` with `name`, `size_bytes`, `modified` |
 
-These are handled directly by `AgentsSubsystem` (not routed to individual agents). When the `subsystem-memory` feature is disabled, sessions returns `[]` and detail returns an error.
+These are handled directly by `AgentsSubsystem` (not routed to individual agents). When the `subsystem-memory` feature is disabled, sessions returns `[]` and detail/memory/files return an error.
 
 ## Initialisation
 

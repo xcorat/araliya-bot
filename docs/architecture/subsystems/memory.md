@@ -139,9 +139,13 @@ pub async fn kv_set(&self, key: &str, value: &str) -> Result<(), AppError>;
 pub async fn kv_delete(&self, key: &str) -> Result<bool, AppError>;
 pub async fn transcript_append(&self, role: &str, content: &str) -> Result<(), AppError>;
 pub async fn transcript_read_last(&self, n: usize) -> Result<Vec<TranscriptEntry>, AppError>;
+pub async fn working_memory_read(&self) -> Result<String, AppError>;
+pub async fn list_files(&self) -> Result<Vec<SessionFileInfo>, AppError>;
 ```
 
 `SessionHandle` is `Clone + Send + Sync` — safe to share across tasks.
+
+`working_memory_read()` currently reads the `working_memory` key from the session k-v store (empty string when not set). `list_files()` enumerates files in the session directory and returns name, size, and ISO-8601 modified timestamp metadata.
 
 ---
 

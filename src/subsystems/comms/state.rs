@@ -131,6 +131,50 @@ impl CommsState {
         }
     }
 
+    /// Request working-memory content for a specific session.
+    pub async fn request_session_memory(&self, session_id: &str) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/sessions/memory",
+                BusPayload::SessionQuery {
+                    session_id: session_id.to_string(),
+                },
+            )
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    /// Request session file list for a specific session.
+    pub async fn request_session_files(&self, session_id: &str) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/sessions/files",
+                BusPayload::SessionQuery {
+                    session_id: session_id.to_string(),
+                },
+            )
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
     /// Report an event to the comms subsystem manager.
     ///
     /// Non-blocking: drops the event and logs a warning if the manager is not

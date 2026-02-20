@@ -6,9 +6,17 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use crate::error::AppError;
 use super::store::{Store, TranscriptEntry};
+
+#[derive(Debug, Clone)]
+pub struct SessionFileInfo {
+    pub name: String,
+    pub size_bytes: u64,
+    pub modified: String,
+}
 
 /// Async-safe handle to a single session's stores.
 ///
@@ -102,6 +110,83 @@ impl SessionHandle {
             .await
             .map_err(|e| AppError::Memory(format!("transcript_read_last join: {e}")))?
     }
+
+    pub async fn working_memory_read(&self) -> Result<String, AppError> {
+        Ok(self.kv_get("working_memory").await?.unwrap_or_default())
+    }
+
+    pub async fn list_files(&self) -> Result<Vec<SessionFileInfo>, AppError> {
+        let dir = self.session_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut files = Vec::new();
+            for entry in std::fs::read_dir(&dir)
+                .map_err(|e| AppError::Memory(format!("cannot read {}: {e}", dir.display())))?
+            {
+                let entry = entry.map_err(|e| {
+                    AppError::Memory(format!("cannot read file entry in {}: {e}", dir.display()))
+                })?;
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let meta = entry.metadata().map_err(|e| {
+                    AppError::Memory(format!("cannot stat {}: {e}", path.display()))
+                })?;
+
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|ts| ts.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| epoch_to_iso8601(d.as_secs()))
+                    .unwrap_or_default();
+
+                files.push(SessionFileInfo {
+                    name: entry.file_name().to_string_lossy().to_string(),
+                    size_bytes: meta.len(),
+                    modified,
+                });
+            }
+
+            files.sort_by(|a, b| a.name.cmp(&b.name));
+            Ok(files)
+        })
+        .await
+        .map_err(|e| AppError::Memory(format!("list_files join: {e}")))?
+    }
+}
+
+fn epoch_to_iso8601(epoch_secs: u64) -> String {
+    let s = epoch_secs % 60;
+    let total_min = epoch_secs / 60;
+    let m = total_min % 60;
+    let total_hr = total_min / 60;
+    let h = total_hr % 24;
+    let mut days = total_hr / 24;
+
+    let mut yr = 1970u64;
+    loop {
+        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) { 366 } else { 365 };
+        if days < ydays {
+            break;
+        }
+        days -= ydays;
+        yr += 1;
+    }
+
+    let leap = yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0);
+    let mdays: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut mon = 1u64;
+    for &md in &mdays {
+        if days < md {
+            break;
+        }
+        days -= md;
+        mon += 1;
+    }
+    let day = days + 1;
+
+    format!("{yr:04}-{mon:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 impl std::fmt::Debug for SessionHandle {

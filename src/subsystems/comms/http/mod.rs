@@ -137,10 +137,31 @@ async fn handle_connection(
     let path = req.path;
     let body = req.body;
 
+    let session_memory = parse_session_subresource_path(&path, "memory");
+    let session_files = parse_session_subresource_path(&path, "files");
+
     match (method.as_str(), path.as_str()) {
         ("GET", "/api/health")    => api::handle_health(&mut socket, &state, &channel_id).await,
         ("POST", "/api/message")  => api::handle_message(&mut socket, &state, &channel_id, body).await,
         ("GET", "/api/sessions")  => api::handle_sessions(&mut socket, &state, &channel_id).await,
+        ("GET", _) if session_memory.is_some() => {
+            api::handle_session_memory(
+                &mut socket,
+                &state,
+                &channel_id,
+                session_memory.unwrap(),
+            )
+            .await
+        }
+        ("GET", _) if session_files.is_some() => {
+            api::handle_session_files(
+                &mut socket,
+                &state,
+                &channel_id,
+                session_files.unwrap(),
+            )
+            .await
+        }
         ("GET", p) if p.starts_with("/api/session/") => {
             let session_id = &p["/api/session/".len()..];
             api::handle_session_detail(&mut socket, &state, &channel_id, session_id).await
@@ -156,6 +177,22 @@ async fn handle_connection(
         ("GET", p) if p.starts_with("/ui") => ui::handle_ui_path(&mut socket, p, &ui_handle).await,
         _ => ui::handle_not_found(&mut socket).await,
     }
+}
+
+fn parse_session_subresource_path<'a>(path: &'a str, subresource: &str) -> Option<&'a str> {
+    let prefix = "/api/sessions/";
+    let suffix = format!("/{subresource}");
+
+    if !path.starts_with(prefix) || !path.ends_with(&suffix) {
+        return None;
+    }
+
+    let inner = &path[prefix.len()..path.len() - suffix.len()];
+    if inner.is_empty() || inner.contains('/') {
+        return None;
+    }
+
+    Some(inner)
 }
 
 // ── Request parsing ───────────────────────────────────────────────────────────

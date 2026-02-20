@@ -221,3 +221,93 @@ pub(super) async fn handle_session_detail(
         }
     }
 }
+
+/// GET /api/sessions/{session_id}/memory
+pub(super) async fn handle_session_memory(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+    session_id: &str,
+) -> Result<(), AppError> {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        state.request_session_memory(session_id),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(data)) => {
+            super::write_json_response(socket, "200 OK", data.as_bytes()).await
+        }
+        Ok(Err(e)) => {
+            warn!(%channel_id, %session_id, "session memory request failed: {e}");
+            let err_body = serde_json::json!({
+                "error": "not_found",
+                "message": format!("{e}")
+            });
+            super::write_json_response(
+                socket,
+                "404 Not Found",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+        Err(_) => {
+            let err_body = serde_json::json!({
+                "error": "timeout",
+                "message": "session memory request timed out"
+            });
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+    }
+}
+
+/// GET /api/sessions/{session_id}/files
+pub(super) async fn handle_session_files(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+    session_id: &str,
+) -> Result<(), AppError> {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        state.request_session_files(session_id),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(data)) => {
+            super::write_json_response(socket, "200 OK", data.as_bytes()).await
+        }
+        Ok(Err(e)) => {
+            warn!(%channel_id, %session_id, "session files request failed: {e}");
+            let err_body = serde_json::json!({
+                "error": "not_found",
+                "message": format!("{e}")
+            });
+            super::write_json_response(
+                socket,
+                "404 Not Found",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+        Err(_) => {
+            let err_body = serde_json::json!({
+                "error": "timeout",
+                "message": "session files request timed out"
+            });
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+    }
+}

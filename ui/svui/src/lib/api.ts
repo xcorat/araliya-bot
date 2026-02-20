@@ -75,22 +75,20 @@ export async function getSessionMemory(
 	baseUrl: string,
 	sessionId: string
 ): Promise<SessionMemoryResponse> {
-	const detail = await getSessionById(baseUrl, sessionId);
-	const content = detail.transcript
-		.map((entry) => `[${entry.timestamp}] ${entry.role}: ${entry.content}`)
-		.join('\n');
-	return {
-		session_id: detail.session_id,
-		content
-	};
+	const response = await fetch(
+		`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/memory`
+	);
+	if (!response.ok) return handleError(response);
+	return readResponse<SessionMemoryResponse>(response);
 }
 
 export async function getSessionFiles(
 	baseUrl: string,
 	sessionId: string
 ): Promise<SessionFilesResponse> {
-	return {
-		session_id: sessionId,
-		files: []
-	};
+	const response = await fetch(
+		`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/files`
+	);
+	if (!response.ok) return handleError(response);
+	return readResponse<SessionFilesResponse>(response);
 }
