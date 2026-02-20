@@ -63,11 +63,14 @@ pub fn start(
 
     #[cfg(feature = "channel-pty")]
     {
-        if config.comms_pty_should_load() {
+        let pty_requested = config.comms_pty_should_load();
+        let stdio_managed = crate::supervisor::adapters::stdio::stdio_control_active();
+
+        if pty_requested && !stdio_managed {
             info!("loading pty channel");
             components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
-        } else if config.comms.pty.enabled {
-            info!("pty channel requested but hard-disabled; skipping load");
+        } else if pty_requested && stdio_managed {
+            info!("pty channel disabled: stdio management adapter is active (virtual /chat route enabled)");
         }
     }
 

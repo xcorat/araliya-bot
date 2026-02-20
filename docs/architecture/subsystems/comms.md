@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.3.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY implementation present but currently hard-disabled at runtime.
+**Status:** v0.3.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active.
 
 ---
 
@@ -14,15 +14,26 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 
 ## Components
 
-### PTY Layer — Implemented (currently hard-disabled)
+### PTY Layer — Implemented
 - Console I/O (stdin/stdout)
-- Runtime loading is currently disabled in code while supervisor control adapters are introduced
+- Enabled by config in normal interactive runs
+- Auto-disabled when supervisor stdio adapter owns stdio (virtual `/chat` route is used instead)
 - Reads lines from stdin, routes each through the supervisor bus via `BusHandle::request`, prints the reply
 - Multiple PTY instances are supported: each sends `"agents"` with its own `channel_id` (e.g. `"pty0"`, `"pty1"`); the embedded `oneshot` in each request carries the correct return address independently
 - Ctrl-C sends a shutdown signal via `CancellationToken`; all tasks shut down gracefully
 - Used for local testing and development
 
 **Source:** `src/subsystems/comms/pty.rs`
+
+### Virtual PTY via Supervisor Stdio Adapter — Implemented
+- Lives in `src/supervisor/adapters/stdio.rs` (internal to supervisor)
+- Enabled when stdio is non-interactive (management/IPC attachment)
+- Performs a minimal slash protocol translation for tty lines:
+  - First non-whitespace character **must** be `/`
+  - `/chat <message>` → `BusPayload::CommsMessage { channel_id: "pty0", content }` to `agents`
+  - `/health`, `/status`, `/subsystems`, `/shutdown` → supervisor control plane commands
+  - `/help` prints protocol usage
+- Keeps comms behavior consistent by reusing the virtual PTY channel id (`pty0`)
 
 ### HTTP Layer — Planned
 - REST API endpoints for session and message management
@@ -84,7 +95,7 @@ pub trait Component: Send + 'static {
 
 `Arc<CommsState>` and any other shared state are captured at construction — not passed to `run`.
 
-### Message flow (when PTY is re-enabled)
+### Message flow (real PTY lane)
 
 ```
 PTY stdin
@@ -126,8 +137,8 @@ Ctrl-C
 
 ```toml
 [comms.pty]
-# PTY implementation exists but runtime loading is currently hard-disabled.
-enabled = false
+# Real PTY lane for interactive stdin/stdout.
+enabled = true
 ```
 
-`Config::comms_pty_should_load()` currently returns `false` intentionally, regardless of config.
+When stdio management is connected, Comms skips real PTY startup and management `/chat` acts as a virtual PTY stream.

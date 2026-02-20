@@ -109,7 +109,7 @@ main()  [#[tokio::main]]
   ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
   ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
   ├─ spawn: supervisor::run(bus, control, handlers)  router + control command loop
-  ├─ management::start(control_handle, shutdown)  stdio/http adapter boundary (stubs)
+  ├─ supervisor::adapters::start(control_handle, bus_handle, shutdown)  supervisor-internal stdio/http adapters
   ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
   ├─ (conditional) comms.join().await             block until all channels exit
 ```

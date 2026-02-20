@@ -12,10 +12,10 @@ identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_
 log_level = "info"
 
 [comms.pty]
-enabled = false
+enabled = true
 
 [comms.telegram]
-enabled = true
+enabled = false
 
 [agents]
 default = "basic_chat"
@@ -37,8 +37,9 @@ memory = ["basic_session"]
 default = "dummy"
 ```
 
-`comms.pty.enabled` is currently forced off at runtime while the supervisor-internal
-control plane and management adapters are being introduced.
+When stdio management is connected (non-interactive stdio), the real PTY channel
+is automatically disabled and `/chat` commands are routed through a virtual PTY
+stream in the management adapter.
 
 ## Modular Features (Cargo Flags)
 

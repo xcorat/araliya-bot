@@ -1,5 +1,6 @@
 //! Supervisor — owns the event bus and routes messages between subsystems.
 
+pub mod adapters;
 pub mod bus;
 pub mod control;
 pub mod dispatch;

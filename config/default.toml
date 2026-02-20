@@ -8,9 +8,10 @@ work_dir = "~/.araliya"
 log_level = "info"
 
 [comms.pty]
-# PTY (console) channel — currently hard-disabled in code while supervisor
-# control adapters are being introduced.
-enabled = false
+# PTY (console) channel.
+# If management stdio adapter claims stdin/stdout, PTY is auto-disabled and
+# /chat is routed through a virtual PTY stream.
+enabled = true
 
 [comms.telegram]
 # Telegram channel — requires TELEGRAM_BOT_TOKEN env var.

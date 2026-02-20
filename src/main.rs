@@ -127,8 +127,8 @@ async fn run() -> Result<(), error::AppError> {
         supervisor::run(bus, control, sup_token, handlers).await;
     });
 
-    // Start transport adapter boundary for supervisor control plane.
-    subsystems::management::start(control_handle, shutdown.clone());
+    // Start supervisor-internal transport adapters for control/chat over stdio.
+    supervisor::adapters::start(control_handle, bus_handle.clone(), shutdown.clone());
 
     // Start comms channels as independent concurrent tasks.
     #[cfg(feature = "subsystem-comms")]
