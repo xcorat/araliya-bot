@@ -63,7 +63,7 @@ Araliya Bot is designed around a flexible, event-driven architecture:
 | **Binary Size** | ~3.5 MB  | ~3.4 MB | ~28MB (dist) |
 | **Identity** | ed25519 keypair persisted, Markdown identity | AIEOS (JSON) or OpenClaw (Markdown) | Markdown files (IDENTITY.md, SOUL.md, etc.) |
 | **Security** | Persistent ed25519 identity implemented; pairing/sandboxing/allowlists not implemented (see `notes/` for design) | Gateway pairing, strict sandboxing, explicit allowlists | Gateway pairing, sandboxing, allowlists |
-| **Channels** | PTY console channel (`pty0`) (Telegram etc WIP) | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
+| **Channels** | PTY implemented but currently hard-disabled at runtime; Telegram available by feature/config | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
 | **Memory System** | Basic session store: capped k-v JSON + capped Markdown transcript, UUIDv7 sessions under identity dir | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
 | **Tools** | No general tool subsystem; built-in agents: `echo`, `basic_chat`, `chat` (`src/subsystems/agents/`) | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
 

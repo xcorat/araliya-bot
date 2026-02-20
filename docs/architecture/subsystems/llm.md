@@ -1,6 +1,6 @@
 # LLM Subsystem
 
-**Status:** v0.2.0 — dummy provider implemented · `OpenAiCompatibleProvider` implemented · Anthropic / Ollama planned.
+**Status:** v0.3.0 — `DummyProvider` and `OpenAiCompatibleProvider` implemented.
 
 ---
 
@@ -80,11 +80,13 @@ supervisor receives Request { method: "llm/complete", payload: LlmRequest { .. }
 
 ---
 
-## Current Provider: Dummy
+## Current Providers
 
 `DummyProvider` requires no API key. It returns `"[echo] {input}"` synchronously.
 
-**Use:** verifying the full PTY → agents → bus → LLM → bus → PTY round-trip without an API key.
+`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env.
+
+**Use:** verifying the full PTY → agents → bus → LLM → bus → PTY round-trip without an API key (when PTY runtime loading is re-enabled).
 
 ---
 
@@ -92,12 +94,12 @@ supervisor receives Request { method: "llm/complete", payload: LlmRequest { .. }
 
 ```toml
 [llm]
-provider = "dummy"
+default = "openai"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.provider` | string | `"dummy"` | Named provider. Supported: `"dummy"`. Future: `"openai"`, `"anthropic"`. |
+| `llm.default` | string | `"dummy"` | Active provider. Supported now: `"dummy"`, `"openai"`. |
 
 ---
 
@@ -107,7 +109,7 @@ provider = "dummy"
 2. Add a variant to `LlmProvider` in `src/llm/mod.rs`.
 3. Add a match arm to `LlmProvider::complete`.
 4. Add a match arm to `providers::build(name)` in `src/llm/providers/mod.rs`.
-5. Update `[llm] provider = "{name}"` in `config/default.toml`.
+5. Update `[llm] default = "{name}"` in `config/default.toml`.
 6. Pass secrets via environment variable or `.env` (never in config files).
 
 ---
@@ -116,6 +118,6 @@ provider = "dummy"
 
 | Provider | Auth | Notes |
 |----------|------|-------|
-| OpenAI | `OPENAI_API_KEY` | |
-| Anthropic | `ANTHROPIC_API_KEY` | |
-| OpenAI-compatible | `LLM_API_KEY` | Azure, local Ollama, etc. |
+| OpenAI-compatible | `LLM_API_KEY` | Implemented (`default = "openai"`) |
+| Dummy | none | Implemented (`default = "dummy"`) |
+| Anthropic | `ANTHROPIC_API_KEY` | Planned |

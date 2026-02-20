@@ -34,7 +34,7 @@ memory = ["basic_session"]
 # transcript_cap = 500
 
 [llm]
-provider = "dummy"
+default = "dummy"
 ```
 
 `comms.pty.enabled` is currently forced off at runtime while the supervisor-internal
@@ -83,7 +83,7 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.provider` | string | `"dummy"` | Named LLM provider. requires `subsystem-llm` feature. |
+| `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"` or `"openai"`). Requires `subsystem-llm` feature. |
 
 Provider API keys are never stored in config — supply them via environment or `.env`:
 

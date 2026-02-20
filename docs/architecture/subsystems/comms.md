@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.2.0 — `Channel` trait · concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle`.
+**Status:** v0.3.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY implementation present but currently hard-disabled at runtime.
 
 ---
 
@@ -14,10 +14,9 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 
 ## Components
 
-### PTY Layer — ✓ Implemented
+### PTY Layer — Implemented (currently hard-disabled)
 - Console I/O (stdin/stdout)
-- Auto-loads when no other channel is enabled (`[comms.pty] enabled = true` in config)
-- Can be force-disabled with `enabled = false`
+- Runtime loading is currently disabled in code while supervisor control adapters are introduced
 - Reads lines from stdin, routes each through the supervisor bus via `BusHandle::request`, prints the reply
 - Multiple PTY instances are supported: each sends `"agents"` with its own `channel_id` (e.g. `"pty0"`, `"pty1"`); the embedded `oneshot` in each request carries the correct return address independently
 - Ctrl-C sends a shutdown signal via `CancellationToken`; all tasks shut down gracefully
@@ -45,9 +44,9 @@ src/
   subsystems/
     runtime.rs          — Component trait, SubsystemHandle, spawn_components
     comms/
-      mod.rs            — Channel trait; start(config, bus, shutdown) → SubsystemHandle
+      mod.rs            — start(config, bus, shutdown) → SubsystemHandle
       state.rs          — CommsState (private bus, send_message, report_event, CommsEvent)
-      pty.rs            — PtyChannel: Channel
+      pty.rs            — PtyChannel: Component
 ```
 
 ### Capability boundary
@@ -83,9 +82,9 @@ pub trait Component: Send + 'static {
 }
 ```
 
-`Arc<CommsState>` and any other shared state are captured at construction — not passed to `run`. This is the same pattern used by all subsystem components; there is no separate `Channel` trait in the codebase.
+`Arc<CommsState>` and any other shared state are captured at construction — not passed to `run`.
 
-### Message flow (current — basic_chat default)
+### Message flow (when PTY is re-enabled)
 
 ```
 PTY stdin
@@ -127,10 +126,8 @@ Ctrl-C
 
 ```toml
 [comms.pty]
-# PTY auto-loads when no other channel is enabled.
-# Set to false to suppress even when no other channel is present.
-enabled = true
+# PTY implementation exists but runtime loading is currently hard-disabled.
+enabled = false
 ```
 
-`Config::comms_pty_should_load()` is the hook for auto-enable logic —
-will return `true` when no other channel is configured, even if the key is absent.
+`Config::comms_pty_should_load()` currently returns `false` intentionally, regardless of config.
