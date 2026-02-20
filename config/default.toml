@@ -6,6 +6,10 @@ work_dir = "~/.araliya"
 # Useful when multiple bot-pkey* directories exist.
 # identity_dir = "bot-pkey51aee87e"
 log_level = "info"
+# Force supervisor stdio management adapter in interactive terminals.
+# When true, PTY channel is auto-disabled and slash commands (/chat, /status, ...)
+# are handled by the stdio management adapter.
+stdio_management_interactive = true
 
 [comms.pty]
 # PTY (console) channel.

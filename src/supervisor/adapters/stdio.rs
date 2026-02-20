@@ -21,15 +21,26 @@ fn set_stdio_control_active(active: bool) {
     STDIO_CONTROL_ACTIVE.store(active, Ordering::Relaxed);
 }
 
-pub fn start(control: ControlHandle, bus: BusHandle, shutdown: CancellationToken) {
+pub fn start(
+    control: ControlHandle,
+    bus: BusHandle,
+    shutdown: CancellationToken,
+    interactive_enabled: bool,
+) {
     let stdin_is_terminal = std::io::stdin().is_terminal();
     let stdout_is_terminal = std::io::stdout().is_terminal();
-    let connected = !(stdin_is_terminal && stdout_is_terminal);
+    let interactive_tty = stdin_is_terminal && stdout_is_terminal;
 
-    if !connected {
+    if interactive_tty && !interactive_enabled {
         set_stdio_control_active(false);
-        info!("supervisor stdio adapter: no stdio management connection detected; PTY remains active");
+        info!("supervisor stdio adapter: interactive tty detected; adapter disabled by config, PTY remains active");
         return;
+    }
+
+    if interactive_tty {
+        info!("supervisor stdio adapter: interactive management forced by config");
+    } else {
+        info!("supervisor stdio adapter: non-interactive stdio detected; enabling management adapter");
     }
 
     set_stdio_control_active(true);
@@ -39,6 +50,12 @@ pub fn start(control: ControlHandle, bus: BusHandle, shutdown: CancellationToken
         let mut lines = BufReader::new(tokio::io::stdin()).lines();
 
         loop {
+            if interactive_tty {
+                print!("# ");
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
+            }
+
             tokio::select! {
                 biased;
 
@@ -142,8 +159,8 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
         }
         "health" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Health)),
         "status" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Status)),
-        "subsystems" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::SubsystemsList)),
-        "shutdown" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Shutdown)),
+        "subsys" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::SubsystemsList)),
+        "exit" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Shutdown)),
         "help" => ensure_no_args(rest, StdioFrame::Help),
         "" => Err("usage: /<command> [args]".to_string()),
         other => Err(format!("unknown command: /{other}")),
@@ -163,8 +180,8 @@ fn print_usage() {
     eprintln!("  /chat <message>");
     eprintln!("  /health");
     eprintln!("  /status");
-    eprintln!("  /subsystems");
-    eprintln!("  /shutdown");
+    eprintln!("  /subsys");
+    eprintln!("  /exit");
     eprintln!("  /help");
 }
 

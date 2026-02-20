@@ -128,7 +128,12 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Start supervisor-internal transport adapters for control/chat over stdio.
-    supervisor::adapters::start(control_handle, bus_handle.clone(), shutdown.clone());
+    supervisor::adapters::start(
+        control_handle,
+        bus_handle.clone(),
+        shutdown.clone(),
+        config.stdio_management_interactive,
+    );
 
     // Start comms channels as independent concurrent tasks.
     #[cfg(feature = "subsystem-comms")]

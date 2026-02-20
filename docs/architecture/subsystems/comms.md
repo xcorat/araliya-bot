@@ -30,8 +30,9 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 - Enabled when stdio is non-interactive (management/IPC attachment)
 - Performs a minimal slash protocol translation for tty lines:
   - First non-whitespace character **must** be `/`
+  - Interactive mode shows a `# ` prompt before each command
   - `/chat <message>` → `BusPayload::CommsMessage { channel_id: "pty0", content }` to `agents`
-  - `/health`, `/status`, `/subsystems`, `/shutdown` → supervisor control plane commands
+  - `/health`, `/status`, `/subsys`, `/exit` → supervisor control plane commands
   - `/help` prints protocol usage
 - Keeps comms behavior consistent by reusing the virtual PTY channel id (`pty0`)
 

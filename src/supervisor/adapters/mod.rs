@@ -12,8 +12,13 @@ use crate::supervisor::bus::BusHandle;
 use crate::supervisor::control::ControlHandle;
 
 /// Start supervisor-owned transport adapters.
-pub fn start(control: ControlHandle, bus: BusHandle, shutdown: CancellationToken) {
-    stdio::start(control.clone(), bus, shutdown.clone());
+pub fn start(
+    control: ControlHandle,
+    bus: BusHandle,
+    shutdown: CancellationToken,
+    interactive_enabled: bool,
+) {
+    stdio::start(control.clone(), bus, shutdown.clone(), interactive_enabled);
     start_http_adapter(control, shutdown);
 }
 

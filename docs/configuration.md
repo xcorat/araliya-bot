@@ -10,6 +10,7 @@ bot_name = "araliya"
 work_dir = "~/.araliya"
 identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_dir
 log_level = "info"
+stdio_management_interactive = false
 
 [comms.pty]
 enabled = true
@@ -41,6 +42,10 @@ When stdio management is connected (non-interactive stdio), the real PTY channel
 is automatically disabled and `/chat` commands are routed through a virtual PTY
 stream in the management adapter.
 
+Set `supervisor.stdio_management_interactive = true` to force stdio management
+even in interactive terminals. In that mode, PTY is also auto-disabled to avoid
+double-reading stdin.
+
 ## Modular Features (Cargo Flags)
 
 Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin is disabled via Cargo feature, it will not be loaded even if configured in `default.toml`.
@@ -64,6 +69,7 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 | `work_dir` | path | `"~/.araliya"` | Root directory for all persistent data. `~` expands to `$HOME`. |
 | `identity_dir` | path (optional) | none | Explicit identity directory. Required to disambiguate when multiple `bot-pkey*` dirs exist. |
 | `log_level` | string | `"info"` | Log verbosity: `error`, `warn`, `info`, `debug`, `trace` |
+| `stdio_management_interactive` | bool | `false` | Force stdio management adapter active in interactive TTY sessions. |
 
 ## Agents Configuration
 
