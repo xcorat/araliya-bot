@@ -65,9 +65,12 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `subsystem-llm` | `--features subsystem-llm` | Yes, for completion tools |
 | `subsystem-comms` | `--features subsystem-comms` | Yes, for PTY/HTTP I/O |
 | `subsystem-memory` | `--features subsystem-memory` | No, for session memory |
+| `subsystem-tools` | `--features subsystem-tools` | No, for tools execution |
 | `channel-pty` | `--features channel-pty` | No, for terminal console |
 | `channel-http` | `--features channel-http` | No, for HTTP `/health` channel |
 | `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
+| `plugin-gmail-tool` | `--features plugin-gmail-tool` | No, Gmail tool implementation |
+| `plugin-gmail-agent` | `--features plugin-gmail-agent` | No, `agents/gmail/read` agent |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
 
@@ -121,6 +124,11 @@ The build output goes to `ui/build/`, which matches the default `static_dir` set
 | `agents.routing` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
 | `agents.{id}.memory` | array<string> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
 
+Gmail agent endpoint:
+
+- Bus method: `agents/gmail/read`
+- Internal tool call: `tools/execute` with `tool = "gmail"`, `action = "read_latest"`
+
 ## Memory Configuration
 
 | Field | Type | Default | Description |
@@ -168,6 +176,9 @@ Secrets must come from environment variables or `.env`, never from config files.
 |----------|---------|
 | `LLM_API_KEY` | LLM provider API key |
 | `TELEGRAM_BOT_TOKEN` | Telegram channel token |
+| `GOOGLE_CLIENT_ID` | Gmail OAuth desktop client ID |
+| `GOOGLE_CLIENT_SECRET` | Optional Gmail OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | Optional loopback callback URI for Gmail tool |
 
 A `.env` file in `araliya-bot/` is loaded automatically at startup if present. It is gitignored — never commit it.
 
