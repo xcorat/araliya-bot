@@ -116,6 +116,7 @@ async fn run() -> Result<(), error::AppError> {
     
     handlers.push(Box::new(ManagementSubsystem::new(
         control_handle.clone(),
+        bus_handle.clone(),
         ManagementInfo {
             bot_id: identity.bot_id.clone(),
             llm_provider: config.llm.provider.clone(),

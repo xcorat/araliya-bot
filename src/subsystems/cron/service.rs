@@ -244,3 +244,158 @@ fn instant_to_unix_ms(instant: Instant) -> u64 {
         unix_now.checked_sub(delta).map_or(0, |d| d.as_millis() as u64)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::supervisor::bus::SupervisorBus;
+    use tokio::time;
+
+    /// Helper: spawn a CronService and return its command sender + a bus receiver
+    /// to observe emitted notifications.
+    fn spawn_test_cron() -> (
+        mpsc::Sender<CronCommand>,
+        CancellationToken,
+        mpsc::Receiver<crate::supervisor::bus::BusMessage>,
+    ) {
+        let bus = SupervisorBus::new(64);
+        let (cmd_tx, cmd_rx) = mpsc::channel(64);
+        let shutdown = CancellationToken::new();
+        let svc = CronService::new(bus.handle.clone(), cmd_rx, shutdown.clone());
+        tokio::spawn(svc.run());
+        // Return the bus receiver so tests can observe notifications.
+        (cmd_tx, shutdown, bus.rx)
+    }
+
+    #[tokio::test]
+    async fn schedule_and_list() {
+        let (tx, shutdown, _rx) = spawn_test_cron();
+
+        // Schedule one entry.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Schedule {
+            target_method: "test/ping".into(),
+            payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
+            spec: CronScheduleSpec::Interval { every_secs: 3600 },
+            reply: reply_tx,
+        }).await.unwrap();
+        let id = reply_rx.await.unwrap();
+        assert!(!id.is_empty());
+
+        // List should contain exactly that entry.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        let entries = reply_rx.await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].schedule_id, id);
+        assert_eq!(entries[0].target_method, "test/ping");
+
+        shutdown.cancel();
+    }
+
+    #[tokio::test]
+    async fn cancel_success_and_miss() {
+        let (tx, shutdown, _rx) = spawn_test_cron();
+
+        // Schedule, then cancel.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Schedule {
+            target_method: "test/x".into(),
+            payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
+            spec: CronScheduleSpec::Interval { every_secs: 60 },
+            reply: reply_tx,
+        }).await.unwrap();
+        let id = reply_rx.await.unwrap();
+
+        // Cancel existing → true.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Cancel { schedule_id: id, reply: reply_tx }).await.unwrap();
+        assert!(reply_rx.await.unwrap());
+
+        // Cancel unknown → false.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Cancel { schedule_id: "bogus".into(), reply: reply_tx }).await.unwrap();
+        assert!(!reply_rx.await.unwrap());
+
+        // List should be empty now.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        assert!(reply_rx.await.unwrap().is_empty());
+
+        shutdown.cancel();
+    }
+
+    #[tokio::test]
+    async fn interval_fires_notification() {
+        time::pause(); // control time deterministically
+
+        let (tx, shutdown, mut bus_rx) = spawn_test_cron();
+
+        // Schedule a 1-second interval.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Schedule {
+            target_method: "test/tick".into(),
+            payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
+            spec: CronScheduleSpec::Interval { every_secs: 1 },
+            reply: reply_tx,
+        }).await.unwrap();
+        reply_rx.await.unwrap();
+
+        // Advance time past the deadline.
+        time::advance(std::time::Duration::from_secs(2)).await;
+
+        // The service should have emitted a notification on the bus.
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(1), bus_rx.recv())
+            .await
+            .expect("timeout waiting for notification")
+            .expect("bus closed");
+
+        match msg {
+            crate::supervisor::bus::BusMessage::Notification { method, .. } => {
+                assert_eq!(method, "test/tick");
+            }
+            _ => panic!("expected Notification, got Request"),
+        }
+
+        shutdown.cancel();
+    }
+
+    #[tokio::test]
+    async fn once_fires_and_is_removed() {
+        time::pause();
+
+        let (tx, shutdown, mut bus_rx) = spawn_test_cron();
+
+        // Schedule a one-shot in the past → fires immediately.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::Schedule {
+            target_method: "test/once".into(),
+            payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
+            spec: CronScheduleSpec::Once { at_unix_ms: 0 },
+            reply: reply_tx,
+        }).await.unwrap();
+        reply_rx.await.unwrap();
+
+        // Advance enough for it to fire.
+        time::advance(std::time::Duration::from_millis(50)).await;
+
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(1), bus_rx.recv())
+            .await
+            .expect("timeout")
+            .expect("bus closed");
+
+        match msg {
+            crate::supervisor::bus::BusMessage::Notification { method, .. } => {
+                assert_eq!(method, "test/once");
+            }
+            _ => panic!("expected Notification"),
+        }
+
+        // List should be empty — one-shot is not re-enqueued.
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        assert!(reply_rx.await.unwrap().is_empty());
+
+        shutdown.cancel();
+    }
+}

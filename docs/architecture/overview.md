@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.3.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend).**
+**Status:** v0.4.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend)** · **Cron subsystem (timer-based event scheduling)** · **Tools subsystem (Gmail MVP)**.
 
 ---
 
@@ -25,20 +25,20 @@
 │          config · identity · logger · error          │
 ├──────────────────────────────────────────────────────┤
 │                                                      │
-│  ┌─────────────┐   ┌─────────────┐                  │
-│  │   Comms     │   │   Memory    │   Implemented     │
-│  │  Subsystem  │   │   System    │                   │
-│  │ PTY│HTTP│Ch.│   │basic_session│                   │
-│  └──────┬──────┘   └──────┬──────┘                   │
-│         │                 │                          │
-│  ┌──────┴─────────────────┴──────────────────┐       │
-│  │      Typed Channel Router (star hub)      │       │
-│  └──────┬─────────────────┬──────────────────┘       │
-│         │                 │                          │
+│  ┌─────────────┐   ┌─────────────┐  ┌────────────┐  │
+│  │   Comms     │   │   Memory    │  │    Cron    │  │
+│  │  Subsystem  │   │   System    │  │  Subsystem │  │
+│  │ PTY│HTTP│Ch.│   │basic_session│  │ timer svc  │  │
+│  └──────┬──────┘   └──────┬──────┘  └─────┬──────┘  │
+│         │                 │               │         │
+│  ┌──────┴─────────────────┴───────────────┴──┐      │
+│  │       Typed Channel Router (star hub)     │      │
+│  └──────┬─────────────────┬──────────────────┘      │
+│         │                 │                         │
 │  ┌──────┴──────┐  ┌───────┴──────┐  ┌────────────┐  │
 │  │   Agents    │  │     LLM      │  │   Tools    │  │
 │  │  Subsystem  │  │  Subsystem   │  │  Subsystem │  │
-│  │             │  │ DummyProvider│  │ (planned)  │  │
+│  │             │  │ DummyProvider│  │  Gmail MVP │  │
 │  └─────────────┘  └──────────────┘  └────────────┘  │
 │                                                      │
 └──────────────────────────────────────────────────────┘
@@ -63,6 +63,8 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `channel-http` | Channel | HTTP channel — API routes under `/api/`, optional UI serving. |
 | `subsystem-ui` | UI | Display-oriented interface providers. |
 | `ui-svui` | UI backend | Svelte-based web UI — static file serving (requires `subsystem-ui`). |
+| `subsystem-cron` | Cron | Timer-based event scheduling — emits bus notifications on schedule. |
+| `subsystem-tools` | Tools | Tool execution subsystem for agent-delegated actions. |
 
 ---
 
@@ -91,7 +93,9 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | Memory System | [subsystems/memory.md](subsystems/memory.md) | Implemented — `basic_session` store (Optional feature: `subsystem-memory`) |
 | Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |
 | LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
-| Tools | — | Planned |
+| Cron | [subsystems/cron.md](subsystems/cron.md) | Implemented (Optional feature: `subsystem-cron`) |
+| Tools | [subsystems/tools.md](subsystems/tools.md) | Implemented — Gmail MVP (Optional feature: `subsystem-tools`) |
+| Management | — | Implemented (always-on) — health API, cron status aggregation |
 
 ---
 
@@ -111,7 +115,9 @@ main()  [#[tokio::main]]
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
   ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
-  ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
+  ├─ (conditional) CronSubsystem::new(bus_handle, shutdown)  cron timer service
+  ├─ ManagementSubsystem::new(control, bus_handle, info)  health/status handler
+  ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm), Box::new(cron), ...]  register handlers
   ├─ spawn: supervisor::run(bus, control, handlers)  router + control command loop
   ├─ supervisor::adapters::start(control_handle, bus_handle, shutdown)  supervisor-internal stdio/http adapters
   ├─ (conditional) ui_handle = subsystems::ui::start(&config)  build UI serve handle
@@ -129,6 +135,9 @@ The supervisor dispatches by method prefix and immediately forwards ownership of
 Request { method, payload, reply_tx }
   ├─ "agents/*"  → agents.handle_request(method, payload, reply_tx)
   ├─ "llm/*"     → llm.handle_request(method, payload, reply_tx)
+  ├─ "cron/*"    → cron.handle_request(method, payload, reply_tx)
+  ├─ "manage/*"  → management.handle_request(method, payload, reply_tx)
+  ├─ "tools/*"   → tools.handle_request(method, payload, reply_tx)
   └─ unknown     → reply_tx.send(Err(ERR_METHOD_NOT_FOUND))
 ```
 
@@ -155,5 +164,6 @@ See [identity.md](identity.md) for full details.
 - [subsystems/agents.md](subsystems/agents.md) — agent routing, LLM wiring, method grammar
 - [subsystems/llm.md](subsystems/llm.md) — LLM provider abstraction, dummy provider, adding real providers
 - [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned)
-- [subsystems/tools.md](subsystems/tools.md) — tool registry, sandboxing (planned)
-- **Standards & Protocols** — [standards/index.md](standards/index.md) — bus protocol, component runtime, plugin interfaces, capabilities model
+- [subsystems/cron.md](subsystems/cron.md) — timer-based event scheduling, schedule/cancel/list API
+- [subsystems/tools.md](subsystems/tools.md) — tool execution, Gmail MVP
+- [standards/index.md](standards/index.md) — bus protocol, component runtime, plugin interfaces, capabilities model

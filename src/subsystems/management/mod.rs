@@ -6,7 +6,7 @@
 
 use tokio::sync::oneshot;
 
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::control::{ControlCommand, ControlHandle, ControlResponse};
 use crate::supervisor::dispatch::BusHandler;
 
@@ -21,12 +21,13 @@ pub struct ManagementInfo {
 
 pub struct ManagementSubsystem {
     control: ControlHandle,
+    bus: BusHandle,
     info: ManagementInfo,
 }
 
 impl ManagementSubsystem {
-    pub fn new(control: ControlHandle, info: ManagementInfo) -> Self {
-        Self { control, info }
+    pub fn new(control: ControlHandle, bus: BusHandle, info: ManagementInfo) -> Self {
+        Self { control, bus, info }
     }
 }
 
@@ -56,6 +57,7 @@ impl BusHandler for ManagementSubsystem {
         }
 
         let control = self.control.clone();
+        let bus = self.bus.clone();
         let info = self.info.clone();
         tokio::spawn(async move {
             let result = match control.request(ControlCommand::Status).await {
@@ -75,6 +77,27 @@ impl BusHandler for ManagementSubsystem {
                         })
                         .collect();
 
+                    // Query cron subsystem for active schedules (best-effort).
+                    let cron_schedules = match bus
+                        .request("cron/list", BusPayload::CronList)
+                        .await
+                    {
+                        Ok(Ok(BusPayload::CronListResult { entries })) => {
+                            entries
+                                .iter()
+                                .map(|e| {
+                                    serde_json::json!({
+                                        "schedule_id": e.schedule_id,
+                                        "target_method": e.target_method,
+                                        "spec": format!("{:?}", e.spec),
+                                        "next_fire_unix_ms": e.next_fire_unix_ms,
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                        _ => vec![],
+                    };
+
                     let body = serde_json::json!({
                         "status": "ok",
                         "uptime_ms": uptime_ms,
@@ -84,7 +107,9 @@ impl BusHandler for ManagementSubsystem {
                             "status": "running",
                             "uptime_ms": uptime_ms,
                             "details": {
-                                "handler_count": handlers.len()
+                                "handler_count": handlers.len(),
+                                "cron_active": cron_schedules.len(),
+                                "cron_schedules": cron_schedules,
                             }
                         },
                         "subsystems": subsystems,

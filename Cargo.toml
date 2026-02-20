@@ -75,6 +75,7 @@ ui-svui = ["subsystem-ui"]
 [dev-dependencies]
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+tokio = { version = "1", features = ["test-util"] }
 
 [profile.release]
 opt-level = "z"
