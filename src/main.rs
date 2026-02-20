@@ -37,6 +37,7 @@ use subsystems::llm::LlmSubsystem;
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
 use subsystems::management::ManagementSubsystem;
+use subsystems::management::ManagementInfo;
 
 #[tokio::main]
 async fn main() {
@@ -107,7 +108,15 @@ async fn run() -> Result<(), error::AppError> {
     #[allow(unused_mut)]
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
     
-    handlers.push(Box::new(ManagementSubsystem::new(control_handle.clone())));
+    handlers.push(Box::new(ManagementSubsystem::new(
+        control_handle.clone(),
+        ManagementInfo {
+            bot_id: identity.bot_id.clone(),
+            llm_provider: config.llm.provider.clone(),
+            llm_model: config.llm.openai.model.clone(),
+            llm_timeout_seconds: config.llm.openai.timeout_seconds,
+        },
+    )));
 
     #[cfg(feature = "subsystem-llm")]
     {

@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.4.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel with `/api/` prefix · optional UI backend delegation.**
+**Status:** v0.5.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel with full `/api/` surface (health, message, sessions) · POST body parsing · optional UI backend delegation.**
 
 ---
 
@@ -38,8 +38,12 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 
 ### HTTP Layer — Implemented
 - Single HTTP channel on a configurable bind address (default `127.0.0.1:8080`)
-- API routes live under the `/api/` prefix (e.g. `GET /api/health`)
-- When the UI subsystem is enabled (`[ui.svui]`), non-API paths are delegated to the active `UiServeHandle`; the HTTP channel receives the handle at construction
+- Request parsing supports both GET and POST methods with Content-Length body reading
+- API routes under the `/api/` prefix:
+  - `GET  /api/health`   — returns enriched health JSON (bot_id, llm_provider, model, timeout, tools, session_count)
+  - `POST /api/message`  — accepts `{"message", "session_id?", "mode?"}`, forwards to agents via bus, returns `MessageResponse` JSON
+  - `GET  /api/sessions` — returns session list (stub: `{"sessions":[]}`)
+- When the UI subsystem is enabled (`[ui.svui]`), non-API GET paths are delegated to the active `UiServeHandle`; the HTTP channel receives the handle at construction
 - When the UI subsystem is disabled, non-API paths return 404
 - Raw TCP listener with minimal request parsing (no framework dependency)
 

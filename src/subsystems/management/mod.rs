@@ -10,13 +10,23 @@ use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOU
 use crate::supervisor::control::{ControlCommand, ControlHandle, ControlResponse};
 use crate::supervisor::dispatch::BusHandler;
 
+/// Static info collected at startup and included in the health response.
+#[derive(Debug, Clone)]
+pub struct ManagementInfo {
+    pub bot_id: String,
+    pub llm_provider: String,
+    pub llm_model: String,
+    pub llm_timeout_seconds: u64,
+}
+
 pub struct ManagementSubsystem {
     control: ControlHandle,
+    info: ManagementInfo,
 }
 
 impl ManagementSubsystem {
-    pub fn new(control: ControlHandle) -> Self {
-        Self { control }
+    pub fn new(control: ControlHandle, info: ManagementInfo) -> Self {
+        Self { control, info }
     }
 }
 
@@ -46,12 +56,24 @@ impl BusHandler for ManagementSubsystem {
         }
 
         let control = self.control.clone();
+        let info = self.info.clone();
         tokio::spawn(async move {
             let result = match control.request(ControlCommand::Health).await {
                 Ok(Ok(ControlResponse::Health { uptime_ms })) => {
+                    let body = serde_json::json!({
+                        "status": "ok",
+                        "uptime_ms": uptime_ms,
+                        "bot_id": info.bot_id,
+                        "llm_provider": info.llm_provider,
+                        "llm_model": info.llm_model,
+                        "llm_timeout_seconds": info.llm_timeout_seconds,
+                        "enabled_tools": [],
+                        "max_tool_rounds": 0,
+                        "session_count": 0,
+                    });
                     Ok(BusPayload::CommsMessage {
                         channel_id: "manage-http".to_string(),
-                        content: format!("{{\"status\":\"ok\",\"uptime_ms\":{uptime_ms}}}"),
+                        content: body.to_string(),
                     })
                 }
                 Ok(Ok(_)) => Err(BusError::new(

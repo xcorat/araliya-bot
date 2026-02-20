@@ -4,6 +4,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -158,35 +159,19 @@ async fn handle_connection(
     mut socket: tokio::net::TcpStream,
     ui_handle: OptionalUiHandle,
 ) -> Result<(), AppError> {
-    let request = read_request_line(&mut socket).await?;
+    let request = read_request(&mut socket).await?;
 
-    let Some((method, path)) = request else {
+    let Some(req) = request else {
         return Ok(());
     };
 
-    if method != "GET" {
-        write_response(
-            &mut socket,
-            "405 Method Not Allowed",
-            "text/plain; charset=utf-8",
-            b"method not allowed\n",
-        )
-        .await?;
-        return Ok(());
-    }
-
-    match path.as_str() {
-        "/api/health" => {
+    match (req.method.as_str(), req.path.as_str()) {
+        // ── GET /api/health ──────────────────────────────────────────
+        ("GET", "/api/health") => {
             let response = tokio::time::timeout(Duration::from_secs(3), state.management_http_get()).await;
             match response {
                 Ok(Ok(body)) => {
-                    write_response(
-                        &mut socket,
-                        "200 OK",
-                        "application/json",
-                        body.as_bytes(),
-                    )
-                    .await?;
+                    write_json_response(&mut socket, "200 OK", body.as_bytes()).await?;
                 }
                 Ok(Err(e)) => {
                     warn!(%channel_id, "management health request failed: {e}");
@@ -210,8 +195,83 @@ async fn handle_connection(
                 }
             }
         }
-        // Root welcome page
-        "/" | "/index.html" => {
+
+        // ── POST /api/message ────────────────────────────────────────
+        ("POST", "/api/message") => {
+            let body_str = String::from_utf8(req.body)
+                .map_err(|_| AppError::Comms("request body is not valid utf-8".to_string()))?;
+
+            let msg_req: MessageRequest = match serde_json::from_str(&body_str) {
+                Ok(r) => r,
+                Err(e) => {
+                    let err_body = serde_json::json!({
+                        "error": "bad_request",
+                        "message": format!("invalid JSON: {e}")
+                    });
+                    write_json_response(
+                        &mut socket,
+                        "400 Bad Request",
+                        err_body.to_string().as_bytes(),
+                    )
+                    .await?;
+                    return Ok(());
+                }
+            };
+
+            let reply_result = tokio::time::timeout(
+                Duration::from_secs(120),
+                state.send_message(&channel_id, msg_req.message.clone()),
+            )
+            .await;
+
+            match reply_result {
+                Ok(Ok(reply)) => {
+                    let resp_body = serde_json::json!({
+                        "session_id": msg_req.session_id.unwrap_or_default(),
+                        "mode": msg_req.mode.as_deref().unwrap_or("chat"),
+                        "reply": reply,
+                        "working_memory_updated": false,
+                    });
+                    write_json_response(&mut socket, "200 OK", resp_body.to_string().as_bytes())
+                        .await?;
+                }
+                Ok(Err(e)) => {
+                    warn!(%channel_id, "message send failed: {e}");
+                    let err_body = serde_json::json!({
+                        "error": "internal",
+                        "message": format!("{e}")
+                    });
+                    write_json_response(
+                        &mut socket,
+                        "502 Bad Gateway",
+                        err_body.to_string().as_bytes(),
+                    )
+                    .await?;
+                }
+                Err(_) => {
+                    let err_body = serde_json::json!({
+                        "error": "timeout",
+                        "message": "LLM request timed out"
+                    });
+                    write_json_response(
+                        &mut socket,
+                        "504 Gateway Timeout",
+                        err_body.to_string().as_bytes(),
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        // ── GET /api/sessions ────────────────────────────────────────
+        ("GET", "/api/sessions") => {
+            // Stub: no session listing on the bus yet — return empty list.
+            let body = serde_json::json!({ "sessions": [] });
+            write_json_response(&mut socket, "200 OK", body.to_string().as_bytes()).await?;
+        }
+
+        // ── Root welcome page ────────────────────────────────────────
+        ("GET", "/" | "/index.html") => {
             write_response(
                 &mut socket,
                 "200 OK",
@@ -220,11 +280,12 @@ async fn handle_connection(
             )
             .await?;
         }
-        _ if path.starts_with("/ui") => {
-            // Delegate to UI backend if available.
+
+        // ── UI delegation ────────────────────────────────────────────
+        ("GET", path) if path.starts_with("/ui") => {
             #[cfg(feature = "subsystem-ui")]
             if let Some(ref ui) = ui_handle {
-                if let Some(resp) = ui.serve(path.as_str()) {
+                if let Some(resp) = ui.serve(path) {
                     write_response(&mut socket, resp.status, resp.content_type, &resp.body).await?;
                     return Ok(());
                 }
@@ -240,6 +301,8 @@ async fn handle_connection(
             )
             .await?;
         }
+
+        // ── Catch-all 404 ────────────────────────────────────────────
         _ => {
             #[cfg(not(feature = "subsystem-ui"))]
             let _ = &ui_handle;
@@ -257,12 +320,31 @@ async fn handle_connection(
     Ok(())
 }
 
-async fn read_request_line(
+// ── Request types ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct MessageRequest {
+    message: String,
+    session_id: Option<String>,
+    mode: Option<String>,
+}
+
+/// Parsed HTTP request with method, path, and optional body.
+struct HttpRequest {
+    method: String,
+    path: String,
+    body: Vec<u8>,
+}
+
+// ── Request parsing ───────────────────────────────────────────────────────────
+
+async fn read_request(
     socket: &mut tokio::net::TcpStream,
-) -> Result<Option<(String, String)>, AppError> {
+) -> Result<Option<HttpRequest>, AppError> {
     let mut buffer = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
 
+    // Read until we have the full header block (terminated by \r\n\r\n).
     loop {
         let n = socket.read(&mut chunk).await?;
         if n == 0 {
@@ -283,10 +365,18 @@ async fn read_request_line(
         }
     }
 
-    let request = String::from_utf8(buffer)
+    // Split headers from any body bytes already read.
+    let header_end = buffer
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap();
+    let body_start = header_end + 4;
+    let header_bytes = &buffer[..header_end];
+
+    let header_str = std::str::from_utf8(header_bytes)
         .map_err(|_| AppError::Comms("http request was not valid utf-8".to_string()))?;
 
-    let first_line = request
+    let first_line = header_str
         .lines()
         .next()
         .ok_or_else(|| AppError::Comms("empty http request".to_string()))?;
@@ -294,12 +384,42 @@ async fn read_request_line(
     let mut parts = first_line.split_whitespace();
     let method = parts
         .next()
-        .ok_or_else(|| AppError::Comms("missing http method".to_string()))?;
+        .ok_or_else(|| AppError::Comms("missing http method".to_string()))?
+        .to_string();
     let path = parts
         .next()
-        .ok_or_else(|| AppError::Comms("missing http path".to_string()))?;
+        .ok_or_else(|| AppError::Comms("missing http path".to_string()))?
+        .to_string();
 
-    Ok(Some((method.to_string(), path.to_string())))
+    // Parse Content-Length from headers (case-insensitive).
+    let content_length: usize = header_str
+        .lines()
+        .skip(1)
+        .find_map(|line| {
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("content-length:") {
+                line.split_once(':')
+                    .and_then(|(_, v)| v.trim().parse().ok())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+
+    // Read body if Content-Length > 0.
+    let mut body = buffer[body_start..].to_vec();
+    while body.len() < content_length {
+        let remaining = content_length - body.len();
+        let mut read_buf = vec![0u8; remaining.min(8192)];
+        let n = socket.read(&mut read_buf).await?;
+        if n == 0 {
+            return Err(AppError::Comms("http request body truncated".to_string()));
+        }
+        body.extend_from_slice(&read_buf[..n]);
+    }
+    body.truncate(content_length);
+
+    Ok(Some(HttpRequest { method, path, body }))
 }
 
 async fn write_redirect(
@@ -312,6 +432,14 @@ async fn write_redirect(
     socket.write_all(header.as_bytes()).await?;
     socket.shutdown().await?;
     Ok(())
+}
+
+async fn write_json_response(
+    socket: &mut tokio::net::TcpStream,
+    status: &str,
+    body: &[u8],
+) -> Result<(), AppError> {
+    write_response(socket, status, "application/json", body).await
 }
 
 async fn write_response(

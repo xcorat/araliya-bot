@@ -168,34 +168,34 @@
 					</div>
 					<div>
 						<div class="mb-1 text-xs text-muted-foreground">Bot ID</div>
-						<div class="truncate font-mono text-xs">{serviceInfo.bot_id.slice(0, 16)}...</div>
+						<div class="truncate font-mono text-xs">{serviceInfo.bot_id ? serviceInfo.bot_id.slice(0, 16) + '...' : '—'}</div>
 					</div>
 					<div>
 						<div class="mb-1 text-xs text-muted-foreground">Sessions</div>
-						<div class="font-medium">{serviceInfo.session_count}</div>
+						<div class="font-medium">{serviceInfo.session_count ?? 0}</div>
 					</div>
 					<div>
 						<div class="mb-1 text-xs text-muted-foreground">LLM Provider</div>
-						<div class="font-medium capitalize">{serviceInfo.llm_provider}</div>
+						<div class="font-medium capitalize">{serviceInfo.llm_provider ?? '—'}</div>
 					</div>
 					<div>
 						<div class="mb-1 text-xs text-muted-foreground">Model</div>
-						<div class="font-mono text-xs">{serviceInfo.llm_model}</div>
+						<div class="font-mono text-xs">{serviceInfo.llm_model ?? '—'}</div>
 					</div>
 					<div>
 						<div class="mb-1 text-xs text-muted-foreground">Timeout</div>
-						<div class="font-medium">{serviceInfo.llm_timeout_seconds}s</div>
+						<div class="font-medium">{serviceInfo.llm_timeout_seconds ?? '—'}s</div>
 					</div>
 					<div class="sm:col-span-2 lg:col-span-3">
 						<div class="mb-1 text-xs text-muted-foreground">
-							Enabled Tools ({serviceInfo.enabled_tools.length})
+							Enabled Tools ({serviceInfo.enabled_tools?.length ?? 0})
 						</div>
 						<div class="flex flex-wrap gap-1.5">
-							{#each serviceInfo.enabled_tools as tool}
+							{#each serviceInfo.enabled_tools ?? [] as tool}
 								<Badge variant="outline" class="font-mono text-[10px]">{tool}</Badge>
 							{/each}
 							<Badge variant="secondary" class="text-[10px]"
-								>max {serviceInfo.max_tool_rounds} rounds</Badge
+								>max {serviceInfo.max_tool_rounds ?? 0} rounds</Badge
 							>
 						</div>
 					</div>
