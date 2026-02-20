@@ -34,11 +34,13 @@ INFO araliya_bot: identity ready — starting subsystems bot_id=51aee87e
 
 ### Logging & Debugging
 
-Log verbosity can be increased at runtime for troubleshooting:
+Log verbosity can be set at runtime with `-v` flags:
 
 ```bash
-cargo run -- -v    # debug
-cargo run -- -vvv  # trace
+cargo run -- -v      # warn  (quiet — errors and warnings only)
+cargo run -- -vv     # info  (normal operational output)
+cargo run -- -vvv    # debug (routing, handler registration, diagnostics)
+cargo run -- -vvvv   # trace (full payload dumps, very verbose)
 ```
 
 ## 🏗️ Architecture

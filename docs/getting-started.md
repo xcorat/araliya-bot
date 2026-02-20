@@ -109,8 +109,10 @@ stat -c "%a %n" ~/.araliya/bot-pkey5d16993c/id_ed25519
 | `ARALIYA_WORK_DIR` | Override working directory (default: `~/.araliya`) |
 | `ARALIYA_LOG_LEVEL` | Override log level (default: `info`) |
 | `RUST_LOG` | Standard tracing env filter (overrides `log_level`) |
-| `-v` / `--verbose` | CLI debug verbosity override |
-| `-vv` / `-vvv` | CLI trace verbosity override |
+| `-v` | CLI override → `warn` |
+| `-vv` | CLI override → `info` |
+| `-vvv` | CLI override → `debug` |
+| `-vvvv` | CLI override → `trace` |
 
 Example:
 

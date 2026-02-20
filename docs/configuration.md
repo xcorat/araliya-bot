@@ -80,13 +80,15 @@ Provider API keys are never stored in config — supply them via environment or 
 
 ## CLI Verbosity Flags
 
-You can override log level at runtime with `-v` flags:
+You can override log level at runtime with `-v` flags. Each additional `-v` raises the verbosity one tier:
 
-| Flags | Effective level |
-|-------|------------------|
-| *(none)* | config/env resolution |
-| `-v` / `--verbose` | `debug` |
-| `-vv` / `-vvv` | `trace` |
+| Flags | Effective level | What you see |
+|-------|-----------------|------|
+| *(none)* | config/env default | whatever `log_level` is set to |
+| `-v` | `warn` | warnings and errors only |
+| `-vv` | `info` | normal operational output |
+| `-vvv` | `debug` | routing, handler registration, flow diagnostics |
+| `-vvvv`+ | `trace` | full payload dumps, very verbose |
 
 ## Environment Variable Overrides
 
@@ -121,7 +123,7 @@ TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
 Highest precedence wins:
 
-1. CLI `-v` / `-vv` / `-vvv` flags (log level only)
+1. CLI `-v` through `-vvvv` flags (log level only)
 2. `RUST_LOG` env var (log level only)
 3. `ARALIYA_*` env vars
 4. `.env` file values

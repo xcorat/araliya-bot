@@ -146,6 +146,27 @@ The supervisor owns handlers as `Vec<Box<dyn BusHandler>>` and builds a `HashMap
 
 ---
 
+## Observability
+
+The bus and supervisor emit structured `tracing` logs at `debug` and `trace` levels:
+
+| Component | Level | What is logged |
+|-----------|-------|----------------|
+| `BusHandle::request` | `debug` | Request sent (id, method), request completed (id, ok/err) |
+| `BusHandle::request` | `trace` | Full outbound payload, full result payload |
+| `BusHandle::request` | `warn` | Send failure (supervisor dead), reply channel dropped |
+| `BusHandle::notify` | `debug` | Notification sent (method) |
+| `BusHandle::notify` | `trace` | Full notification payload |
+| `BusHandle::notify` | `warn` | Buffer full (back-pressure), send failure |
+| `SupervisorBus::new` | `debug` | Bus created with buffer size |
+| Supervisor loop | `debug` | Handler registration, request/notification routing (id, method, prefix) |
+| Supervisor loop | `trace` | Full request/notification payloads at dispatch time |
+| Supervisor loop | `warn` | Unhandled request method (with error reply) |
+
+Use `-vvv` (debug) for flow diagnostics, `-vvvv` (trace) for full payload inspection. See [Configuration](../../configuration.md#cli-verbosity-flags) for the full CLI flag table.
+
+---
+
 ## IPC migration path
 
 When the architecture is extended to cross a process boundary:
