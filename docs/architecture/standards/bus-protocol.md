@@ -12,6 +12,21 @@ Supervisor management/control commands are intentionally outside this protocol a
 
 The protocol follows **JSON-RPC 2.0 semantics** — request/response correlation by `id`, structured error objects with numeric codes, and a clear separation between requests (expecting a reply) and notifications (fire-and-forget). The in-process implementation uses Tokio channels; the type definitions are IPC-ready without callsite changes (see [IPC migration path](#ipc-migration-path)).
 
+### Why a central bus and not direct calls?
+
+The bus adds ~100–500 ns per request hop — negligible compared to the I/O it orchestrates (an LLM call is ~200 ms, a Gmail API call ~500 ms). Replies travel back via `oneshot` channels that bypass the supervisor entirely, so a full request–reply chain (e.g. PTY → agents → tools → agents → PTY) costs only 2 supervisor hops, not 4.
+
+The star topology was chosen over alternatives for these reasons:
+
+| Alternative | Why not |
+|---|---|
+| Direct function calls | Tight coupling; no centralised logging, cancellation, or permission enforcement |
+| Actor-per-entity (Actix / Erlang) | Better at thousands of independent actors; we have <20 subsystems — a hub is simpler |
+| Broker (NATS, Kafka) | 100–1000× slower (network + serialisation + persistence); designed for distributed systems we don't need yet |
+| gRPC / microservices | Full network stack per call (~1–5 ms); premature for a single-process bot |
+
+The single-threaded supervisor loop can dispatch ~2–5 M msgs/sec; this only becomes a bottleneck at scales far beyond the current design. If it ever does, the [IPC migration path](#ipc-migration-path) lets us shard without changing caller code.
+
 ---
 
 ## Method naming

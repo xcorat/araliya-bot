@@ -7,7 +7,7 @@
 ## Design Principles
 
 - **Single-process supervisor model** — all subsystems run as Tokio tasks within one process; upgradeable to OS-level processes later without changing message types
-- **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor, not directly with each other
+- **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor, not directly with each other. Per-hop overhead is ~100–500 ns (tokio mpsc + oneshot); replies bypass the supervisor via direct oneshot channels. This is negligible next to the I/O the bus orchestrates (LLM/HTTP calls in the hundreds-of-ms range). The central hub provides free centralised logging, cancellation, and a future permission gate without the complexity of actor mailboxes or external brokers
 - **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
 - **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
 - **Split planes** — subsystem traffic uses the supervisor bus; supervisor management uses an internal control plane (not routed through bus methods)

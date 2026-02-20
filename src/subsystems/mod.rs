@@ -2,6 +2,8 @@
 
 pub mod agents;
 pub mod comms;
+#[cfg(feature = "subsystem-cron")]
+pub mod cron;
 pub mod llm;
 pub mod management;
 #[cfg(feature = "subsystem-memory")]

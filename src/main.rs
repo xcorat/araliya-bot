@@ -36,6 +36,9 @@ use subsystems::llm::LlmSubsystem;
 #[cfg(feature = "subsystem-tools")]
 use subsystems::tools::ToolsSubsystem;
 
+#[cfg(feature = "subsystem-cron")]
+use subsystems::cron::CronSubsystem;
+
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
@@ -140,6 +143,12 @@ async fn run() -> Result<(), error::AppError> {
         #[cfg(not(feature = "subsystem-memory"))]
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), None);
         handlers.push(Box::new(agents));
+    }
+
+    #[cfg(feature = "subsystem-cron")]
+    {
+        let cron = CronSubsystem::new(bus_handle.clone(), shutdown.clone());
+        handlers.push(Box::new(cron));
     }
 
     // Spawn supervisor run-loop (owns the bus receiver).

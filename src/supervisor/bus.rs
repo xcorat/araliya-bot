@@ -62,8 +62,57 @@ pub enum BusPayload {
     SessionQuery { session_id: String },
     /// Generic JSON response from a subsystem query.
     JsonResponse { data: String },
+
+    // ── Cron ─────────────────────────────────────────────────────────────
+
+    /// Schedule a recurring or one-shot event.
+    /// Sent to `cron/schedule`. The cron service will emit `target_method`
+    /// as a bus notification when the timer fires.
+    CronSchedule {
+        /// Bus method to emit when the timer fires (e.g. `"agents/cron/check-email"`).
+        target_method: String,
+        /// JSON-serialized `BusPayload` to attach to the emitted notification.
+        payload_json: String,
+        /// Scheduling specification.
+        spec: CronScheduleSpec,
+    },
+    /// Reply to a successful `cron/schedule` request.
+    CronScheduleResult {
+        schedule_id: String,
+    },
+    /// Cancel an active schedule by ID.
+    CronCancel {
+        schedule_id: String,
+    },
+    /// Request a listing of all active schedules.
+    CronList,
+    /// Reply to `cron/list`.
+    CronListResult {
+        entries: Vec<CronEntryInfo>,
+    },
+
     /// No payload — used by notifications whose meaning is in the method alone.
     Empty,
+}
+
+// ── Cron types ───────────────────────────────────────────────────────────────
+
+/// How a scheduled event should repeat.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CronScheduleSpec {
+    /// Fire once at a specific instant (ISO-8601 timestamp).
+    Once { at_unix_ms: u64 },
+    /// Fire repeatedly at a fixed interval.
+    Interval { every_secs: u64 },
+}
+
+/// Summary of a single active schedule, returned by `cron/list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CronEntryInfo {
+    pub schedule_id: String,
+    pub target_method: String,
+    pub spec: CronScheduleSpec,
+    pub next_fire_unix_ms: u64,
 }
 
 // ── Error ────────────────────────────────────────────────────────────────────

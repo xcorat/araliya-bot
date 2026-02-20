@@ -34,6 +34,7 @@ default = [
     "subsystem-memory",
     "subsystem-ui",
     "subsystem-tools",
+    "subsystem-cron",
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
@@ -53,6 +54,7 @@ subsystem-comms = []
 subsystem-memory = []
 subsystem-ui = []
 subsystem-tools = []
+subsystem-cron = []
 
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]

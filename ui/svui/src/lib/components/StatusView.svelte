@@ -370,7 +370,7 @@
 				{#if subsystemItems.length === 0}
 					<p class="text-sm text-muted-foreground">No subsystem details reported.</p>
 				{:else}
-					<div class="space-y-2">
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
 						{#each subsystemItems as subsystem (subsystem.id)}
 							<div
 								class={`overflow-hidden rounded-lg border shadow-sm ${subsystemCardClass(subsystem.id)}`}
@@ -378,7 +378,7 @@
 								<button
 									type="button"
 									onclick={() => toggleSubsystem(subsystem.id)}
-									class={`flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors ${subsystemHeaderClass(subsystem.id)}`}
+									class={`flex w-full items-center justify-between px-2.5 py-2 text-left transition-colors ${subsystemHeaderClass(subsystem.id)}`}
 								>
 									<div class="flex items-center gap-2">
 										<span class={`size-2 rounded-full ${statusDotClass(subsystem.status)}`}></span>

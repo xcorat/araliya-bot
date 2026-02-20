@@ -8,3 +8,4 @@
 ui/build/
 ui/svui/node_modules/
 ui/svui/.svelte-kit/
+config/gmail_token.json

@@ -14,7 +14,7 @@
 		doCheckHealth,
 		resetSession
 	} from '$lib/state.svelte';
-	import { RotateCcw, Flower2, Activity, MessageSquare } from '@lucide/svelte';
+	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen } from '@lucide/svelte';
 
 	const health = $derived(getHealthStatus());
 	const sid = $derived(getSessionId());
@@ -24,7 +24,10 @@
 	const basePath = $derived(base || '');
 	const chatPath = $derived(basePath ? `${basePath}/` : '/');
 	const statusPath = $derived(basePath ? `${basePath}/status` : '/status');
+	const docsPath = $derived(basePath ? `${basePath}/docs` : '/docs');
+	const isChatRoute = $derived(page.url.pathname === chatPath);
 	const isStatusRoute = $derived(page.url.pathname === statusPath);
+	const isDocsRoute = $derived(page.url.pathname === docsPath || page.url.pathname.startsWith(`${docsPath}/`));
 
 	const healthColor = $derived(
 		health === 'ok'
@@ -55,6 +58,12 @@
 			void goto(statusPath);
 		}
 	}
+
+	function openDocs() {
+		if (!isDocsRoute) {
+			void goto(docsPath);
+		}
+	}
 </script>
 
 <header
@@ -80,7 +89,7 @@
 		<div class="flex items-center rounded-lg border bg-muted/50 p-0.5">
 			<button
 				onclick={openChat}
-				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {!isStatusRoute
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {isChatRoute
 					? 'bg-background text-foreground shadow-sm'
 					: 'text-muted-foreground hover:text-foreground'}"
 			>
@@ -95,6 +104,15 @@
 			>
 				<Activity class="size-3" />
 				Status
+			</button>
+			<button
+				onclick={openDocs}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {isDocsRoute
+					? 'bg-background text-foreground shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				<BookOpen class="size-3" />
+				Docs
 			</button>
 		</div>
 
