@@ -28,7 +28,7 @@
 │  ┌─────────────┐   ┌─────────────┐  ┌────────────┐  │
 │  │   Comms     │   │   Memory    │  │    Cron    │  │
 │  │  Subsystem  │   │   System    │  │  Subsystem │  │
-│  │ PTY│HTTP│Ch.│   │basic_session│  │ timer svc  │  │
+│  │PTY│HTTP│Tg. │   │basic_session│  │ timer svc  │  │
 │  └──────┬──────┘   └──────┬──────┘  └─────┬──────┘  │
 │         │                 │               │         │
 │  ┌──────┴─────────────────┴───────────────┴──┐      │
@@ -61,10 +61,13 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `plugin-chat` | Agent | Session-aware chat agent — extends `ChatCore` with memory integration (requires `subsystem-llm`, `subsystem-memory`). |
 | `channel-pty` | Channel | Local console PTY channel. |
 | `channel-http` | Channel | HTTP channel — API routes under `/api/`, optional UI serving. |
+| `channel-telegram` | Channel | Telegram bot channel via teloxide (requires `TELEGRAM_BOT_TOKEN`). |
 | `subsystem-ui` | UI | Display-oriented interface providers. |
 | `ui-svui` | UI backend | Svelte-based web UI — static file serving (requires `subsystem-ui`). |
 | `subsystem-cron` | Cron | Timer-based event scheduling — emits bus notifications on schedule. |
 | `subsystem-tools` | Tools | Tool execution subsystem for agent-delegated actions. |
+| `plugin-gmail-tool` | Tool | Gmail read_latest tool implementation (OAuth). |
+| `plugin-gmail-agent` | Agent | Gmail agent — `agents/gmail/read` endpoint. |
 
 ---
 
@@ -89,6 +92,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 |-----------|-----|--------|
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
 | Comms — HTTP channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-http`) |
+| Comms — Telegram channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-telegram`) |
 | UI — svui backend | [subsystems/ui.md](subsystems/ui.md) | Implemented (Optional features: `subsystem-ui`, `ui-svui`) |
 | Memory System | [subsystems/memory.md](subsystems/memory.md) | Implemented — `basic_session` store (Optional feature: `subsystem-memory`) |
 | Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |

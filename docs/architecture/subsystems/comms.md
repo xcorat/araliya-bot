@@ -1,12 +1,12 @@
 # Comms Subsystem
 
-**Status:** v0.6.1 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel split into `http/` module (mod, api, ui) with full `/api/` surface (health, message, sessions, session detail, session memory, session files) · POST body parsing · session-id threading · optional UI backend delegation.**
+**Status:** v0.7.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel split into `http/` module (mod, api, ui) with full `/api/` surface (health, message, sessions, session detail) · POST body parsing · session-id threading · optional UI backend delegation · Telegram channel (teloxide)**.
 
 ---
 
 ## Overview
 
-The Comms subsystem manages all external I/O for the bot. It provides multiple transport layers (PTY, HTTP) and hosts pluggable **channel plugins** for messaging services (Telegram, Slack, Discord, etc.).
+The Comms subsystem manages all external I/O for the bot. It provides multiple transport layers (PTY, HTTP, Telegram) and hosts pluggable **channel plugins** for additional messaging services (Slack, Discord, etc.).
 
 Channels are plugins *within* Comms. They only handle send/recv of messages — session logic and routing lives in the Agents subsystem.
 
@@ -44,19 +44,25 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
   - `POST /api/message`             — accepts `{"message", "session_id?", "mode?"}`, forwards to agents via bus with session-id threading, returns `MessageResponse` JSON with `session_id`
   - `GET  /api/sessions`            — returns session list from agents/memory subsystem
   - `GET  /api/session/{session_id}` — returns session detail (metadata + transcript) from agents/memory subsystem
-  - `GET  /api/sessions/{session_id}/memory` — returns working memory payload for session status view
-  - `GET  /api/sessions/{session_id}/files` — returns file list (`kv.json`, `transcript.md`, etc.) with size and modified timestamp
-- Browser favicon requests are handled with `GET /favicon.ico -> 204 No Content` to avoid UI console 404 noise
 - When the UI subsystem is enabled (`[ui.svui]`), non-API GET paths are delegated to the active `UiServeHandle`; the HTTP channel receives the handle at construction
 - When the UI subsystem is disabled, non-API paths return 404
 - Raw TCP listener with minimal request parsing (no framework dependency)
 
 **Source:** `src/subsystems/comms/http/` (mod.rs — server loop & dispatch, api.rs — API route handlers, ui.rs — welcome page & UI delegation)
 
+### Telegram Channel — Implemented
+- Connects to Telegram Bot API via `teloxide`
+- Enabled by Cargo feature `channel-telegram` and config `comms.telegram.enabled = true`
+- Requires `TELEGRAM_BOT_TOKEN` env var; gracefully exits if missing
+- Receives text messages, routes through `CommsState::send_message`, replies in-chat
+- Shutdown via shared `CancellationToken` (`select!` on dispatcher + shutdown signal)
+
+**Source:** `src/subsystems/comms/telegram.rs`
+
 ### Channel Plugins — Planned
 - Pluggable, loadable/unloadable at runtime
 - Each channel handles: receive inbound message → publish to event bus, subscribe to responses → deliver outbound message
-- Planned channels: Telegram, Slack, Discord, Email, SMS, WebChat
+- Planned channels: Slack, Discord, Email, SMS, WebChat
 
 ---
 
@@ -70,11 +76,11 @@ src/
     runtime.rs          — Component trait, SubsystemHandle, spawn_components
     comms/
       mod.rs            — start(config, bus, shutdown, [ui_handle]) → SubsystemHandle
-      state.rs          — CommsState (private bus, send_message, management_http_get, request_sessions, request_session_detail, request_session_memory, request_session_files, report_event, CommsEvent, CommsReply)
+      state.rs          — CommsState (private bus, send_message, management_http_get, request_sessions, request_session_detail, report_event, CommsEvent, CommsReply)
       pty.rs            — PtyChannel: Component
       http/
         mod.rs          — HttpChannel: Component (server loop, connection dispatch, request parsing, response helpers)
-        api.rs          — API route handlers (/api/health, /api/message, /api/sessions, /api/session/{id}, /api/sessions/{id}/memory, /api/sessions/{id}/files)
+        api.rs          — API route handlers (/api/health, /api/message, /api/sessions, /api/session/{id})
         ui.rs           — UI route handlers (root welcome page, /ui/* delegation, 404 catch-all)
       telegram.rs       — TelegramChannel: Component
     ui/
@@ -93,8 +99,6 @@ channels call typed methods:
 | `management_http_get()` | Request health/status JSON from the management bus route. |
 | `request_sessions()` | Request session list JSON from the agents subsystem via `agents/sessions`. |
 | `request_session_detail(session_id)` | Request session detail JSON from agents via `agents/sessions/detail`. |
-| `request_session_memory(session_id)` | Request session working-memory JSON from agents via `agents/sessions/memory`. |
-| `request_session_files(session_id)` | Request session file list JSON from agents via `agents/sessions/files`. |
 | `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
 
 `CommsEvent` variants: `ChannelShutdown { channel_id }`, `SessionStarted { channel_id }`.
@@ -171,6 +175,10 @@ enabled = true
 # HTTP channel — API under /api/, UI on other paths when [ui.svui] enabled.
 enabled = true
 bind = "127.0.0.1:8080"
+
+[comms.telegram]
+# Telegram channel — requires TELEGRAM_BOT_TOKEN env var.
+enabled = false
 ```
 
 When stdio management is connected, Comms skips real PTY startup and management `/chat` acts as a virtual PTY stream.

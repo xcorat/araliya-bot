@@ -20,8 +20,9 @@ Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and ch
 | Feature Group | Features | Description |
 |---------------|----------|-------------|
 | **Subsystems**| `subsystem-agents`, `subsystem-llm`, `subsystem-comms`, `subsystem-memory` | Main architectural blocks. |
-| **Agents**    | `plugin-echo`, `plugin-basic-chat`, `plugin-chat` | Capabilities for the `agents` subsystem. |
+| **Agents**    | `plugin-echo`, `plugin-basic-chat`, `plugin-chat`, `plugin-gmail-agent` | Capabilities for the `agents` subsystem. |
 | **Channels**  | `channel-pty`, `channel-http`, `channel-telegram` | I/O channels for the `comms` subsystem. |
+| **Tools**     | `subsystem-tools`, `plugin-gmail-tool` | Tool execution and implementations. |
 | **UI**        | `subsystem-ui`, `ui-svui` | Web UI backend served by the HTTP channel. |
 
 **Default build (All features enabled):**
