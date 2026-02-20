@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod comms;
 pub mod llm;
+pub mod management;
 #[cfg(feature = "subsystem-memory")]
 pub mod memory;
 pub mod runtime;

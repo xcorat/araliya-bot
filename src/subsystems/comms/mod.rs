@@ -20,6 +20,7 @@
 
 mod state;
 pub mod pty;
+pub mod http;
 #[cfg(feature = "channel-telegram")]
 pub mod telegram;
 
@@ -79,6 +80,18 @@ pub fn start(
         if config.comms_telegram_should_load() {
             info!("loading telegram channel");
             components.push(Box::new(telegram::TelegramChannel::new("telegram0", state.clone())));
+        }
+    }
+
+    #[cfg(feature = "channel-http")]
+    {
+        if config.comms_http_should_load() {
+            info!(bind = %config.comms.http.bind, "loading http channel");
+            components.push(Box::new(http::HttpChannel::new(
+                "http0",
+                config.comms.http.bind.clone(),
+                state.clone(),
+            )));
         }
     }
 

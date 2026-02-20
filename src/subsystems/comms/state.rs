@@ -70,6 +70,21 @@ impl CommsState {
         }
     }
 
+    /// Request management HTTP GET handling via the supervisor bus.
+    ///
+    /// Currently this is used by the comms HTTP channel for `/health`.
+    pub async fn management_http_get(&self) -> Result<String, AppError> {
+        match self.bus.request("manage/http/get", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+        }
+    }
+
     /// Report an event to the comms subsystem manager.
     ///
     /// Non-blocking: drops the event and logs a warning if the manager is not

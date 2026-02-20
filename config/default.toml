@@ -21,6 +21,12 @@ enabled = true
 # Telegram channel — requires TELEGRAM_BOT_TOKEN env var.
 enabled = true
 
+[comms.http]
+# HTTP channel — currently exposes only GET /health.
+# Requests are bridged to the management bus route: manage/http/get
+enabled = true
+bind = "127.0.0.1:8080"
+
 [agents]
 # Which agent handles unrouted messages.
 default = "basic_chat"

@@ -36,6 +36,8 @@ use subsystems::llm::LlmSubsystem;
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
+use subsystems::management::ManagementSubsystem;
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -104,6 +106,8 @@ async fn run() -> Result<(), error::AppError> {
     // Build subsystem handlers and register with supervisor.
     #[allow(unused_mut)]
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
+    
+    handlers.push(Box::new(ManagementSubsystem::new(control_handle.clone())));
 
     #[cfg(feature = "subsystem-llm")]
     {

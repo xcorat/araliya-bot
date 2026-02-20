@@ -28,11 +28,21 @@ pub struct TelegramConfig {
     pub enabled: bool,
 }
 
+/// HTTP channel configuration.
+#[derive(Debug, Clone)]
+pub struct HttpConfig {
+    /// Whether the HTTP channel is explicitly enabled.
+    pub enabled: bool,
+    /// Socket address to bind the HTTP channel to.
+    pub bind: String,
+}
+
 /// Comms subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct CommsConfig {
     pub pty: PtyConfig,
     pub telegram: TelegramConfig,
+    pub http: HttpConfig,
 }
 
 /// OpenAI / OpenAI-compatible provider configuration.
@@ -105,6 +115,11 @@ impl Config {
     pub fn comms_telegram_should_load(&self) -> bool {
         self.comms.telegram.enabled
     }
+
+    /// Returns `true` if the HTTP channel should be loaded.
+    pub fn comms_http_should_load(&self) -> bool {
+        self.comms.http.enabled
+    }
 }
 
 /// Raw TOML shape — `serde` target before resolution.
@@ -138,6 +153,8 @@ struct RawComms {
     pty: RawPty,
     #[serde(default)]
     telegram: RawTelegram,
+    #[serde(default)]
+    http: RawHttp,
 }
 
 #[derive(Deserialize)]
@@ -152,6 +169,16 @@ struct RawTelegram {
     /// Defaults to `false`: Telegram must be explicitly enabled.
     #[serde(default = "default_false")]
     enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct RawHttp {
+    /// Defaults to `false`: HTTP must be explicitly enabled.
+    #[serde(default = "default_false")]
+    enabled: bool,
+    /// Bind address for the HTTP listener.
+    #[serde(default = "default_http_bind")]
+    bind: String,
 }
 
 #[derive(Deserialize)]
@@ -247,6 +274,19 @@ impl Default for RawTelegram {
     }
 }
 
+impl Default for RawHttp {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind: default_http_bind(),
+        }
+    }
+}
+
+fn default_http_bind() -> String {
+    "127.0.0.1:8080".to_string()
+}
+
 fn default_true() -> bool {
     true
 }
@@ -305,6 +345,10 @@ pub fn load_from(
             },
             telegram: TelegramConfig {
                 enabled: parsed.comms.telegram.enabled,
+            },
+            http: HttpConfig {
+                enabled: parsed.comms.http.enabled,
+                bind: parsed.comms.http.bind,
             },
         },
         agents: AgentsConfig {
@@ -367,6 +411,10 @@ impl Config {
             comms: CommsConfig {
                 pty: PtyConfig { enabled: true },
                 telegram: TelegramConfig { enabled: false },
+                http: HttpConfig {
+                    enabled: false,
+                    bind: default_http_bind(),
+                },
             },
             agents: AgentsConfig {
                 default_agent: "echo".into(),

@@ -24,7 +24,7 @@ dotenvy = "0.15"
 teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
 
 [features]
-default = ["subsystem-agents", "subsystem-llm", "subsystem-comms", "subsystem-memory", "plugin-echo", "plugin-basic-chat", "plugin-chat", "channel-pty", "channel-telegram"]
+default = ["subsystem-agents", "subsystem-llm", "subsystem-comms", "subsystem-memory", "plugin-echo", "plugin-basic-chat", "plugin-chat", "channel-pty", "channel-telegram", "channel-http"]
 
 # Subsystems
 subsystem-agents = []
@@ -40,6 +40,7 @@ plugin-chat = ["subsystem-agents", "subsystem-llm", "subsystem-memory"]
 # Comms Channels
 channel-pty = ["subsystem-comms"]
 channel-telegram = ["subsystem-comms", "dep:teloxide"]
+channel-http = ["subsystem-comms"]
 
 [dev-dependencies]
 tempfile = "3"
