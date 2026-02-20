@@ -32,6 +32,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 
+#[cfg(feature = "subsystem-ui")]
+use crate::subsystems::ui::UiServeHandle;
+
 use crate::config::Config;
 use crate::supervisor::bus::BusHandle;
 use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
@@ -39,6 +42,9 @@ use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
 // ── start ───────────────────────────────────────────────────────────────────
 
 /// Spawn all configured comms channels and return a [`SubsystemHandle`].
+///
+/// When a UI backend is active, its [`UiServeHandle`] is passed to the HTTP
+/// channel so non-API requests can be served by the UI subsystem.
 ///
 /// Channels start immediately.  If any channel exits with an error the shared
 /// `shutdown` token is cancelled so siblings stop cooperatively.  The handle
@@ -52,6 +58,7 @@ pub fn start(
     config: &Config,
     bus: BusHandle,
     shutdown: CancellationToken,
+    #[cfg(feature = "subsystem-ui")] ui_handle: Option<UiServeHandle>,
 ) -> SubsystemHandle {
     // Intra-subsystem event channel: channels → manager.
     let (event_tx, event_rx) = mpsc::channel::<CommsEvent>(32);
@@ -87,10 +94,17 @@ pub fn start(
     {
         if config.comms_http_should_load() {
             info!(bind = %config.comms.http.bind, "loading http channel");
+            // If the UI subsystem is active, hand the serve handle to the
+            // HTTP channel so non-API paths are served by the UI backend.
+            #[cfg(feature = "subsystem-ui")]
+            let ui = ui_handle.clone();
+            #[cfg(not(feature = "subsystem-ui"))]
+            let ui: Option<()> = None;
             components.push(Box::new(http::HttpChannel::new(
                 "http0",
                 config.comms.http.bind.clone(),
                 state.clone(),
+                ui,
             )));
         }
     }

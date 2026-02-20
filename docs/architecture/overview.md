@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.3.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`).**
+**Status:** v0.3.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend).**
 
 ---
 
@@ -60,6 +60,9 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `plugin-basic-chat` | Agent | Basic chat agent — minimal LLM pass-through (requires `subsystem-llm`). |
 | `plugin-chat` | Agent | Session-aware chat agent — extends `ChatCore` with memory integration (requires `subsystem-llm`, `subsystem-memory`). |
 | `channel-pty` | Channel | Local console PTY channel. |
+| `channel-http` | Channel | HTTP channel — API routes under `/api/`, optional UI serving. |
+| `subsystem-ui` | UI | Display-oriented interface providers. |
+| `ui-svui` | UI backend | Svelte-based web UI — static file serving (requires `subsystem-ui`). |
 
 ---
 
@@ -70,7 +73,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; routes messages between subsystems |
 | Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
 | Supervisor control | `supervisor/control.rs` | Thin supervisor-internal management interface (typed commands/responses), intended transport target for stdio/http adapters |
-| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[agents]`, `[llm]`, `[memory]` sections |
+| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[comms.http]`, `[agents]`, `[llm]`, `[memory]`, `[ui]` sections |
 | Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
 | Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
 | Error | `error.rs` | Typed error enum with thiserror |
@@ -83,7 +86,8 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | Subsystem | Doc | Status |
 |-----------|-----|--------|
 | Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
-| Comms — HTTP, channel plugins | [comms.md](subsystems/comms.md) | Planned |
+| Comms — HTTP channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-http`) |
+| UI — svui backend | [subsystems/ui.md](subsystems/ui.md) | Implemented (Optional features: `subsystem-ui`, `ui-svui`) |
 | Memory System | [subsystems/memory.md](subsystems/memory.md) | Implemented — `basic_session` store (Optional feature: `subsystem-memory`) |
 | Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |
 | LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
@@ -110,6 +114,7 @@ main()  [#[tokio::main]]
   ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
   ├─ spawn: supervisor::run(bus, control, handlers)  router + control command loop
   ├─ supervisor::adapters::start(control_handle, bus_handle, shutdown)  supervisor-internal stdio/http adapters
+  ├─ (conditional) ui_handle = subsystems::ui::start(&config)  build UI serve handle
   ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
   ├─ (conditional) comms.join().await             block until all channels exit
 ```

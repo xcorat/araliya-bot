@@ -142,7 +142,17 @@ async fn run() -> Result<(), error::AppError> {
     // Start comms channels as independent concurrent tasks.
     #[cfg(feature = "subsystem-comms")]
     {
-        let comms = subsystems::comms::start(&config, bus_handle, shutdown.clone());
+        // Build optional UI serve handle for the HTTP channel.
+        #[cfg(feature = "subsystem-ui")]
+        let ui_handle = subsystems::ui::start(&config);
+
+        let comms = subsystems::comms::start(
+            &config,
+            bus_handle,
+            shutdown.clone(),
+            #[cfg(feature = "subsystem-ui")]
+            ui_handle,
+        );
         comms.join().await?;
     }
 

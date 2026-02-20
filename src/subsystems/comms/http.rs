@@ -1,5 +1,5 @@
-//! HTTP comms channel — exposes minimal HTTP endpoints and bridges requests
-//! through the supervisor bus.
+//! HTTP comms channel — serves API endpoints under `/api/` and delegates
+//! all other paths to the UI backend when a [`UiServeHandle`] is provided.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,14 +11,24 @@ use tracing::{debug, info, warn};
 
 use crate::error::AppError;
 use crate::subsystems::runtime::{Component, ComponentFuture};
+#[cfg(feature = "subsystem-ui")]
+use crate::subsystems::ui::UiServeHandle;
 use super::state::{CommsEvent, CommsState};
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;
+
+/// Optional UI serve handle — typed alias so the struct works with or without
+/// the `subsystem-ui` feature.
+#[cfg(feature = "subsystem-ui")]
+type OptionalUiHandle = Option<UiServeHandle>;
+#[cfg(not(feature = "subsystem-ui"))]
+type OptionalUiHandle = Option<()>;
 
 pub struct HttpChannel {
     channel_id: String,
     bind_addr: String,
     state: Arc<CommsState>,
+    ui_handle: OptionalUiHandle,
 }
 
 impl HttpChannel {
@@ -26,11 +36,13 @@ impl HttpChannel {
         channel_id: impl Into<String>,
         bind_addr: impl Into<String>,
         state: Arc<CommsState>,
+        ui_handle: OptionalUiHandle,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
             bind_addr: bind_addr.into(),
             state,
+            ui_handle,
         }
     }
 }
@@ -45,6 +57,7 @@ impl Component for HttpChannel {
             self.channel_id,
             self.bind_addr,
             self.state,
+            self.ui_handle,
             shutdown,
         ))
     }
@@ -54,6 +67,7 @@ async fn run_http(
     channel_id: String,
     bind_addr: String,
     state: Arc<CommsState>,
+    ui_handle: OptionalUiHandle,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let listener = TcpListener::bind(&bind_addr)
@@ -78,8 +92,9 @@ async fn run_http(
                         state.report_event(CommsEvent::SessionStarted { channel_id: channel_id.clone() });
                         let state = state.clone();
                         let channel_id = channel_id.clone();
+                        let ui_handle = ui_handle.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_connection(state, channel_id, socket).await {
+                            if let Err(e) = handle_connection(state, channel_id, socket, ui_handle).await {
                                 warn!("http connection handling failed: {e}");
                             }
                         });
@@ -100,6 +115,7 @@ async fn handle_connection(
     state: Arc<CommsState>,
     channel_id: String,
     mut socket: tokio::net::TcpStream,
+    ui_handle: OptionalUiHandle,
 ) -> Result<(), AppError> {
     let request = read_request_line(&mut socket).await?;
 
@@ -119,7 +135,7 @@ async fn handle_connection(
     }
 
     match path.as_str() {
-        "/health" => {
+        "/api/health" => {
             let response = tokio::time::timeout(Duration::from_secs(3), state.management_http_get()).await;
             match response {
                 Ok(Ok(body)) => {
@@ -154,6 +170,17 @@ async fn handle_connection(
             }
         }
         _ => {
+            // Delegate to UI backend if available.
+            #[cfg(feature = "subsystem-ui")]
+            if let Some(ref ui) = ui_handle {
+                if let Some(resp) = ui.serve(path.as_str()) {
+                    write_response(&mut socket, resp.status, resp.content_type, &resp.body).await?;
+                    return Ok(());
+                }
+            }
+            #[cfg(not(feature = "subsystem-ui"))]
+            let _ = &ui_handle;
+
             write_response(
                 &mut socket,
                 "404 Not Found",

@@ -37,6 +37,21 @@ pub struct HttpConfig {
     pub bind: String,
 }
 
+/// SvUI (Svelte web UI) configuration.
+#[derive(Debug, Clone)]
+pub struct SvuiConfig {
+    /// Whether the svui backend is explicitly enabled.
+    pub enabled: bool,
+    /// Optional path to the static build directory.
+    pub static_dir: Option<String>,
+}
+
+/// UI subsystem configuration.
+#[derive(Debug, Clone)]
+pub struct UiConfig {
+    pub svui: SvuiConfig,
+}
+
 /// Comms subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct CommsConfig {
@@ -97,6 +112,7 @@ pub struct Config {
     pub comms: CommsConfig,
     pub agents: AgentsConfig,
     pub llm: LlmConfig,
+    pub ui: UiConfig,
     /// API key from `LLM_API_KEY` env var — `None` for keyless local models.
     /// Never sourced from TOML.
     pub llm_api_key: Option<String>,
@@ -120,6 +136,11 @@ impl Config {
     pub fn comms_http_should_load(&self) -> bool {
         self.comms.http.enabled
     }
+
+    /// Returns `true` if the svui UI backend should be loaded.
+    pub fn ui_svui_should_load(&self) -> bool {
+        self.ui.svui.enabled
+    }
 }
 
 /// Raw TOML shape — `serde` target before resolution.
@@ -134,6 +155,8 @@ struct RawConfig {
     llm: RawLlm,
     #[serde(default)]
     memory: RawMemory,
+    #[serde(default)]
+    ui: RawUi,
 }
 
 #[derive(Deserialize)]
@@ -262,6 +285,29 @@ struct RawBasicSessionConfig {
     transcript_cap: Option<usize>,
 }
 
+#[derive(Deserialize, Default)]
+struct RawUi {
+    #[serde(default)]
+    svui: RawSvui,
+}
+
+#[derive(Deserialize)]
+struct RawSvui {
+    #[serde(default = "default_false")]
+    enabled: bool,
+    #[serde(default)]
+    static_dir: Option<String>,
+}
+
+impl Default for RawSvui {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            static_dir: None,
+        }
+    }
+}
+
 impl Default for RawPty {
     fn default() -> Self {
         Self { enabled: true }
@@ -375,6 +421,12 @@ pub fn load_from(
             },
         },
         llm_api_key: env::var("LLM_API_KEY").ok(),
+        ui: UiConfig {
+            svui: SvuiConfig {
+                enabled: parsed.ui.svui.enabled,
+                static_dir: parsed.ui.svui.static_dir,
+            },
+        },
         memory_kv_cap: parsed.memory.basic_session.kv_cap,
         memory_transcript_cap: parsed.memory.basic_session.transcript_cap,
     })
@@ -432,6 +484,12 @@ impl Config {
                 },
             },
             llm_api_key: None,
+            ui: UiConfig {
+                svui: SvuiConfig {
+                    enabled: false,
+                    static_dir: None,
+                },
+            },
             memory_kv_cap: None,
             memory_transcript_cap: None,
         }

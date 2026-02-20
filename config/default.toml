@@ -22,8 +22,8 @@ enabled = true
 enabled = true
 
 [comms.http]
-# HTTP channel — currently exposes only GET /health.
-# Requests are bridged to the management bus route: manage/http/get
+# HTTP channel — API routes under /api/ (e.g. GET /api/health) and,
+# when the UI subsystem is enabled, static UI serving on all other paths.
 enabled = true
 bind = "127.0.0.1:8080"
 
@@ -61,6 +61,14 @@ enabled = false
 # Which LLM component to activate. Each component has its own config section below.
 # Options: "dummy", "openai"
 default = "openai"
+
+[ui.svui]
+# Svelte-based web UI backend — served by the HTTP channel.
+# When enabled, non-API HTTP requests are delegated to this backend.
+enabled = true
+# Optional path to a static build directory (Svelte output).
+# If absent or the directory doesn't exist, a built-in placeholder page is served.
+# static_dir = "ui/build"
 
 [llm.dummy]
 # No config — echoes input back as "[echo] {input}". Useful for testing.

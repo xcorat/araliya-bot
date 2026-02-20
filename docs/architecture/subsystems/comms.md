@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.3.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active.
+**Status:** v0.4.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel with `/api/` prefix · optional UI backend delegation.**
 
 ---
 
@@ -36,9 +36,14 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
   - `/help` prints protocol usage
 - Keeps comms behavior consistent by reusing the virtual PTY channel id (`pty0`)
 
-### HTTP Layer — Planned
-- REST API endpoints for session and message management
-- WebSocket support (future, streaming events)
+### HTTP Layer — Implemented
+- Single HTTP channel on a configurable bind address (default `127.0.0.1:8080`)
+- API routes live under the `/api/` prefix (e.g. `GET /api/health`)
+- When the UI subsystem is enabled (`[ui.svui]`), non-API paths are delegated to the active `UiServeHandle`; the HTTP channel receives the handle at construction
+- When the UI subsystem is disabled, non-API paths return 404
+- Raw TCP listener with minimal request parsing (no framework dependency)
+
+**Source:** `src/subsystems/comms/http.rs`
 
 ### Channel Plugins — Planned
 - Pluggable, loadable/unloadable at runtime
@@ -56,9 +61,14 @@ src/
   subsystems/
     runtime.rs          — Component trait, SubsystemHandle, spawn_components
     comms/
-      mod.rs            — start(config, bus, shutdown) → SubsystemHandle
-      state.rs          — CommsState (private bus, send_message, report_event, CommsEvent)
+      mod.rs            — start(config, bus, shutdown, [ui_handle]) → SubsystemHandle
+      state.rs          — CommsState (private bus, send_message, management_http_get, report_event, CommsEvent)
       pty.rs            — PtyChannel: Component
+      http.rs           — HttpChannel: Component (API /api/*, optional UI delegation)
+      telegram.rs       — TelegramChannel: Component
+    ui/
+      mod.rs            — UiServe trait, UiServeHandle, start(config) → Option<UiServeHandle>
+      svui.rs           — SvuiBackend: UiServe (static file serving, built-in placeholder)
 ```
 
 ### Capability boundary
@@ -69,6 +79,7 @@ channels call typed methods:
 | Method | Description |
 |--------|-------------|
 | `send_message(channel_id, content)` | Route a message to the agents subsystem; return the reply string. |
+| `management_http_get()` | Request health/status JSON from the management bus route. |
 | `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
 
 `CommsEvent` variants: `ChannelShutdown { channel_id }`, `SessionStarted { channel_id }`.
@@ -140,6 +151,11 @@ Ctrl-C
 [comms.pty]
 # Real PTY lane for interactive stdin/stdout.
 enabled = true
+
+[comms.http]
+# HTTP channel — API under /api/, UI on other paths when [ui.svui] enabled.
+enabled = true
+bind = "127.0.0.1:8080"
 ```
 
 When stdio management is connected, Comms skips real PTY startup and management `/chat` acts as a virtual PTY stream.
