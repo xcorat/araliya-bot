@@ -11,6 +11,12 @@ work_dir = "~/.araliya"
 identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_dir
 log_level = "info"
 
+[comms.pty]
+enabled = false
+
+[comms.telegram]
+enabled = true
+
 [agents]
 default = "basic_chat"
 
@@ -30,6 +36,9 @@ memory = ["basic_session"]
 [llm]
 provider = "dummy"
 ```
+
+`comms.pty.enabled` is currently forced off at runtime while the supervisor-internal
+control plane and management adapters are being introduced.
 
 ## Modular Features (Cargo Flags)
 

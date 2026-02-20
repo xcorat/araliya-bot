@@ -96,11 +96,10 @@ pub struct Config {
 impl Config {
     /// Returns `true` if the PTY channel should be loaded.
     ///
-    /// PTY is auto-enabled when no other comms channels are configured (always
-    /// true for now while PTY is the only channel). Explicit `enabled = false`
-    /// in config will still suppress it.
+    /// PTY is intentionally hard-disabled while supervisor control adapters are
+    /// being introduced. This remains `false` regardless of config values.
     pub fn comms_pty_should_load(&self) -> bool {
-        self.comms.pty.enabled
+        false
     }
 
     /// Returns `true` if the Telegram channel should be loaded.

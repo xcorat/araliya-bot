@@ -8,9 +8,9 @@ work_dir = "~/.araliya"
 log_level = "info"
 
 [comms.pty]
-# PTY (console) channel — auto-loads when no other channel is enabled.
-# Set to false to suppress even when no other channel is present.
-enabled = true
+# PTY (console) channel — currently hard-disabled in code while supervisor
+# control adapters are being introduced.
+enabled = false
 
 [comms.telegram]
 # Telegram channel — requires TELEGRAM_BOT_TOKEN env var.

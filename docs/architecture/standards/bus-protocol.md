@@ -2,7 +2,9 @@
 
 **Status:** Implemented — `supervisor/bus.rs`, `supervisor/dispatch.rs`
 
-The supervisor event bus is the sole communication channel between all subsystems. This document specifies the protocol every participant must follow.
+The supervisor event bus is the communication channel between subsystems. This document specifies the protocol every subsystem participant must follow.
+
+Supervisor management/control commands are intentionally outside this protocol and live on the supervisor-internal control plane (`supervisor/control.rs`).
 
 ---
 

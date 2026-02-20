@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use supervisor::bus::SupervisorBus;
+use supervisor::control::SupervisorControl;
 use supervisor::dispatch::BusHandler;
 
 #[cfg(feature = "subsystem-agents")]
@@ -84,9 +85,12 @@ async fn run() -> Result<(), error::AppError> {
 
     // Build the supervisor bus (buffer = 64 messages).
     let bus = SupervisorBus::new(64);
+    // Build the supervisor-internal control plane (buffer = 32 messages).
+    let control = SupervisorControl::new(32);
 
     // Clone the handle before moving bus into the supervisor task.
     let bus_handle = bus.handle.clone();
+    let control_handle = control.handle.clone();
 
     // Ctrl-C handler — cancels the token so all tasks shut down.
     let ctrlc_token = shutdown.clone();
@@ -120,8 +124,11 @@ async fn run() -> Result<(), error::AppError> {
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
     let sup_handle = tokio::spawn(async move {
-        supervisor::run(bus, sup_token, handlers).await;
+        supervisor::run(bus, control, sup_token, handlers).await;
     });
+
+    // Start transport adapter boundary for supervisor control plane.
+    subsystems::management::start(control_handle, shutdown.clone());
 
     // Start comms channels as independent concurrent tasks.
     #[cfg(feature = "subsystem-comms")]

@@ -66,6 +66,8 @@ pub fn start(
         if config.comms_pty_should_load() {
             info!("loading pty channel");
             components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
+        } else if config.comms.pty.enabled {
+            info!("pty channel requested but hard-disabled; skipping load");
         }
     }
 

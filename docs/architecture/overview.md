@@ -10,6 +10,7 @@
 - **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor, not directly with each other
 - **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
 - **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
+- **Split planes** — subsystem traffic uses the supervisor bus; supervisor management uses an internal control plane (not routed through bus methods)
 - **Plugin-based extensibility** — subsystems can load and unload plugins at runtime
 - **Agent / Plugin distinction** — `Agent` trait for autonomous actors in the agents subsystem; `Plugin` (future) for capability extensions in the tools subsystem
 - **Compile-time Modularity** — Subsystems (`agents`, `llm`, `comms`, `memory`) and agents can be disabled via Cargo features to optimize binary size and memory footprint.
@@ -68,6 +69,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 |--------|------|---------|
 | Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; routes messages between subsystems |
 | Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
+| Supervisor control | `supervisor/control.rs` | Thin supervisor-internal management interface (typed commands/responses), intended transport target for stdio/http adapters |
 | Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[agents]`, `[llm]`, `[memory]` sections |
 | Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
 | Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
@@ -101,11 +103,13 @@ main()  [#[tokio::main]]
   ├─ (conditional) MemorySystem::new(identity_dir, config)  init memory
   ├─ CancellationToken::new()       shared shutdown signal
   ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle before move
+  ├─ SupervisorControl::new(32)     supervisor-internal control channel
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
   ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
   ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm)]  register handlers
-  ├─ spawn: supervisor::run(bus, handlers)  pure router, HashMap prefix dispatch
+  ├─ spawn: supervisor::run(bus, control, handlers)  router + control command loop
+  ├─ management::start(control_handle, shutdown)  stdio/http adapter boundary (stubs)
   ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
   ├─ (conditional) comms.join().await             block until all channels exit
 ```

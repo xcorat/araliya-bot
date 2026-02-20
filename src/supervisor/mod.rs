@@ -1,14 +1,17 @@
 //! Supervisor — owns the event bus and routes messages between subsystems.
 
 pub mod bus;
+pub mod control;
 pub mod dispatch;
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 
 use bus::{BusError, BusMessage, ERR_METHOD_NOT_FOUND, SupervisorBus};
+use control::{ControlCommand, ControlError, ControlMessage, ControlResponse, SupervisorControl};
 use dispatch::BusHandler;
 
 /// Run the supervisor message loop until `shutdown` is cancelled.
@@ -23,6 +26,7 @@ use dispatch::BusHandler;
 /// error that must be caught before the process enters its run loop.
 pub async fn run(
     mut bus: SupervisorBus,
+    mut control: SupervisorControl,
     shutdown: CancellationToken,
     handlers: Vec<Box<dyn BusHandler>>,
 ) {
@@ -41,6 +45,14 @@ pub async fn run(
         "supervisor ready"
     );
 
+    let started_at = Instant::now();
+
+    let sorted_handler_ids = |table: &HashMap<String, Box<dyn BusHandler>>| {
+        let mut ids = table.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids
+    };
+
     loop {
         tokio::select! {
             biased;
@@ -48,6 +60,59 @@ pub async fn run(
             _ = shutdown.cancelled() => {
                 info!("supervisor shutting down");
                 break;
+            }
+
+            control_msg = control.rx.recv() => {
+                match control_msg {
+                    Some(ControlMessage::Request { command, reply_tx }) => {
+                        let uptime_ms = started_at.elapsed().as_millis() as u64;
+                        let result = match command {
+                            ControlCommand::Health => {
+                                Ok(ControlResponse::Health { uptime_ms })
+                            }
+                            ControlCommand::Status => {
+                                Ok(ControlResponse::Status {
+                                    uptime_ms,
+                                    handlers: sorted_handler_ids(&table),
+                                })
+                            }
+                            ControlCommand::SubsystemsList => {
+                                Ok(ControlResponse::Subsystems {
+                                    handlers: sorted_handler_ids(&table),
+                                })
+                            }
+                            ControlCommand::Shutdown => {
+                                info!("control requested supervisor shutdown");
+                                shutdown.cancel();
+                                Ok(ControlResponse::Ack {
+                                    message: "shutdown requested".to_string(),
+                                })
+                            }
+                            ControlCommand::SubsystemEnable { id } => {
+                                Err(ControlError::NotImplemented {
+                                    message: format!("subsystem enable not implemented: {id}"),
+                                })
+                            }
+                            ControlCommand::SubsystemDisable { id } => {
+                                Err(ControlError::NotImplemented {
+                                    message: format!("subsystem disable not implemented: {id}"),
+                                })
+                            }
+                        };
+                        let _ = reply_tx.send(result);
+                    }
+                    Some(ControlMessage::Notification { command }) => {
+                        if matches!(command, ControlCommand::Shutdown) {
+                            info!("control notification requested supervisor shutdown");
+                            shutdown.cancel();
+                        } else {
+                            debug!(?command, "control notification ignored in MVP");
+                        }
+                    }
+                    None => {
+                        info!("control channel closed");
+                    }
+                }
             }
 
             msg = bus.rx.recv() => {
