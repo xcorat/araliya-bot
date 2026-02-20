@@ -123,6 +123,55 @@
 		return 'border-muted-foreground/25 bg-muted/40 text-muted-foreground';
 	}
 
+	function subsystemKind(id: string): string {
+		const normalized = id.toLowerCase();
+		if (normalized.includes('agent')) return 'agents';
+		if (normalized.includes('comm')) return 'comms';
+		if (normalized.includes('memory')) return 'memory';
+		if (normalized.includes('llm')) return 'llm';
+		if (normalized.includes('manage')) return 'management';
+		if (normalized.includes('ui')) return 'ui';
+		return 'default';
+	}
+
+	function subsystemCardClass(id: string): string {
+		switch (subsystemKind(id)) {
+			case 'agents':
+				return 'border-violet-500/35 bg-violet-500/[0.04]';
+			case 'comms':
+				return 'border-sky-500/35 bg-sky-500/[0.04]';
+			case 'memory':
+				return 'border-amber-500/35 bg-amber-500/[0.04]';
+			case 'llm':
+				return 'border-emerald-500/35 bg-emerald-500/[0.04]';
+			case 'management':
+				return 'border-primary/35 bg-primary/[0.04]';
+			case 'ui':
+				return 'border-fuchsia-500/35 bg-fuchsia-500/[0.04]';
+			default:
+				return 'border-border/70 bg-card/80';
+		}
+	}
+
+	function subsystemHeaderClass(id: string): string {
+		switch (subsystemKind(id)) {
+			case 'agents':
+				return 'bg-violet-500/[0.08] hover:bg-violet-500/[0.14]';
+			case 'comms':
+				return 'bg-sky-500/[0.08] hover:bg-sky-500/[0.14]';
+			case 'memory':
+				return 'bg-amber-500/[0.08] hover:bg-amber-500/[0.14]';
+			case 'llm':
+				return 'bg-emerald-500/[0.08] hover:bg-emerald-500/[0.14]';
+			case 'management':
+				return 'bg-primary/[0.08] hover:bg-primary/[0.14]';
+			case 'ui':
+				return 'bg-fuchsia-500/[0.08] hover:bg-fuchsia-500/[0.14]';
+			default:
+				return 'bg-muted/20 hover:bg-muted/35';
+		}
+	}
+
 	function formatDetailLabel(key: string): string {
 		return key
 			.replace(/_/g, ' ')
@@ -145,6 +194,48 @@
 	function detailEntries(details?: Record<string, unknown>): [string, unknown][] {
 		if (!details) return [];
 		return Object.entries(details);
+	}
+
+	function pickDetail(details: Record<string, unknown> | undefined, keys: string[]): unknown {
+		if (!details) return undefined;
+		for (const key of keys) {
+			if (Object.hasOwn(details, key)) return details[key];
+		}
+		return undefined;
+	}
+
+	function detailList(details: Record<string, unknown> | undefined, keys: string[]): string[] {
+		const value = pickDetail(details, keys);
+		if (Array.isArray(value)) {
+			return value.map((entry) => formatDetailValue(entry)).filter((entry) => entry !== '—');
+		}
+		if (typeof value === 'string') {
+			return value
+				.split(',')
+				.map((part) => part.trim())
+				.filter(Boolean);
+		}
+		return [];
+	}
+
+	function detailFlag(details: Record<string, unknown> | undefined, keys: string[]): string {
+		const value = pickDetail(details, keys);
+		if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+		if (typeof value === 'number') return value > 0 ? 'Enabled' : 'Disabled';
+		if (typeof value === 'string') {
+			const normalized = value.toLowerCase();
+			if (['true', 'enabled', 'on', 'yes'].includes(normalized)) return 'Enabled';
+			if (['false', 'disabled', 'off', 'no'].includes(normalized)) return 'Disabled';
+		}
+		return '—';
+	}
+
+	function detailCount(details: Record<string, unknown> | undefined, keys: string[]): string {
+		const value = pickDetail(details, keys);
+		if (typeof value === 'number') return String(value);
+		if (Array.isArray(value)) return String(value.length);
+		if (typeof value === 'string' && value.trim()) return value;
+		return '—';
 	}
 
 	function toggleSubsystem(id: string) {
@@ -281,11 +372,13 @@
 				{:else}
 					<div class="space-y-2">
 						{#each subsystemItems as subsystem (subsystem.id)}
-							<div class="overflow-hidden rounded-lg border border-border/70 bg-card/80 shadow-sm">
+							<div
+								class={`overflow-hidden rounded-lg border shadow-sm ${subsystemCardClass(subsystem.id)}`}
+							>
 								<button
 									type="button"
 									onclick={() => toggleSubsystem(subsystem.id)}
-									class="flex w-full items-center justify-between bg-muted/20 px-3 py-2.5 text-left transition-colors hover:bg-muted/35"
+									class={`flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors ${subsystemHeaderClass(subsystem.id)}`}
 								>
 									<div class="flex items-center gap-2">
 										<span class={`size-2 rounded-full ${statusDotClass(subsystem.status)}`}></span>
@@ -309,6 +402,7 @@
 									</div>
 								</button>
 								{#if isExpanded(subsystem.id)}
+									{@const kind = subsystemKind(subsystem.id)}
 									<div class="space-y-2 border-t bg-muted/10 px-3 py-2.5 text-xs">
 										<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 											<div>
@@ -324,12 +418,96 @@
 												</div>
 											</div>
 										</div>
-										{@const details = detailEntries(subsystem.details)}
-										{#if details.length > 0}
+										{#if kind === 'agents'}
+											<div class="rounded-md border border-border/50 bg-background/60 p-2">
+												<div class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Agent Details</div>
+												<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Session Count</div>
+														<div class="font-medium">{detailCount(subsystem.details, ['session_count', 'sessions', 'active_sessions'])}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Default Agent</div>
+														<div class="font-medium">{formatDetailValue(pickDetail(subsystem.details, ['default_agent', 'agent_default']))}</div>
+													</div>
+												</div>
+												{#if detailList(subsystem.details, ['enabled_agents', 'agents_enabled', 'agents']).length > 0}
+													<div class="mt-2">
+														<div class="mb-1 text-muted-foreground">Enabled Agents</div>
+														<div class="flex flex-wrap gap-1">
+															{#each detailList(subsystem.details, ['enabled_agents', 'agents_enabled', 'agents']) as agent}
+																<Badge variant="outline" class="text-[10px]">{agent}</Badge>
+															{/each}
+														</div>
+													</div>
+												{/if}
+											</div>
+										{:else if kind === 'comms'}
+											<div class="rounded-md border border-border/50 bg-background/60 p-2">
+												<div class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Comms Details</div>
+												<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+													<div>
+														<div class="mb-0.5 text-muted-foreground">HTTP</div>
+														<div class="font-medium">{detailFlag(subsystem.details, ['http_enabled', 'http'])}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">PTY</div>
+														<div class="font-medium">{detailFlag(subsystem.details, ['pty_enabled', 'pty'])}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Telegram</div>
+														<div class="font-medium">{detailFlag(subsystem.details, ['telegram_enabled', 'telegram'])}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Routed</div>
+														<div class="font-medium">{detailCount(subsystem.details, ['routed_count', 'routes', 'routed_channels'])}</div>
+													</div>
+												</div>
+												{#if detailList(subsystem.details, ['enabled_channels', 'channels_enabled', 'enabled']).length > 0}
+													<div class="mt-2">
+														<div class="mb-1 text-muted-foreground">Enabled Channels</div>
+														<div class="flex flex-wrap gap-1">
+															{#each detailList(subsystem.details, ['enabled_channels', 'channels_enabled', 'enabled']) as channel}
+																<Badge variant="outline" class="text-[10px]">{channel}</Badge>
+															{/each}
+														</div>
+													</div>
+												{/if}
+											</div>
+										{:else if kind === 'memory'}
+											<div class="rounded-md border border-border/50 bg-background/60 p-2">
+												<div class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Memory Details</div>
+												<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Sessions</div>
+														<div class="font-medium">{detailCount(subsystem.details, ['session_count', 'sessions'])}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Index Entries</div>
+														<div class="font-medium">{detailCount(subsystem.details, ['index_size', 'index_entries'])}</div>
+													</div>
+												</div>
+											</div>
+										{:else if kind === 'llm'}
+											<div class="rounded-md border border-border/50 bg-background/60 p-2">
+												<div class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">LLM Details</div>
+												<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Provider</div>
+														<div class="font-medium">{formatDetailValue(pickDetail(subsystem.details, ['provider', 'llm_provider']))}</div>
+													</div>
+													<div>
+														<div class="mb-0.5 text-muted-foreground">Model</div>
+														<div class="font-mono text-[10px]">{formatDetailValue(pickDetail(subsystem.details, ['model', 'llm_model']))}</div>
+													</div>
+												</div>
+											</div>
+										{/if}
+										{#if detailEntries(subsystem.details).length > 0}
 											<div class="space-y-1.5">
 												<div class="text-[10px] uppercase tracking-wide text-muted-foreground">Details</div>
 												<div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-													{#each details as [key, value]}
+													{#each detailEntries(subsystem.details) as [key, value]}
 														<div class="rounded-md border border-border/50 bg-background/60 px-2 py-1.5">
 															<div class="mb-0.5 text-[10px] text-muted-foreground">{formatDetailLabel(key)}</div>
 															<div class="break-all font-mono text-[10px] text-foreground/90">
