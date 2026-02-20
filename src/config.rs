@@ -37,6 +37,15 @@ pub struct HttpConfig {
     pub bind: String,
 }
 
+/// Axum HTTP channel configuration.
+#[derive(Debug, Clone)]
+pub struct AxumChannelConfig {
+    /// Whether the axum channel is explicitly enabled.
+    pub enabled: bool,
+    /// Socket address to bind the axum listener to.
+    pub bind: String,
+}
+
 /// SvUI (Svelte web UI) configuration.
 #[derive(Debug, Clone)]
 pub struct SvuiConfig {
@@ -58,6 +67,7 @@ pub struct CommsConfig {
     pub pty: PtyConfig,
     pub telegram: TelegramConfig,
     pub http: HttpConfig,
+    pub axum_channel: AxumChannelConfig,
 }
 
 /// OpenAI / OpenAI-compatible provider configuration.
@@ -137,6 +147,11 @@ impl Config {
         self.comms.http.enabled
     }
 
+    /// Returns `true` if the axum channel should be loaded.
+    pub fn comms_axum_should_load(&self) -> bool {
+        self.comms.axum_channel.enabled
+    }
+
     /// Returns `true` if the svui UI backend should be loaded.
     pub fn ui_svui_should_load(&self) -> bool {
         self.ui.svui.enabled
@@ -178,6 +193,8 @@ struct RawComms {
     telegram: RawTelegram,
     #[serde(default)]
     http: RawHttp,
+    #[serde(default)]
+    axum_channel: RawAxumChannel,
 }
 
 #[derive(Deserialize)]
@@ -329,6 +346,23 @@ impl Default for RawHttp {
     }
 }
 
+#[derive(Deserialize)]
+struct RawAxumChannel {
+    #[serde(default = "default_false")]
+    enabled: bool,
+    #[serde(default = "default_http_bind")]
+    bind: String,
+}
+
+impl Default for RawAxumChannel {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bind: default_http_bind(),
+        }
+    }
+}
+
 fn default_http_bind() -> String {
     "127.0.0.1:8080".to_string()
 }
@@ -395,6 +429,10 @@ pub fn load_from(
             http: HttpConfig {
                 enabled: parsed.comms.http.enabled,
                 bind: parsed.comms.http.bind,
+            },
+            axum_channel: AxumChannelConfig {
+                enabled: parsed.comms.axum_channel.enabled,
+                bind: parsed.comms.axum_channel.bind,
             },
         },
         agents: AgentsConfig {
@@ -464,6 +502,10 @@ impl Config {
                 pty: PtyConfig { enabled: true },
                 telegram: TelegramConfig { enabled: false },
                 http: HttpConfig {
+                    enabled: false,
+                    bind: default_http_bind(),
+                },
+                axum_channel: AxumChannelConfig {
                     enabled: false,
                     bind: default_http_bind(),
                 },

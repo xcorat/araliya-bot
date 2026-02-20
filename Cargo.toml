@@ -22,9 +22,24 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 thiserror = "2"
 dotenvy = "0.15"
 teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
+axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
 
 [features]
-default = ["subsystem-agents", "subsystem-llm", "subsystem-comms", "subsystem-memory", "subsystem-ui", "plugin-echo", "plugin-basic-chat", "plugin-chat", "channel-pty", "channel-telegram", "channel-http", "ui-svui"]
+default = [
+    "subsystem-agents",
+    "subsystem-llm",
+    "subsystem-comms",
+    "subsystem-memory",
+    "subsystem-ui",
+    "plugin-echo",
+    "plugin-basic-chat",
+    "plugin-chat",
+    "channel-pty",
+    "channel-telegram",
+    "channel-axum",
+    "ui-svui"
+]
+
 
 # Subsystems
 subsystem-agents = []
@@ -42,12 +57,14 @@ plugin-chat = ["subsystem-agents", "subsystem-llm", "subsystem-memory"]
 channel-pty = ["subsystem-comms"]
 channel-telegram = ["subsystem-comms", "dep:teloxide"]
 channel-http = ["subsystem-comms"]
+channel-axum = ["subsystem-comms", "dep:axum"]
 
 # UI Backends
 ui-svui = ["subsystem-ui"]
 
 [dev-dependencies]
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 opt-level = "z"

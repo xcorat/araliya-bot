@@ -21,6 +21,8 @@
 mod state;
 pub mod pty;
 pub mod http;
+#[cfg(feature = "channel-axum")]
+pub mod axum_channel;
 #[cfg(feature = "channel-telegram")]
 pub mod telegram;
 
@@ -107,6 +109,41 @@ pub fn start(
                 ui,
             )));
         }
+    }
+    // Config requests the HTTP channel but the feature was not compiled in.
+    #[cfg(not(feature = "channel-http"))]
+    if config.comms_http_should_load() {
+        tracing::warn!(
+            "config has [comms.http] enabled = true but this binary was compiled \
+             without the `channel-http` feature — channel will not start. \
+             Rebuild with `--features channel-http` or set enabled = false."
+        );
+    }
+
+    #[cfg(feature = "channel-axum")]
+    {
+        if config.comms_axum_should_load() {
+            info!(bind = %config.comms.axum_channel.bind, "loading axum channel");
+            #[cfg(feature = "subsystem-ui")]
+            let ui = ui_handle.clone();
+            #[cfg(not(feature = "subsystem-ui"))]
+            let ui: Option<()> = None;
+            components.push(Box::new(axum_channel::AxumChannel::new(
+                "axum0",
+                config.comms.axum_channel.bind.clone(),
+                state.clone(),
+                ui,
+            )));
+        }
+    }
+    // Config requests the axum channel but the feature was not compiled in.
+    #[cfg(not(feature = "channel-axum"))]
+    if config.comms_axum_should_load() {
+        tracing::warn!(
+            "config has [comms.axum_channel] enabled = true but this binary was compiled \
+             without the `channel-axum` feature — channel will not start. \
+             Rebuild with `--features channel-axum` or set enabled = false."
+        );
     }
 
     if components.is_empty() {

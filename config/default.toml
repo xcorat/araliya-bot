@@ -24,8 +24,13 @@ enabled = false # *AI AGENT: DO NOT CHANGE*
 [comms.http]
 # HTTP channel — API routes under /api/ (e.g. GET /api/health) and,
 # when the UI subsystem is enabled, static UI serving on all other paths.
+enabled = false
+bind = "127.0.0.1:8080"
+
+[comms.axum_channel]
 enabled = true
 bind = "127.0.0.1:8080"
+
 
 [agents]
 # Which agent handles unrouted messages.
