@@ -18,6 +18,10 @@ enabled = true
 [comms.telegram]
 enabled = false
 
+[comms.http]
+enabled = false
+bind = "127.0.0.1:8080"
+
 [agents]
 default = "basic_chat"
 
@@ -46,6 +50,11 @@ Set `supervisor.stdio_management_interactive = true` to force stdio management
 even in interactive terminals. In that mode, PTY is also auto-disabled to avoid
 double-reading stdin.
 
+When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
+`comms.http.bind` and forwards the request to the management bus method
+`manage/http/get`. If the management adapter is unavailable, the endpoint can
+return gateway timeout/error responses.
+
 ## Modular Features (Cargo Flags)
 
 Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin is disabled via Cargo feature, it will not be loaded even if configured in `default.toml`.
@@ -57,6 +66,7 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `subsystem-comms` | `--features subsystem-comms` | Yes, for PTY/HTTP I/O |
 | `subsystem-memory` | `--features subsystem-memory` | No, for session memory |
 | `channel-pty` | `--features channel-pty` | No, for terminal console |
+| `channel-http` | `--features channel-http` | No, for HTTP `/health` channel |
 | `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
@@ -70,6 +80,15 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 | `identity_dir` | path (optional) | none | Explicit identity directory. Required to disambiguate when multiple `bot-pkey*` dirs exist. |
 | `log_level` | string | `"info"` | Log verbosity: `error`, `warn`, `info`, `debug`, `trace` |
 | `stdio_management_interactive` | bool | `false` | Force stdio management adapter active in interactive TTY sessions. |
+
+## Comms Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `comms.pty.enabled` | bool | `true` | Enables PTY (console) channel. Auto-disabled when stdio management owns stdio. |
+| `comms.telegram.enabled` | bool | `false` | Enables Telegram channel (requires `TELEGRAM_BOT_TOKEN`). |
+| `comms.http.enabled` | bool | `false` | Enables HTTP channel with `GET /health`. |
+| `comms.http.bind` | string | `"127.0.0.1:8080"` | TCP bind address for HTTP channel listener. |
 
 ## Agents Configuration
 
