@@ -87,8 +87,31 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 |-------|------|---------|-------------|
 | `comms.pty.enabled` | bool | `true` | Enables PTY (console) channel. Auto-disabled when stdio management owns stdio. |
 | `comms.telegram.enabled` | bool | `false` | Enables Telegram channel (requires `TELEGRAM_BOT_TOKEN`). |
-| `comms.http.enabled` | bool | `false` | Enables HTTP channel with `GET /health`. |
+| `comms.http.enabled` | bool | `false` | Enables HTTP channel with API and UI serving. |
 | `comms.http.bind` | string | `"127.0.0.1:8080"` | TCP bind address for HTTP channel listener. |
+
+### HTTP Routes
+
+| Path | Description |
+|------|-------------|
+| `GET /` | Root welcome page (always available, even without UI subsystem). |
+| `GET /api/health` | JSON health status from management bus. |
+| `/ui/*` | Delegated to the UI backend when `ui.svui.enabled = true`. |
+
+## UI Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `ui.svui.enabled` | bool | `true` | Enables the Svelte-based web UI backend. |
+| `ui.svui.static_dir` | string (optional) | none | Path to the static build directory. Relative to the bot's working directory. If absent, a built-in placeholder is served. |
+
+The UI is a SvelteKit SPA built with shadcn-svelte, served at `/ui/`. Build it with:
+
+```bash
+cd ui/svui && pnpm install && pnpm build
+```
+
+The build output goes to `ui/build/`, which matches the default `static_dir` setting.
 
 ## Agents Configuration
 

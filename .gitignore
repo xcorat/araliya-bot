@@ -3,3 +3,8 @@
 /.env
 /.env.*
 !/.env.example
+
+# UI build artifacts
+ui/build/
+ui/svui/node_modules/
+ui/svui/.svelte-kit/

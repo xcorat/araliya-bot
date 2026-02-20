@@ -21,7 +21,8 @@ Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and ch
 |---------------|----------|-------------|
 | **Subsystems**| `subsystem-agents`, `subsystem-llm`, `subsystem-comms`, `subsystem-memory` | Main architectural blocks. |
 | **Agents**    | `plugin-echo`, `plugin-basic-chat`, `plugin-chat` | Capabilities for the `agents` subsystem. |
-| **Channels**  | `channel-pty` | I/O channels for the `comms` subsystem. |
+| **Channels**  | `channel-pty`, `channel-http`, `channel-telegram` | I/O channels for the `comms` subsystem. |
+| **UI**        | `subsystem-ui`, `ui-svui` | Web UI backend served by the HTTP channel. |
 
 **Default build (All features enabled):**
 ```bash
@@ -42,6 +43,27 @@ For a release build:
 ```bash
 cargo build --release --locked
 ```
+
+### Building the Web UI
+
+The Svelte UI lives in `ui/svui/` and builds to `ui/build/`:
+
+```bash
+cd ui/svui
+pnpm install
+pnpm build
+```
+
+The bot serves the built UI at `http://127.0.0.1:8080/ui/` when `comms.http.enabled = true` and `ui.svui.enabled = true`.
+
+For development with hot reload:
+
+```bash
+cd ui/svui
+pnpm dev   # starts on http://localhost:5173/ui/
+```
+
+Set `VITE_API_BASE_URL=http://127.0.0.1:8080` in the dev environment to proxy API calls to the running bot.
 
 For CI/reproducible environments:
 

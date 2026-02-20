@@ -56,10 +56,12 @@ const BUILTIN_INDEX_HTML: &str = r#"<!doctype html>
 pub struct SvuiBackend {
     /// Resolved static directory path — `None` if not configured or missing.
     static_dir: Option<PathBuf>,
+    /// URL prefix to strip before looking up files (e.g. "/ui").
+    base_path: String,
 }
 
 impl SvuiBackend {
-    pub fn new(static_dir: Option<String>) -> Self {
+    pub fn new(static_dir: Option<String>, base_path: Option<String>) -> Self {
         let resolved = static_dir
             .map(PathBuf::from)
             .filter(|p| p.is_dir());
@@ -70,12 +72,32 @@ impl SvuiBackend {
             tracing::info!("svui: no static directory — using built-in placeholder");
         }
 
-        Self { static_dir: resolved }
+        let base = base_path
+            .unwrap_or_default()
+            .trim_end_matches('/')
+            .to_owned();
+
+        Self { static_dir: resolved, base_path: base }
+    }
+
+    /// Strip the base path prefix from the request path.
+    fn strip_base<'a>(&self, path: &'a str) -> &'a str {
+        if self.base_path.is_empty() {
+            return path;
+        }
+        // "/ui/foo" -> "/foo", "/ui" -> "/"
+        match path.strip_prefix(self.base_path.as_str()) {
+            Some("") => "/",
+            Some(rest) => rest,
+            None => path,
+        }
     }
 }
 
 impl UiServe for SvuiBackend {
     fn serve(&self, path: &str) -> Option<ServeResponse> {
+        let path = self.strip_base(path);
+
         // Reject paths that try to escape the static root.
         if path.contains("..") {
             return Some(ServeResponse {

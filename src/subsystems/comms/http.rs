@@ -17,6 +17,47 @@ use super::state::{CommsEvent, CommsState};
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 
+/// Simple welcome page served at the root path.
+const ROOT_INDEX_HTML: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Araliya</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f0f; color: #e0e0e0;
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh;
+    }
+    .card {
+      text-align: center; padding: 2rem 3rem;
+      border: 1px solid #333; border-radius: 12px;
+      background: #1a1a1a;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    p  { font-size: 0.9rem; color: #888; margin-bottom: 1rem; }
+    a {
+      display: inline-block; padding: 0.5rem 1.5rem;
+      border-radius: 8px; background: #2a2a3a; color: #c0c0e0;
+      text-decoration: none; font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    a:hover { background: #3a3a5a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Araliya</h1>
+    <p>Bot is running.</p>
+    <a href="/ui/">Open UI &rarr;</a>
+  </div>
+</body>
+</html>
+"#;
+
 /// Optional UI serve handle — typed alias so the struct works with or without
 /// the `subsystem-ui` feature.
 #[cfg(feature = "subsystem-ui")]
@@ -169,7 +210,17 @@ async fn handle_connection(
                 }
             }
         }
-        _ => {
+        // Root welcome page
+        "/" | "/index.html" => {
+            write_response(
+                &mut socket,
+                "200 OK",
+                "text/html; charset=utf-8",
+                ROOT_INDEX_HTML.as_bytes(),
+            )
+            .await?;
+        }
+        _ if path.starts_with("/ui") => {
             // Delegate to UI backend if available.
             #[cfg(feature = "subsystem-ui")]
             if let Some(ref ui) = ui_handle {
@@ -178,6 +229,18 @@ async fn handle_connection(
                     return Ok(());
                 }
             }
+            #[cfg(not(feature = "subsystem-ui"))]
+            let _ = &ui_handle;
+
+            write_response(
+                &mut socket,
+                "404 Not Found",
+                "text/plain; charset=utf-8",
+                b"not found\n",
+            )
+            .await?;
+        }
+        _ => {
             #[cfg(not(feature = "subsystem-ui"))]
             let _ = &ui_handle;
 
@@ -237,6 +300,18 @@ async fn read_request_line(
         .ok_or_else(|| AppError::Comms("missing http path".to_string()))?;
 
     Ok(Some((method.to_string(), path.to_string())))
+}
+
+async fn write_redirect(
+    socket: &mut tokio::net::TcpStream,
+    location: &str,
+) -> Result<(), AppError> {
+    let header = format!(
+        "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    socket.write_all(header.as_bytes()).await?;
+    socket.shutdown().await?;
+    Ok(())
 }
 
 async fn write_response(

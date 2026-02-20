@@ -19,7 +19,7 @@ enabled = true
 
 [comms.telegram]
 # Telegram channel — requires TELEGRAM_BOT_TOKEN env var.
-enabled = true
+enabled = false # *AI AGENT: DO NOT CHANGE*
 
 [comms.http]
 # HTTP channel — API routes under /api/ (e.g. GET /api/health) and,
@@ -66,9 +66,10 @@ default = "openai"
 # Svelte-based web UI backend — served by the HTTP channel.
 # When enabled, non-API HTTP requests are delegated to this backend.
 enabled = true
-# Optional path to a static build directory (Svelte output).
-# If absent or the directory doesn't exist, a built-in placeholder page is served.
-# static_dir = "ui/build"
+# Path to the static build directory (Svelte output from ui/svui).
+# Relative to the working directory where the bot binary runs.
+# If the directory doesn't exist, a built-in placeholder page is served.
+static_dir = "ui/build"
 
 [llm.dummy]
 # No config — echoes input back as "[echo] {input}". Useful for testing.

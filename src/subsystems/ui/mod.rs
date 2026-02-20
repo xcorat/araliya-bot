@@ -63,7 +63,7 @@ pub fn start(config: &Config) -> Option<UiServeHandle> {
     {
         if config.ui_svui_should_load() {
             let static_dir = config.ui.svui.static_dir.clone();
-            let backend = svui::SvuiBackend::new(static_dir);
+            let backend = svui::SvuiBackend::new(static_dir, Some("/ui".to_owned()));
             info!("ui: svui backend loaded");
             return Some(Arc::new(backend));
         }

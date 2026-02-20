@@ -1,0 +1,105 @@
+<script lang="ts">
+	import type { ActiveView } from '$lib/types';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import Badge from '$lib/components/ui/badge/badge.svelte';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import {
+		getHealthStatus,
+		getSessionId,
+		getLastUsage,
+		getSessionUsageTotals,
+		getWorkingMemoryUpdated,
+		getActiveView,
+		doCheckHealth,
+		resetSession,
+		setActiveView
+	} from '$lib/state.svelte';
+	import { RotateCcw, Flower2, Activity, MessageSquare } from '@lucide/svelte';
+
+	const health = $derived(getHealthStatus());
+	const sid = $derived(getSessionId());
+	const totals = $derived(getSessionUsageTotals());
+	const wmUpdated = $derived(getWorkingMemoryUpdated());
+	const view = $derived(getActiveView());
+
+	const healthColor = $derived(
+		health === 'ok'
+			? 'bg-emerald-500'
+			: health === 'error'
+				? 'bg-destructive'
+				: health === 'checking'
+					? 'bg-yellow-500 animate-pulse'
+					: 'bg-muted-foreground/40'
+	);
+
+	function shortSession(id: string) {
+		return id ? id.slice(0, 8) + '...' : 'none';
+	}
+
+	function formatCost(usd: number) {
+		return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
+	}
+</script>
+
+<header
+	class="flex items-center justify-between gap-3 border-b bg-background/80 px-4 py-2.5 backdrop-blur-sm"
+>
+	<div class="flex items-center gap-2.5">
+		<Flower2 class="size-5 text-primary" />
+		<span class="text-sm font-semibold">Araliya</span>
+		<button
+			onclick={() => doCheckHealth()}
+			class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+			title="Check health"
+		>
+			<span class="relative flex size-2">
+				<span class={`absolute inline-flex size-full rounded-full ${healthColor}`}></span>
+			</span>
+			{health}
+		</button>
+	</div>
+
+	<div class="flex items-center gap-1.5">
+		<!-- View toggle -->
+		<div class="flex items-center rounded-lg border bg-muted/50 p-0.5">
+			<button
+				onclick={() => setActiveView('chat')}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {view ===
+				'chat'
+					? 'bg-background text-foreground shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				<MessageSquare class="size-3" />
+				Chat
+			</button>
+			<button
+				onclick={() => setActiveView('status')}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {view ===
+				'status'
+					? 'bg-background text-foreground shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				<Activity class="size-3" />
+				Status
+			</button>
+		</div>
+
+		{#if sid}
+			<Badge variant="secondary" class="font-mono text-[10px]">
+				{shortSession(sid)}
+			</Badge>
+		{/if}
+		{#if wmUpdated}
+			<Badge variant="outline" class="text-[10px]">WM updated</Badge>
+		{/if}
+		{#if totals}
+			<Badge variant="outline" class="hidden text-[10px] sm:inline-flex">
+				{totals.total_tokens} tok &middot; {formatCost(totals.estimated_cost_usd)}
+			</Badge>
+		{/if}
+		<Button variant="ghost" size="icon" onclick={resetSession} title="New session" class="size-8">
+			<RotateCcw class="size-3.5" />
+		</Button>
+		<ThemeToggle />
+	</div>
+</header>
