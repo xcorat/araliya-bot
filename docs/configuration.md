@@ -10,7 +10,6 @@ bot_name = "araliya"
 work_dir = "~/.araliya"
 identity_dir = "bot-pkey51aee87e" # optional, absolute path or relative to work_dir
 log_level = "info"
-stdio_management_interactive = false
 
 [comms.pty]
 enabled = true
@@ -42,18 +41,9 @@ memory = ["basic_session"]
 default = "dummy"
 ```
 
-When stdio management is connected (non-interactive stdio), the real PTY channel
-is automatically disabled and `/chat` commands are routed through a virtual PTY
-stream in the management adapter.
-
-Set `supervisor.stdio_management_interactive = true` to force stdio management
-even in interactive terminals. In that mode, PTY is also auto-disabled to avoid
-double-reading stdin.
-
 When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
 `comms.http.bind` and forwards the request to the management bus method
-`manage/http/get`. If the management adapter is unavailable, the endpoint can
-return gateway timeout/error responses.
+`manage/http/get`.
 
 ## Modular Features (Cargo Flags)
 
@@ -82,13 +72,12 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 | `work_dir` | path | `"~/.araliya"` | Root directory for all persistent data. `~` expands to `$HOME`. |
 | `identity_dir` | path (optional) | none | Explicit identity directory. Required to disambiguate when multiple `bot-pkey*` dirs exist. |
 | `log_level` | string | `"info"` | Log verbosity: `error`, `warn`, `info`, `debug`, `trace` |
-| `stdio_management_interactive` | bool | `false` | Force stdio management adapter active in interactive TTY sessions. |
 
 ## Comms Configuration
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `comms.pty.enabled` | bool | `true` | Enables PTY (console) channel. Auto-disabled when stdio management owns stdio. |
+| `comms.pty.enabled` | bool | `true` | Enables PTY (console) channel. Only active when `-i` / `--interactive` is passed at runtime. Without `-i` the bot runs as a daemon with no stdio I/O. |
 | `comms.telegram.enabled` | bool | `false` | Enables Telegram channel (requires `TELEGRAM_BOT_TOKEN`). |
 | `comms.http.enabled` | bool | `false` | Enables HTTP channel with API and UI serving. |
 | `comms.http.bind` | string | `"127.0.0.1:8080"` | TCP bind address for HTTP channel listener. |
@@ -143,6 +132,13 @@ Gmail agent endpoint:
 | `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"` or `"openai"`). Requires `subsystem-llm` feature. |
 
 Provider API keys are never stored in config — supply them via environment or `.env`:
+
+## CLI Flags
+
+| Flag | Effect |
+|------|--------|
+| `-i`, `--interactive` | Activates the stdio management adapter (`/status`, `/health`, `/chat`, …) and the PTY channel. Without this flag the bot runs as a daemon — no stdin is read and no stdout is written. |
+| `-v` … `-vvvv` | Override log level (see Verbosity table below) |
 
 ## CLI Verbosity Flags
 

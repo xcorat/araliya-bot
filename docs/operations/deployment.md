@@ -83,41 +83,39 @@ file target/release/araliya-bot
 ldd target/release/araliya-bot
 ```
 
-### systemd User Service
+### systemd Service
 
-Create `~/.config/systemd/user/araliya-bot.service`:
-
-```ini
-[Unit]
-Description=Araliya Bot
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/araliya-bot
-WorkingDirectory=/usr/local/share/araliya-bot
-EnvironmentFile=%h/.config/araliya-bot/.env
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-```
+A ready-to-use unit file is provided at `deploy/araliya-bot.service` (see inline comments for full options). Quick setup:
 
 ```bash
-systemctl --user enable --now araliya-bot
-journalctl --user -fu araliya-bot
+cargo build --release
+install -m 755 target/release/araliya-bot /usr/local/bin/araliya-bot
+install -m 755 target/release/araliya-ctl /usr/local/bin/araliya-ctl
+useradd -r -s /sbin/nologin araliya
+mkdir -p /etc/araliya-bot && install -m 600 /dev/null /etc/araliya-bot/env
+echo "LLM_API_KEY=sk-..." >> /etc/araliya-bot/env
+cp deploy/araliya-bot.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now araliya-bot
+journalctl -u araliya-bot -f
+```
+
+The service runs without `-i` — daemon mode, no stdin. Use `araliya-ctl` to interact with the running daemon:
+
+```bash
+araliya-ctl status
+araliya-ctl health
+araliya-ctl subsystems
+araliya-ctl shutdown
 ```
 
 ### Environment File
 
-`~/.config/araliya-bot/.env` (mode 0600):
+`/etc/araliya-bot/env` (mode 0600, owned root):
 
 ```bash
-ARALIYA_WORK_DIR=/var/lib/araliya-bot
-ARALIYA_LOG_LEVEL=info
-# LLM_API_KEY=sk-...          (future)
-# TELEGRAM_BOT_TOKEN=...      (future)
+LLM_API_KEY=sk-...
+RUST_LOG=info              # optional; default comes from config log_level
+# TELEGRAM_BOT_TOKEN=...  # if channel-telegram is enabled
 ```
 
 ## Data Backup

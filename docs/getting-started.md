@@ -84,15 +84,43 @@ readelf -S target/release/araliya-bot | grep -E '\.debug|\.symtab|\.strtab'
 
 ## Run
 
+### Daemon mode (default)
+
 ```bash
 cargo run
-```
-
-Or directly:
-
-```bash
+# or
 ./target/debug/araliya-bot
 ```
+
+No stdin is read, no stdout is written. All tracing output goes to stderr (journald-compatible). The Unix domain socket at `{work_dir}/araliya.sock` is always active for management.
+
+### Interactive mode
+
+```bash
+./target/debug/araliya-bot -i
+```
+
+Activates the stdio management adapter and PTY channel:
+
+```
+# /status
+# /health
+# /chat <message>
+# /exit
+```
+
+### Management CLI (`araliya-ctl`)
+
+While the daemon is running (in either mode), use `araliya-ctl` from any terminal:
+
+```bash
+./target/debug/araliya-ctl status
+./target/debug/araliya-ctl health
+./target/debug/araliya-ctl subsystems
+./target/debug/araliya-ctl shutdown
+```
+
+Socket path resolution: `--socket <path>` → `$ARALIYA_WORK_DIR/araliya.sock` → `~/.araliya/araliya.sock`.
 
 ### First Run
 
@@ -127,8 +155,9 @@ stat -c "%a %n" ~/.araliya/bot-pkey5d16993c/id_ed25519
 
 ## Environment Variables
 
-| Variable | Effect |
-|----------|--------|
+| Flag / Variable | Effect |
+|-----------------|--------|
+| `-i` / `--interactive` | Enable interactive mode (management adapter + PTY). Default: daemon mode, no stdio. |
 | `ARALIYA_WORK_DIR` | Override working directory (default: `~/.araliya`) |
 | `ARALIYA_LOG_LEVEL` | Override log level (default: `info`) |
 | `RUST_LOG` | Standard tracing env filter (overrides `log_level`) |
