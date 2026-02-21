@@ -39,7 +39,6 @@ use subsystems::tools::ToolsSubsystem;
 #[cfg(feature = "subsystem-cron")]
 use subsystems::cron::CronSubsystem;
 
-#[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
 use subsystems::management::ManagementSubsystem;
@@ -86,8 +85,7 @@ async fn run() -> Result<(), error::AppError> {
     info!(bot_id = %identity.bot_id, "identity ready — starting subsystems");
 
     // TODO: focus on the order, memory should be init after the sup bus for example.
-    // Optionally build the memory system.
-    #[cfg(feature = "subsystem-memory")]
+    // Memory is always available — TmpStore makes this zero-cost even without disk config.
     let memory = {
         let mem_config = MemoryConfig {
             kv_cap: config.memory_kv_cap,
@@ -149,10 +147,7 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(feature = "subsystem-agents")]
     {
-        #[cfg(feature = "subsystem-memory")]
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone());
-        #[cfg(not(feature = "subsystem-memory"))]
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
         handlers.push(Box::new(agents));
     }
 
@@ -197,13 +192,7 @@ async fn run() -> Result<(), error::AppError> {
         comms.join().await?;
     }
 
-    #[cfg(not(feature = "subsystem-comms"))]
-    {
-        // If no comms, we might want to wait for shutdown token or just exit
-        // For now, let's keep it running if the supervisor is active.
-        info!("no comms subsystem enabled — waiting for shutdown signal");
-        shutdown.cancelled().await;
-    }
+    // CHECK: We had exited after this if there are no comms active, removed that. 
 
     // If comms exited due to EOF (not Ctrl-C), still signal everything to stop.
     shutdown.cancel();
@@ -214,7 +203,7 @@ async fn run() -> Result<(), error::AppError> {
     // appears below the tracing output.  In daemon mode, exit silently.
     if args.interactive {
         use std::io::Write as _;
-        println!("\nBye :)");
+        println!("\nBye :) ...");
         let _ = std::io::stdout().flush();
     }
     let _ = { use std::io::Write as _; std::io::stderr().flush() };
@@ -222,6 +211,7 @@ async fn run() -> Result<(), error::AppError> {
     Ok(())
 }
 
+// TODO: We used to use clap, but for lean core, we use basic parsing. Check later.
 struct CliArgs {
     log_level: Option<&'static str>,
     interactive: bool,

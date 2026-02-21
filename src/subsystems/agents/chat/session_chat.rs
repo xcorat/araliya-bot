@@ -13,7 +13,6 @@ use crate::supervisor::bus::{BusPayload, BusResult};
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
 
-#[cfg(feature = "subsystem-memory")]
 use crate::subsystems::memory::handle::SessionHandle;
 
 /// How many recent transcript entries to inject as conversation context.
@@ -21,14 +20,12 @@ const CONTEXT_WINDOW: usize = 20;
 
 pub(crate) struct SessionChatPlugin {
     /// Lazily initialised on first message.
-    #[cfg(feature = "subsystem-memory")]
     session: Arc<Mutex<Option<SessionHandle>>>,
 }
 
 impl SessionChatPlugin {
     pub fn new() -> Self {
         Self {
-            #[cfg(feature = "subsystem-memory")]
             session: Arc::new(Mutex::new(None)),
         }
     }
@@ -46,34 +43,20 @@ impl Agent for SessionChatPlugin {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
-        // Without memory feature, fall back to stateless completion.
-        #[cfg(not(feature = "subsystem-memory"))]
-        {
-            tokio::spawn(async move {
-                let result = ChatCore::basic_complete(&state, &channel_id, &content).await;
-                let _ = reply_tx.send(result);
-            });
-            return;
-        }
-
-        #[cfg(feature = "subsystem-memory")]
-        {
-            let session = self.session.clone();
-            tokio::spawn(async move {
-                let result = handle_with_memory(
-                    &session,
-                    &state,
-                    &channel_id,
-                    &content,
-                    session_id.as_deref(),
-                ).await;
-                let _ = reply_tx.send(result);
-            });
-        }
+        let session = self.session.clone();
+        tokio::spawn(async move {
+            let result = handle_with_memory(
+                &session,
+                &state,
+                &channel_id,
+                &content,
+                session_id.as_deref(),
+            ).await;
+            let _ = reply_tx.send(result);
+        });
     }
 }
 
-#[cfg(feature = "subsystem-memory")]
 async fn handle_with_memory(
     session_mutex: &Mutex<Option<SessionHandle>>,
     state: &Arc<AgentsState>,
@@ -171,7 +154,6 @@ async fn handle_with_memory(
     }
 }
 
-#[cfg(feature = "subsystem-memory")]
 fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppError> {
     let memory = &state.memory;
 
@@ -185,7 +167,6 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
     memory.create_session(&store_types, Some("chat"))
 }
 
-#[cfg(feature = "subsystem-memory")]
 fn load_session(state: &AgentsState, session_id: &str) -> Result<SessionHandle, crate::error::AppError> {
     let memory = &state.memory;
 

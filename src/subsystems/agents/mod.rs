@@ -21,7 +21,6 @@ use crate::config::AgentsConfig;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
 
-#[cfg(feature = "subsystem-memory")]
 use crate::subsystems::memory::MemorySystem;
 
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
@@ -39,9 +38,7 @@ mod gmail;
 pub struct AgentsState {
     /// Supervisor bus — private to this module.
     bus: BusHandle,
-    /// Memory system — always present when the subsystem-memory feature is
-    /// enabled.  Agents create or load sessions via this handle.
-    #[cfg(feature = "subsystem-memory")]
+    /// Memory system — always present.  Agents create or load sessions via this handle.
     pub memory: Arc<MemorySystem>,
     /// Per-agent memory store requirements from config.
     pub agent_memory: HashMap<String, Vec<String>>,
@@ -50,15 +47,10 @@ pub struct AgentsState {
 impl AgentsState {
     fn new(
         bus: BusHandle,
-        #[cfg(feature = "subsystem-memory")] memory: Arc<MemorySystem>,
+        memory: Arc<MemorySystem>,
         agent_memory: HashMap<String, Vec<String>>,
     ) -> Self {
-        Self {
-            bus,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-            agent_memory,
-        }
+        Self { bus, memory, agent_memory }
     }
 
     /// Forward content to the LLM subsystem and return the completion.
@@ -171,7 +163,7 @@ impl AgentsSubsystem {
     pub fn new(
         config: AgentsConfig,
         bus: BusHandle,
-        #[cfg(feature = "subsystem-memory")] memory: Arc<MemorySystem>,
+        memory: Arc<MemorySystem>,
     ) -> Self {
         // Default falls back to "echo" if config omits the default entirely.
         let default_agent = if config.default_agent.is_empty() {
@@ -212,12 +204,7 @@ impl AgentsSubsystem {
         }
 
         Self {
-            state: Arc::new(AgentsState::new(
-                bus,
-                #[cfg(feature = "subsystem-memory")]
-                memory,
-                agent_memory,
-            )),
+            state: Arc::new(AgentsState::new(bus, memory, agent_memory)),
             agents,
             default_agent,
             channel_map: config.channel_map,
@@ -260,39 +247,28 @@ impl AgentsSubsystem {
 
     /// Handle `agents/sessions` — return a JSON list of all sessions.
     fn handle_session_list(&self, reply_tx: oneshot::Sender<BusResult>) {
-        #[cfg(feature = "subsystem-memory")]
-        {
-            let memory = self.state.memory.clone();
+        let memory = self.state.memory.clone();
 
-            let sessions = match memory.list_sessions() {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("memory error: {e}"))));
-                    return;
-                }
-            };
+        let sessions = match memory.list_sessions() {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("memory error: {e}"))));
+                return;
+            }
+        };
 
-            let body = serde_json::json!({
-                "sessions": sessions.iter().map(|s| serde_json::json!({
-                    "session_id": s.session_id,
-                    "created_at": s.created_at,
-                    "store_types": s.store_types,
-                    "last_agent": s.last_agent,
-                })).collect::<Vec<_>>()
-            });
+        let body = serde_json::json!({
+            "sessions": sessions.iter().map(|s| serde_json::json!({
+                "session_id": s.session_id,
+                "created_at": s.created_at,
+                "store_types": s.store_types,
+                "last_agent": s.last_agent,
+            })).collect::<Vec<_>>()
+        });
 
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                data: body.to_string(),
-            }));
-        }
-
-        #[cfg(not(feature = "subsystem-memory"))]
-        {
-            let body = serde_json::json!({ "sessions": [] });
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                data: body.to_string(),
-            }));
-        }
+        let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+            data: body.to_string(),
+        }));
     }
 
     /// Handle `agents/sessions/detail` — return session metadata + transcript.
@@ -308,58 +284,47 @@ impl AgentsSubsystem {
             }
         };
 
-        #[cfg(feature = "subsystem-memory")]
-        {
-            let memory = self.state.memory.clone();
+        let memory = self.state.memory.clone();
 
-            let handle = match memory.load_session(&session_id, None) {
-                Ok(h) => h,
+        let handle = match memory.load_session(&session_id, None) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        // Read transcript asynchronously and reply.
+        tokio::spawn(async move {
+            let transcript = match handle.transcript_read_last(1000).await {
+                Ok(entries) => entries
+                    .into_iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "role": e.role,
+                            "timestamp": e.timestamp,
+                            "content": e.content,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
                 Err(e) => {
-                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        format!("transcript read failed: {e}"),
+                    )));
                     return;
                 }
             };
 
-            // Read transcript asynchronously and reply.
-            tokio::spawn(async move {
-                let transcript = match handle.transcript_read_last(1000).await {
-                    Ok(entries) => entries
-                        .into_iter()
-                        .map(|e| {
-                            serde_json::json!({
-                                "role": e.role,
-                                "timestamp": e.timestamp,
-                                "content": e.content,
-                            })
-                        })
-                        .collect::<Vec<_>>(),
-                    Err(e) => {
-                        let _ = reply_tx.send(Err(BusError::new(
-                            -32000,
-                            format!("transcript read failed: {e}"),
-                        )));
-                        return;
-                    }
-                };
-
-                let body = serde_json::json!({
-                    "session_id": session_id,
-                    "transcript": transcript,
-                });
-
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                    data: body.to_string(),
-                }));
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "transcript": transcript,
             });
-        }
 
-        #[cfg(not(feature = "subsystem-memory"))]
-        {
-            let _ = reply_tx.send(Err(BusError::new(
-                -32000,
-                format!("session not found: {session_id} (memory system disabled)"),
-            )));
-        }
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
     }
 
     /// Handle `agents/sessions/memory` — return working memory content.
@@ -375,48 +340,37 @@ impl AgentsSubsystem {
             }
         };
 
-        #[cfg(feature = "subsystem-memory")]
-        {
-            let memory = self.state.memory.clone();
+        let memory = self.state.memory.clone();
 
-            let handle = match memory.load_session(&session_id, None) {
-                Ok(h) => h,
+        let handle = match memory.load_session(&session_id, None) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            let content = match handle.working_memory_read().await {
+                Ok(c) => c,
                 Err(e) => {
-                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        format!("working memory read failed: {e}"),
+                    )));
                     return;
                 }
             };
 
-            tokio::spawn(async move {
-                let content = match handle.working_memory_read().await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = reply_tx.send(Err(BusError::new(
-                            -32000,
-                            format!("working memory read failed: {e}"),
-                        )));
-                        return;
-                    }
-                };
-
-                let body = serde_json::json!({
-                    "session_id": session_id,
-                    "content": content,
-                });
-
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                    data: body.to_string(),
-                }));
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "content": content,
             });
-        }
 
-        #[cfg(not(feature = "subsystem-memory"))]
-        {
-            let _ = reply_tx.send(Err(BusError::new(
-                -32000,
-                format!("session not found: {session_id} (memory system disabled)"),
-            )));
-        }
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
     }
 
     /// Handle `agents/sessions/files` — return files in the session directory.
@@ -432,52 +386,41 @@ impl AgentsSubsystem {
             }
         };
 
-        #[cfg(feature = "subsystem-memory")]
-        {
-            let memory = self.state.memory.clone();
+        let memory = self.state.memory.clone();
 
-            let handle = match memory.load_session(&session_id, None) {
-                Ok(h) => h,
+        let handle = match memory.load_session(&session_id, None) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            let files = match handle.list_files().await {
+                Ok(files) => files,
                 Err(e) => {
-                    let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        format!("session file listing failed: {e}"),
+                    )));
                     return;
                 }
             };
 
-            tokio::spawn(async move {
-                let files = match handle.list_files().await {
-                    Ok(files) => files,
-                    Err(e) => {
-                        let _ = reply_tx.send(Err(BusError::new(
-                            -32000,
-                            format!("session file listing failed: {e}"),
-                        )));
-                        return;
-                    }
-                };
-
-                let body = serde_json::json!({
-                    "session_id": session_id,
-                    "files": files.into_iter().map(|f| serde_json::json!({
-                        "name": f.name,
-                        "size_bytes": f.size_bytes,
-                        "modified": f.modified,
-                    })).collect::<Vec<_>>(),
-                });
-
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                    data: body.to_string(),
-                }));
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "files": files.into_iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "size_bytes": f.size_bytes,
+                    "modified": f.modified,
+                })).collect::<Vec<_>>(),
             });
-        }
 
-        #[cfg(not(feature = "subsystem-memory"))]
-        {
-            let _ = reply_tx.send(Err(BusError::new(
-                -32000,
-                format!("session not found: {session_id} (memory system disabled)"),
-            )));
-        }
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
     }
 }
 
@@ -579,7 +522,6 @@ mod tests {
 
     /// Create a throwaway `MemorySystem` backed by a temporary directory.
     /// The returned `TempDir` must be kept alive for the duration of the test.
-    #[cfg(feature = "subsystem-memory")]
     fn test_memory() -> (tempfile::TempDir, Arc<MemorySystem>) {
         let dir = tempfile::TempDir::new().unwrap();
         let mem = MemorySystem::new(dir.path(), crate::subsystems::memory::MemoryConfig::default()).unwrap();
@@ -589,7 +531,6 @@ mod tests {
     #[tokio::test]
     async fn routes_to_default_agent_when_unmapped() {
         let (_bus, handle) = echo_bus();
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
@@ -597,12 +538,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -620,7 +556,6 @@ mod tests {
     #[tokio::test]
     async fn routes_by_channel_mapping() {
         let (_bus, handle) = echo_bus();
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
         let mut channel_map = HashMap::new();
         channel_map.insert("pty0".to_string(), "echo".to_string());
@@ -631,12 +566,7 @@ mod tests {
             channel_map,
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -654,7 +584,6 @@ mod tests {
     #[tokio::test]
     async fn explicit_unknown_agent_errors() {
         let (_bus, handle) = echo_bus();
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
@@ -662,12 +591,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -682,7 +606,6 @@ mod tests {
     #[tokio::test]
     async fn empty_enabled_falls_back_to_echo() {
         let (_bus, handle) = echo_bus();
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
@@ -690,12 +613,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -716,7 +634,6 @@ mod tests {
     #[tokio::test]
     async fn disabled_default_agent_returns_error() {
         let (_bus, handle) = echo_bus();
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
         // "chat" is the default but it is not in the enabled set.
         let cfg = AgentsConfig {
@@ -725,12 +642,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -749,7 +661,6 @@ mod tests {
         let bus = SupervisorBus::new(16);
         let handle = bus.handle.clone();
         let mut rx = bus.rx;
-        #[cfg(feature = "subsystem-memory")]
         let (_dir, memory) = test_memory();
 
         // Spawn a fake LLM responder that echoes with a marker prefix.
@@ -771,12 +682,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(
-            cfg,
-            handle,
-            #[cfg(feature = "subsystem-memory")]
-            memory,
-        );
+        let agents = AgentsSubsystem::new(cfg, handle, memory);
 
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(

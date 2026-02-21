@@ -31,7 +31,6 @@ default = [
     "subsystem-agents",
     "subsystem-llm",
     "subsystem-comms",
-    "subsystem-memory",
     "subsystem-ui",
     "subsystem-tools",
     "subsystem-cron",
@@ -50,7 +49,6 @@ minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-cha
 subsystem-agents = []
 subsystem-llm = []
 subsystem-comms = []
-subsystem-memory = []
 subsystem-ui = []
 subsystem-tools = []
 subsystem-cron = []
@@ -58,7 +56,7 @@ subsystem-cron = []
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
-plugin-chat = ["subsystem-agents", "subsystem-llm", "subsystem-memory"]
+plugin-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 
