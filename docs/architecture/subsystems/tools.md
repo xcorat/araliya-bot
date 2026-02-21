@@ -39,7 +39,7 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 - Actions: `get`, `healthcheck`
 - Transport: `tools/execute` (same as all tools)
 - Uses Gmail core integration from `src/subsystems/tools/gmail.rs` (no duplicated OAuth/API stack)
-- Optional inputs: `mailbox`, `n_last`, `tsec_last`
+- Optional inputs: `label`, `mailbox`, `n_last`, `t_interval` (preferred), `tsec_last` (legacy)
 - `healthcheck` performs a minimal fetch (`maxResults=1`) with filter `in:{mailbox} newsletter`
 
 ---

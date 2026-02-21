@@ -51,6 +51,8 @@ pub struct AgentsState {
     pub agent_identities: HashMap<String, Identity>,
     /// Pricing rates for the active LLM model — used to compute per-session spend.
     pub llm_rates: ModelRates,
+    /// Default args JSON forwarded by the `news` agent to `newsmail_aggregator/get`.
+    pub news_query_args_json: String,
 }
 
 impl AgentsState {
@@ -59,8 +61,16 @@ impl AgentsState {
         memory: Arc<MemorySystem>,
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
+        news_query_args_json: String,
     ) -> Self {
-        Self { bus, memory, agent_memory, agent_identities, llm_rates: ModelRates::default() }
+        Self {
+            bus,
+            memory,
+            agent_memory,
+            agent_identities,
+            llm_rates: ModelRates::default(),
+            news_query_args_json,
+        }
     }
 
     /// Get or create a subagent identity under the parent agent's memory directory.
@@ -195,6 +205,28 @@ impl AgentsSubsystem {
         };
         let enabled_agents = config.enabled;
         let agent_memory = config.agent_memory;
+        let news_query_args_json = match config.news_query {
+            Some(q) => {
+                let mut map = serde_json::Map::new();
+                if let Some(label) = q.label {
+                    map.insert("label".to_string(), serde_json::Value::String(label));
+                }
+                if let Some(mailbox) = q.mailbox {
+                    map.insert("mailbox".to_string(), serde_json::Value::String(mailbox));
+                }
+                if let Some(n_last) = q.n_last {
+                    map.insert("n_last".to_string(), serde_json::json!(n_last));
+                }
+                if let Some(t_interval) = q.t_interval {
+                    map.insert("t_interval".to_string(), serde_json::Value::String(t_interval));
+                }
+                if let Some(tsec_last) = q.tsec_last {
+                    map.insert("tsec_last".to_string(), serde_json::json!(tsec_last));
+                }
+                serde_json::Value::Object(map).to_string()
+            }
+            None => "{}".to_string(),
+        };
 
         // Register all known built-in agents.
         // Uses agent.id() as the HashMap key so the trait method is the
@@ -240,7 +272,13 @@ impl AgentsSubsystem {
         }
 
         Ok(Self {
-            state: Arc::new(AgentsState::new(bus, memory, agent_memory, agent_identities)),
+            state: Arc::new(AgentsState::new(
+                bus,
+                memory,
+                agent_memory,
+                agent_identities,
+                news_query_args_json,
+            )),
             agents,
             default_agent,
             channel_map: config.channel_map,
@@ -595,6 +633,7 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -623,6 +662,7 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map,
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -648,6 +688,7 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -670,6 +711,7 @@ mod tests {
             enabled: HashSet::new(),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -699,6 +741,7 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -740,6 +783,7 @@ mod tests {
             enabled: HashSet::from(["basic_chat".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -789,6 +833,7 @@ mod tests {
             enabled: HashSet::from(["news".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -816,6 +861,7 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            news_query: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

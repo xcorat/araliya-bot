@@ -9,13 +9,16 @@ use super::gmail::{self, GmailSummary};
 
 #[derive(Debug, Deserialize, Default)]
 struct NewsmailArgs {
+    label: Option<String>,
     mailbox: Option<String>,
     n_last: Option<usize>,
+    t_interval: Option<String>,
     tsec_last: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedNewsmailConfig {
+    label: Option<String>,
     mailbox: String,
     n_last: usize,
     tsec_last: Option<u64>,
@@ -35,8 +38,47 @@ fn now_unix() -> u64 {
         .as_secs()
 }
 
+fn parse_interval_to_secs(input: &str) -> Option<u64> {
+    let raw = input.trim().to_ascii_lowercase();
+    if raw.is_empty() {
+        return None;
+    }
+
+    if let Ok(v) = raw.parse::<u64>() {
+        return (v > 0).then_some(v);
+    }
+
+    let split_at = raw.chars().take_while(|ch| ch.is_ascii_digit()).count();
+    if split_at == 0 || split_at >= raw.len() {
+        return None;
+    }
+
+    let amount = raw[..split_at].parse::<u64>().ok()?;
+    if amount == 0 {
+        return None;
+    }
+
+    let unit = raw[split_at..].trim();
+    let multiplier = match unit {
+        "s" | "sec" | "secs" | "second" | "seconds" => 1,
+        "m" | "min" | "mins" | "minute" | "minutes" => 60,
+        "h" | "hr" | "hrs" | "hour" | "hours" => 60 * 60,
+        "d" | "day" | "days" => 60 * 60 * 24,
+        "w" | "week" | "weeks" => 60 * 60 * 24 * 7,
+        "mon" | "month" | "months" => 60 * 60 * 24 * 30,
+        _ => return None,
+    };
+
+    amount.checked_mul(multiplier)
+}
+
 fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> ResolvedNewsmailConfig {
     let args = serde_json::from_str::<NewsmailArgs>(args_json).unwrap_or_default();
+
+    let label = args
+        .label
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
 
     let mailbox = args
         .mailbox
@@ -56,20 +98,31 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
         .clamp(1, 100);
 
     let tsec_last = args
-        .tsec_last
+        .t_interval
+        .as_deref()
+        .and_then(parse_interval_to_secs)
+        .or(args.tsec_last)
         .or(defaults.tsec_last)
         .filter(|v| *v > 0);
 
     ResolvedNewsmailConfig {
+        label,
         mailbox,
         n_last,
         tsec_last,
     }
 }
 
+fn build_query(mailbox: &str, label: Option<&str>) -> String {
+    match label {
+        Some(lbl) => format!("in:{mailbox} label:\"{lbl}\""),
+        None => format!("in:{mailbox}"),
+    }
+}
+
 pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<Vec<GmailSummary>, String> {
     let resolved = resolve_config(defaults, args_json);
-    let query = format!("in:{}", resolved.mailbox);
+    let query = build_query(&resolved.mailbox, resolved.label.as_deref());
 
     let mut items = gmail::read_many(Some(&query), resolved.n_last as u32).await?;
 
@@ -117,6 +170,12 @@ mod tests {
     }
 
     #[test]
+    fn resolve_uses_t_interval_key() {
+        let resolved = resolve_config(defaults(), r#"{"t_interval": "1d"}"#);
+        assert_eq!(resolved.tsec_last, Some(86_400));
+    }
+
+    #[test]
     fn resolve_ignores_zero_tsec_last() {
         let resolved = resolve_config(defaults(), r#"{"tsec_last": 0}"#);
         assert_eq!(resolved.tsec_last, None);
@@ -125,9 +184,28 @@ mod tests {
     #[test]
     fn resolve_falls_back_to_defaults_on_invalid_json() {
         let resolved = resolve_config(defaults(), "not-json");
+        assert_eq!(resolved.label, None);
         assert_eq!(resolved.mailbox, "inbox");
         assert_eq!(resolved.n_last, 10);
         assert_eq!(resolved.tsec_last, Some(600));
+    }
+
+    #[test]
+    fn resolve_uses_label_key() {
+        let resolved = resolve_config(defaults(), r#"{"label": "n/News"}"#);
+        assert_eq!(resolved.label.as_deref(), Some("n/News"));
+    }
+
+    #[test]
+    fn build_query_with_label() {
+        assert_eq!(build_query("inbox", Some("n/News")), "in:inbox label:\"n/News\"");
+    }
+
+    #[test]
+    fn parse_interval_examples() {
+        assert_eq!(parse_interval_to_secs("1min"), Some(60));
+        assert_eq!(parse_interval_to_secs("1d"), Some(86_400));
+        assert_eq!(parse_interval_to_secs("1mon"), Some(2_592_000));
     }
 
     #[test]

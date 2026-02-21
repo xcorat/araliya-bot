@@ -194,7 +194,7 @@ Newsmail aggregator tool endpoint:
 
 - Bus method: `tools/execute`
 - Tool/action: `tool = "newsmail_aggregator"`, `action = "get"`
-- Current request shape: empty `{}` supported; optional keys are `mailbox`, `n_last`, `tsec_last`
+- Current request shape: empty `{}` supported; optional keys are `label`, `mailbox`, `n_last`, `t_interval` (preferred), `tsec_last` (legacy)
 - Healthcheck action: `tool = "newsmail_aggregator"`, `action = "healthcheck"` (returns one `newsletter`-filtered sample when available)
 
 News agent endpoint (MVP):
@@ -203,6 +203,15 @@ News agent endpoint (MVP):
 - Internal tool call: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
 - Health path: `agents/news/health` returns local component status text
 - Interactive shortcut: `/health news` in stdio mode
+- Default query args can be set in config via `[agents.news.query]`
+
+`agents.news.query` fields:
+
+- `label` (optional string, Gmail label name e.g. `n/News`)
+- `mailbox` (optional string)
+- `n_last` (optional integer)
+- `t_interval` (optional string duration, e.g. `1min`, `1d`, `1mon`)
+- `tsec_last` (optional integer seconds, legacy fallback)
 
 ## Tools Configuration
 

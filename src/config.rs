@@ -125,6 +125,18 @@ pub struct AgentsConfig {
     pub enabled: HashSet<String>,
     /// Per-agent memory store requirements: agent_id -> list of store type names.
     pub agent_memory: HashMap<String, Vec<String>>,
+    /// Optional default query args for the `news` agent -> `newsmail_aggregator/get`.
+    pub news_query: Option<NewsAgentQueryConfig>,
+}
+
+/// Optional query defaults for the `news` agent.
+#[derive(Debug, Clone)]
+pub struct NewsAgentQueryConfig {
+    pub label: Option<String>,
+    pub mailbox: Option<String>,
+    pub n_last: Option<usize>,
+    pub t_interval: Option<String>,
+    pub tsec_last: Option<u64>,
 }
 
 /// Fully-resolved supervisor configuration.
@@ -313,6 +325,23 @@ struct RawAgentEntry {
     /// Memory store types this agent requires (e.g. `["basic_session"]`).
     #[serde(default)]
     memory: Vec<String>,
+    /// Optional per-agent query defaults (used by `agents.news.query`).
+    #[serde(default)]
+    query: Option<RawNewsAgentQuery>,
+}
+
+#[derive(Deserialize)]
+struct RawNewsAgentQuery {
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    mailbox: Option<String>,
+    #[serde(default)]
+    n_last: Option<usize>,
+    #[serde(default)]
+    t_interval: Option<String>,
+    #[serde(default)]
+    tsec_last: Option<u64>,
 }
 
 fn default_agent_name() -> String { "basic_chat".to_string() }
@@ -533,6 +562,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 channel_map: HashMap::new(),
                 enabled: HashSet::from(["basic_chat".to_string()]),
                 agent_memory: HashMap::new(),
+                news_query: None,
             },
             llm: LlmConfig {
                 provider: "dummy".to_string(),
@@ -590,6 +620,17 @@ pub fn load_from(
         }
     });
 
+    let news_query = parsed.agents.entries
+        .get("news")
+        .and_then(|entry| entry.query.as_ref())
+        .map(|q| NewsAgentQueryConfig {
+            label: q.label.clone(),
+            mailbox: q.mailbox.clone(),
+            n_last: q.n_last,
+            t_interval: q.t_interval.clone(),
+            tsec_last: q.tsec_last,
+        });
+
     Ok(Config {
         bot_name: s.bot_name,
         work_dir,
@@ -624,6 +665,7 @@ pub fn load_from(
                 .filter(|(_, e)| !e.memory.is_empty())
                 .map(|(id, e)| (id, e.memory))
                 .collect(),
+            news_query,
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,
@@ -700,6 +742,7 @@ impl Config {
                 enabled: HashSet::from(["echo".to_string()]),
                 channel_map: HashMap::new(),
                 agent_memory: HashMap::new(),
+                news_query: None,
             },
             llm: LlmConfig {
                 provider: "dummy".into(),
