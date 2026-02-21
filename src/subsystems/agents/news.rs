@@ -9,7 +9,7 @@ use super::{Agent, AgentsState};
 pub(crate) struct NewsAgentPlugin;
 
 impl Agent for NewsAgentPlugin {
-    fn id(&self) -> &str { "news-agent" }
+    fn id(&self) -> &str { "news" }
 
     fn handle(
         &self,
@@ -21,18 +21,22 @@ impl Agent for NewsAgentPlugin {
         state: Arc<AgentsState>,
     ) {
         tokio::spawn(async move {
-            if action != "handle" && action != "read" {
-                let _ = reply_tx.send(Err(BusError::new(
-                    ERR_METHOD_NOT_FOUND,
-                    format!("unknown news action: {action}"),
-                )));
-                return;
-            }
+            let tool_action = match action.as_str() {
+                "handle" | "read" => "get",
+                "healthcheck" => "healthcheck",
+                _ => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        ERR_METHOD_NOT_FOUND,
+                        format!("unknown news action: {action}"),
+                    )));
+                    return;
+                }
+            };
 
             let result = state
                 .execute_tool(
                     "newsmail_aggregator",
-                    "get",
+                    tool_action,
                     "{}".to_string(),
                     &channel_id,
                     session_id.clone(),

@@ -199,9 +199,10 @@ Newsmail aggregator tool endpoint:
 
 News agent endpoint (MVP):
 
-- Bus methods: `agents/news-agent` (default `handle` action), `agents/news-agent/read`
+- Bus methods: `agents/news` (default `handle` action), `agents/news/read`, `agents/news/healthcheck`
 - Internal tool call: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
-- Current response behavior: returns raw `data_json` payload from tool as comms content
+- Health path: `agents/news/healthcheck` uses `newsmail_aggregator/healthcheck`
+- Interactive shortcut: `/news-health` in stdio mode
 
 ## Tools Configuration
 

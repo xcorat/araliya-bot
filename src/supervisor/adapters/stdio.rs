@@ -99,6 +99,25 @@ pub fn start(
                                 Err(err) => eprintln!("chat transport error: {err}"),
                             }
                         }
+                        Ok(Some(StdioFrame::NewsHealth)) => {
+                            match bus
+                                .request(
+                                    "agents/news/healthcheck",
+                                    BusPayload::CommsMessage {
+                                        channel_id: VIRTUAL_PTY_CHANNEL_ID.to_string(),
+                                        content: "healthcheck".to_string(),
+                                        session_id: None,
+                                        usage: None,
+                                    },
+                                )
+                                .await
+                            {
+                                Ok(Ok(BusPayload::CommsMessage { content, .. })) => println!("{content}"),
+                                Ok(Ok(other)) => println!("{other:?}"),
+                                Ok(Err(err)) => eprintln!("news health error: {} ({})", err.message, err.code),
+                                Err(err) => eprintln!("news health transport error: {err}"),
+                            }
+                        }
                         Ok(Some(StdioFrame::Control(command))) => {
                             match control.request(command).await {
                                 Ok(Ok(response)) => print_control_response(response),
@@ -122,6 +141,7 @@ pub fn start(
 #[derive(Debug)]
 enum StdioFrame {
     Chat { content: String },
+    NewsHealth,
     Control(ControlCommand),
     Help,
 }
@@ -159,6 +179,7 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
                 }))
             }
         }
+        "news-health" => ensure_no_args(rest, StdioFrame::NewsHealth),
         "health" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Health)),
         "status" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Status)),
         "subsys" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::SubsystemsList)),
@@ -180,6 +201,7 @@ fn ensure_no_args(rest: &str, frame: StdioFrame) -> Result<Option<StdioFrame>, S
 fn print_usage() {
     eprintln!("commands:");
     eprintln!("  /chat <message>");
+    eprintln!("  /news-health");
     eprintln!("  /health");
     eprintln!("  /status");
     eprintln!("  /subsys");
@@ -229,6 +251,14 @@ mod tests {
     fn parse_allows_leading_whitespace_before_slash() {
         match parse_tty_protocol("   /chat hi") {
             Ok(Some(StdioFrame::Chat { content })) => assert_eq!(content, "hi"),
+            other => panic!("unexpected parse result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_news_health_command() {
+        match parse_tty_protocol("/news-health") {
+            Ok(Some(StdioFrame::NewsHealth)) => {}
             other => panic!("unexpected parse result: {other:?}"),
         }
     }
