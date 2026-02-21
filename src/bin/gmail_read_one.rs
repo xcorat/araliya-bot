@@ -1,3 +1,4 @@
+// TODO: move this to a folder for tests/setup section, and decide what to do in Cargo.toml
 use std::env;
 use std::fs;
 use std::io::{Read, Write};

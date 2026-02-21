@@ -116,3 +116,23 @@ impl fmt::Display for ControlCallError {
 }
 
 impl Error for ControlCallError {}
+
+/// Wire-format response envelope for socket transports.
+///
+/// Serialises as `{"ok": <response>}` or `{"err": <error>}`.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum WireResponse {
+    #[serde(rename = "ok")]
+    Ok(ControlResponse),
+    #[serde(rename = "err")]
+    Err(ControlError),
+}
+
+impl From<ControlResult> for WireResponse {
+    fn from(r: ControlResult) -> Self {
+        match r {
+            Ok(resp) => WireResponse::Ok(resp),
+            Err(err) => WireResponse::Err(err),
+        }
+    }
+}

@@ -167,11 +167,14 @@ async fn run() -> Result<(), error::AppError> {
 
     // Start supervisor-internal transport adapters for control/chat over stdio.
     // The management adapter is only active when the user passes -i / --interactive.
+    // The Unix domain socket adapter always starts (daemon management).
+    let socket_path = config.work_dir.join("araliya.sock");
     supervisor::adapters::start(
         control_handle,
         bus_handle.clone(),
         shutdown.clone(),
         args.interactive,
+        socket_path,
     );
 
     // Start comms channels as independent concurrent tasks.
