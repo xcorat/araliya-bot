@@ -75,13 +75,25 @@ Every `v*` tag publishes release assets on GitHub Releases.
 ```bash
 # Example version
 VERSION=v0.1.0
+TIER=default
 
-curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/araliya-bot-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu.tar.gz
 curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/SHA256SUMS
 sha256sum -c SHA256SUMS
-tar -xzf araliya-bot-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
-install -m 755 araliya-bot /usr/local/bin/araliya-bot
+tar -xzf araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu.tar.gz
+cd araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu
+install -m 755 bin/araliya-bot /usr/local/bin/araliya-bot
+araliya-bot -f config/cfg.toml
 ```
+
+`TIER` options: `minimal`, `default`, `full`.
+
+Each tiered tarball includes `bin/araliya-bot`, `config/`, and `ui/svui/`.
+Inside the bundle, `config/cfg.toml` points to the tier-specific default:
+
+- `minimal` → `config/minimal.toml`
+- `default` → `config/default.toml`
+- `full` → `config/full.toml`
 
 To create a release from this repository:
 

@@ -50,7 +50,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        Color::rgba8(14, 14, 22, 210),
+        Color::from_rgba8(14, 14, 22, 210),
         None,
         &hex,
     );
@@ -59,7 +59,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     scene.stroke(
         &Stroke::new(1.5),
         Affine::IDENTITY,
-        Color::rgba8(70, 170, 240, 180),
+        Color::from_rgba8(70, 170, 240, 180),
         None,
         &hex,
     );
@@ -67,9 +67,9 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     // ── Status indicator dot at hex centre ────────────────────────────────
 
     let dot_color = match status {
-        None => Color::rgba8(70, 70, 90, 190),
-        Some(s) if s.starts_with("err") => Color::rgba8(220, 60, 60, 230),
-        Some(_) => Color::rgba8(50, 210, 110, 230),
+        None => Color::from_rgba8(70, 70, 90, 190),
+        Some(s) if s.starts_with("err") => Color::from_rgba8(220, 60, 60, 230),
+        Some(_) => Color::from_rgba8(50, 210, 110, 230),
     };
 
     scene.fill(
@@ -84,7 +84,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     scene.stroke(
         &Stroke::new(1.0),
         Affine::IDENTITY,
-        Color::rgba8(200, 200, 220, 100),
+        Color::from_rgba8(200, 200, 220, 100),
         None,
         &Circle::new((HEX_CX, HEX_CY), 9.0),
     );
@@ -95,7 +95,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        Color::rgba8(20, 20, 36, 200),
+        Color::from_rgba8(20, 20, 36, 200),
         None,
         &Circle::new((BTN_CX, BTN_CY), BTN_R),
     );
@@ -104,7 +104,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
     scene.stroke(
         &Stroke::new(1.5),
         Affine::IDENTITY,
-        Color::rgba8(100, 160, 255, 200),
+        Color::from_rgba8(100, 160, 255, 200),
         None,
         &Circle::new((BTN_CX, BTN_CY), BTN_R),
     );
@@ -116,7 +116,7 @@ pub fn build(scene: &mut Scene, status: Option<&str>) {
         scene.stroke(
             &Stroke::new(1.2),
             Affine::IDENTITY,
-            Color::rgba8(100, 160, 255, alpha),
+            Color::from_rgba8(100, 160, 255, alpha),
             None,
             &Circle::new((BTN_CX, BTN_CY), *r),
         );

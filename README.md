@@ -44,7 +44,7 @@ cargo run -- -vvv  # trace
 
 ## Binary Releases
 
-Tagging `v*` creates a GitHub Release with a Linux x86_64 binary archive and checksum.
+Tagging `v*` creates layered Linux x86_64 release bundles for `minimal`, `default`, and `full` tiers.
 
 ```bash
 git tag v0.1.0
@@ -53,16 +53,25 @@ git push origin v0.1.0
 
 Download from the repository Releases page:
 
-- `araliya-bot-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.1.0-minimal-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.1.0-full-x86_64-unknown-linux-gnu.tar.gz`
 - `SHA256SUMS`
 
 Verify and run:
 
 ```bash
 sha256sum -c SHA256SUMS
-tar -xzf araliya-bot-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-./araliya-bot --help
+tar -xzf araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu.tar.gz
+cd araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu
+./bin/araliya-bot -f config/cfg.toml
 ```
+
+Each tier bundle includes:
+
+- `bin/araliya-bot`
+- `config/` (including `minimal.toml`, `default.toml`, `full.toml`, and `cfg.toml`)
+- `ui/svui/`
 
 ---
 

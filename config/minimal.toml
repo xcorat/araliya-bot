@@ -1,0 +1,29 @@
+# Minimal overlay — extends default.toml for low-footprint runs.
+# Only keys that differ from default.toml are listed here.
+
+[meta]
+base = "default.toml"
+
+[comms.pty]
+enabled = true
+
+[comms.http]
+enabled = false
+
+[comms.axum_channel]
+enabled = false
+
+[agents]
+default = "basic_chat"
+
+[agents.echo]
+enabled = false
+
+[agents.basic_chat]
+enabled = true
+
+[agents.chat]
+enabled = false
+
+[ui.svui]
+enabled = false

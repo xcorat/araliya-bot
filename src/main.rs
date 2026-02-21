@@ -249,81 +249,99 @@ fn print_startup_summary(
     };
 
     let pid = std::process::id();
-
-    let mut handlers = configured_handlers.to_vec();
-    handlers.sort();
-
     let mode_text = if interactive { "interactive" } else { "daemon" };
     let stdio_status = if interactive { "enabled" } else { "disabled" };
 
-    let mut subsystem_lines = Vec::new();
-    subsystem_lines.push("✅ management  • components: control, status, shutdown".to_string());
+    let style_default_agent = |agent: &str| {
+        if ansi_enabled {
+            format!("\x1b[1m{agent}\x1b[0m")
+        } else {
+            agent.to_string()
+        }
+    };
+
+    let fit = |text: String| -> String {
+        const WIDTH: usize = 58;
+        let char_count = text.chars().count();
+        if char_count >= WIDTH {
+            let mut out = text.chars().take(WIDTH - 1).collect::<String>();
+            out.push('…');
+            out
+        } else {
+            format!("{text:<WIDTH$}")
+        }
+    };
+
+    let mut subsystem_names = configured_handlers.to_vec();
+    subsystem_names.push("identity".to_string());
+    subsystem_names.sort();
+    subsystem_names.dedup();
+    let subsystem_summary = if subsystem_names.is_empty() {
+        "none".to_string()
+    } else {
+        subsystem_names.join(", ")
+    };
 
     #[cfg(feature = "subsystem-llm")]
-    subsystem_lines.push(format!(
-        "✅ llm         • components: {} / {}",
-        config.llm.provider, config.llm.openai.model
-    ));
+    let llm_line = format!(
+        "provider={} model={} temp={} timeout={}s",
+        config.llm.provider,
+        config.llm.openai.model,
+        config.llm.openai.temperature,
+        config.llm.openai.timeout_seconds
+    );
+    #[cfg(not(feature = "subsystem-llm"))]
+    let llm_line = "disabled (not compiled)".to_string();
 
+    let mut agent_lines: Vec<String> = Vec::new();
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let style_default_agent = |agent: &str| {
-            if ansi_enabled {
-                format!("\x1b[1m{agent}\x1b[0m")
-            } else {
-                agent.to_string()
-            }
-        };
-
         let mut enabled_agents = config.agents.enabled.iter().cloned().collect::<Vec<_>>();
         enabled_agents.sort();
-        let enabled_agents_display = if enabled_agents.is_empty() {
-            "none".to_string()
+
+        if enabled_agents.is_empty() {
+            agent_lines.push("none enabled".to_string());
         } else {
-            enabled_agents
-                .iter()
-                .map(|agent| {
-                    if agent == &config.agents.default_agent {
-                        style_default_agent(agent)
-                    } else {
-                        agent.clone()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        let default_agent_bold = style_default_agent(&config.agents.default_agent);
-        subsystem_lines.push(format!(
-            "✅ agents      • default: {} • enabled: {}",
-            default_agent_bold, enabled_agents_display
-        ));
+            for agent in enabled_agents {
+                let display_name = if agent == config.agents.default_agent {
+                    format!("{} (default)", style_default_agent(&agent))
+                } else {
+                    agent.clone()
+                };
+
+                let desc = match agent.as_str() {
+                    "echo" => "echoes back messages",
+                    "basic_chat" => "routes chat to llm",
+                    "chat" => "llm chat with session memory",
+                    "gmail" => "reads latest email via tool:gmail",
+                    "news" => "reads mailbox digest via tool:newsmail_aggregator",
+                    "dummy" => "placeholder agent",
+                    _ => "enabled custom agent",
+                };
+
+                agent_lines.push(format!("{}: {}", display_name, desc));
+            }
+        }
+    }
+    #[cfg(not(all(feature = "subsystem-agents", feature = "subsystem-memory")))]
+    {
+        agent_lines.push("disabled (not compiled)".to_string());
     }
 
+    let mut enabled_tools: Vec<String> = Vec::new();
     #[cfg(feature = "subsystem-tools")]
     {
-        let mut enabled_tools: Vec<String> = Vec::new();
-
         #[cfg(feature = "plugin-gmail-tool")]
         {
             enabled_tools.push("gmail".to_string());
             enabled_tools.push("newsmail_aggregator".to_string());
         }
-
-        let enabled_tools_display = if enabled_tools.is_empty() {
-            "none".to_string()
-        } else {
-            enabled_tools.join(", ")
-        };
-
-        subsystem_lines.push(format!("✅ tools       • enabled: {}", enabled_tools_display));
-        subsystem_lines.push(format!(
-            "✅ tools       • defaults: newsmail_aggregator(mailbox={}, n_last={})",
-            config.tools.newsmail_aggregator.mailbox, config.tools.newsmail_aggregator.n_last
-        ));
     }
-
-    #[cfg(feature = "subsystem-cron")]
-    subsystem_lines.push("✅ cron        • components: scheduler".to_string());
+    let tools_line = if enabled_tools.is_empty() {
+        "none".to_string()
+    } else {
+        enabled_tools.join(", ")
+    };
 
     let mut comms_lines = Vec::new();
     comms_lines.push(format!("🖥️  stdio-control: {}", stdio_status));
@@ -387,23 +405,34 @@ fn print_startup_summary(
     println!("║ 🆔 Public ID: {:<46}║", identity.public_id);
     println!("║ 🧠 PID: {:<52}║", pid);
     println!("║ 🛰️  Mode: {:<51}║", mode_text);
-    println!(
-        "║ 📦 Handlers: {:<47}║",
-        if handlers.is_empty() {
-            "none".to_string()
-        } else {
-            handlers.join(", ")
-        }
-    );
     println!("╟──────────────────────────────────────────────────────────────╢");
     println!("║ ⚙️  Subsystems                                               ║");
-    for line in subsystem_lines {
-        println!("║   {:<58}║", line);
-    }
+    println!("║   {}║", fit(format!("✅ {}", subsystem_summary)));
     println!("╟──────────────────────────────────────────────────────────────╢");
     println!("║ 📡 Comms                                                    ║");
     for line in comms_lines {
-        println!("║   {:<58}║", line);
+        println!("║   {}║", fit(line));
+    }
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ 🧠 LLM                                                      ║");
+    println!("║   {}║", fit(llm_line));
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ 🤝 Agents                                                   ║");
+    for line in agent_lines {
+        println!("║   {}║", fit(line));
+    }
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ 🧰 Tools                                                    ║");
+    println!("║   {}║", fit(tools_line));
+    #[cfg(feature = "subsystem-tools")]
+    {
+        println!(
+            "║   {}║",
+            fit(format!(
+                "defaults: newsmail_aggregator(mailbox={}, n_last={})",
+                config.tools.newsmail_aggregator.mailbox, config.tools.newsmail_aggregator.n_last
+            ))
+        );
     }
     println!("╚══════════════════════════════════════════════════════════════╝");
 

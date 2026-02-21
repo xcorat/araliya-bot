@@ -116,7 +116,7 @@ impl BeaconApp {
         scene::build(&mut scene, self.status_text.as_deref());
 
         let render_params = vello::RenderParams {
-            base_color: Color::rgba8(0, 0, 0, 0),
+            base_color: Color::from_rgba8(0, 0, 0, 0),
             width: size.width,
             height: size.height,
             antialiasing_method: AaConfig::Area,
@@ -141,7 +141,7 @@ impl BeaconApp {
     // ── wgpu + vello init (called from resumed()) ──────────────────────────
 
     fn init_render(window: Arc<Window>) -> RenderState {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             // Use all available backends; wgpu selects the best for the platform.
             backends: wgpu::Backends::all(),
             ..Default::default()
