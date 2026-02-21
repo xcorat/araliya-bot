@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use crate::error::AppError;
-use super::store::{Store, TranscriptEntry};
+use super::store::{SessionStore, TranscriptEntry};
 
 #[derive(Debug, Clone)]
 pub struct SessionFileInfo {
@@ -26,14 +26,14 @@ pub struct SessionFileInfo {
 pub struct SessionHandle {
     pub session_id: String,
     session_dir: PathBuf,
-    stores: Vec<Arc<dyn Store>>,
+    stores: Vec<Arc<dyn SessionStore>>,
 }
 
 impl SessionHandle {
     pub(crate) fn new(
         session_id: String,
         session_dir: PathBuf,
-        stores: Vec<Arc<dyn Store>>,
+        stores: Vec<Arc<dyn SessionStore>>,
     ) -> Self {
         Self {
             session_id,
@@ -44,7 +44,7 @@ impl SessionHandle {
 
     /// Get the first store that matches `store_type`, or the first store if
     /// only one is registered.
-    fn find_store(&self, store_type: &str) -> Result<Arc<dyn Store>, AppError> {
+    fn find_store(&self, store_type: &str) -> Result<Arc<dyn SessionStore>, AppError> {
         self.stores
             .iter()
             .find(|s| s.store_type() == store_type)
@@ -54,7 +54,7 @@ impl SessionHandle {
     }
 
     /// Convenience: get the first store (for single-store sessions like basic_session).
-    fn default_store(&self) -> Result<Arc<dyn Store>, AppError> {
+    fn default_store(&self) -> Result<Arc<dyn SessionStore>, AppError> {
         self.stores
             .first()
             .cloned()

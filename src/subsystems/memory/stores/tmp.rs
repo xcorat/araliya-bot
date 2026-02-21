@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use crate::error::AppError;
-use super::super::store::Store;
+use super::super::store::SessionStore;
 
 /// Ephemeral in-memory key-value store.
 ///
@@ -36,7 +36,7 @@ impl TmpStore {
     }
 }
 
-impl Store for TmpStore {
+impl SessionStore for TmpStore {
     fn store_type(&self) -> &str {
         "tmp"
     }

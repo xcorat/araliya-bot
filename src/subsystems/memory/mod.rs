@@ -16,9 +16,21 @@
 //!             └── transcript.md
 //! ```
 
+pub mod collections;
 pub mod handle;
 pub mod store;
 pub mod stores;
+pub mod types;
+
+// Re-export the core type vocabulary so callers can write
+// `memory::PrimaryValue` etc. without spelling out the sub-module.
+// Suppressed until later phases start consuming these types.
+#[allow(unused_imports)]
+pub use collections::{Block, Collection, Doc};
+#[allow(unused_imports)]
+pub use store::Store;
+#[allow(unused_imports)]
+pub use types::{Obj, PrimaryValue, Value};
 
 use std::collections::HashMap;
 use std::fs;
@@ -29,7 +41,7 @@ use tracing::info;
 
 use crate::error::AppError;
 use handle::SessionHandle;
-use store::Store;
+use store::SessionStore;
 
 /// Metadata for a single session, persisted in `sessions.json`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -78,7 +90,7 @@ impl Default for MemoryConfig {
 pub struct MemorySystem {
     memory_root: PathBuf,
     sessions_dir: PathBuf,
-    stores: HashMap<String, Arc<dyn Store>>,
+    stores: HashMap<String, Arc<dyn SessionStore>>,
 }
 
 impl MemorySystem {
@@ -101,7 +113,7 @@ impl MemorySystem {
         }
 
         // Register built-in stores.
-        let mut stores: HashMap<String, Arc<dyn Store>> = HashMap::new();
+        let mut stores: HashMap<String, Arc<dyn SessionStore>> = HashMap::new();
         let basic = Arc::new(stores::basic_session::BasicSessionStore::new(
             config.kv_cap,
             config.transcript_cap,

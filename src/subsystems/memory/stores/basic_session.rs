@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::error::AppError;
-use super::super::store::{KvEntry, Store, TranscriptEntry};
+use super::super::store::{KvEntry, SessionStore, TranscriptEntry};
 
 /// Default maximum number of k-v entries before FIFO eviction.
 const DEFAULT_KV_CAP: usize = 200;
@@ -128,7 +128,7 @@ impl BasicSessionStore {
     }
 }
 
-impl Store for BasicSessionStore {
+impl SessionStore for BasicSessionStore {
     fn store_type(&self) -> &str {
         "basic_session"
     }
