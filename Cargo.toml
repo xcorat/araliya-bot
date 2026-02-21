@@ -10,7 +10,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 toml = "0.8"
 ed25519-dalek = { version = "2", default-features = false, features = ["rand_core"] }

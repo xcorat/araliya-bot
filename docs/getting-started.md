@@ -76,6 +76,8 @@ Set `VITE_API_BASE_URL=http://127.0.0.1:8080` in the dev environment to proxy AP
 
 The optional native desktop client is provided as a separate binary under `src/bin/araliya-gpui/` and is gated behind the `ui-gpui` feature.
 
+**Linux system dependencies** (XCB and XKB libraries) must be installed first — see [docs/development/gpui.md](development/gpui.md) for details and distro-specific install commands.
+
 ```bash
 cargo check --bin araliya-gpui --features ui-gpui
 cargo run --bin araliya-gpui --features ui-gpui

@@ -93,45 +93,39 @@ pub struct MessageRequest {
 
 pub struct ApiClient {
     base_url: String,
-    client: reqwest::Client,
+    client: reqwest::blocking::Client,
 }
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
         Self {
             base_url,
-            client: reqwest::Client::new(),
+            client: reqwest::blocking::Client::new(),
         }
     }
 
-    pub async fn check_health(&self) -> Result<HealthResponse, reqwest::Error> {
+    pub fn check_health(&self) -> Result<HealthResponse, reqwest::Error> {
         self.client
             .get(&format!("{}/api/health", self.base_url))
-            .send()
-            .await?
+            .send()?
             .json()
-            .await
     }
 
-    pub async fn list_sessions(&self) -> Result<SessionsResponse, reqwest::Error> {
+    pub fn list_sessions(&self) -> Result<SessionsResponse, reqwest::Error> {
         self.client
             .get(&format!("{}/api/sessions", self.base_url))
-            .send()
-            .await?
+            .send()?
             .json()
-            .await
     }
 
-    pub async fn get_session_by_id(&self, session_id: &str) -> Result<SessionDetailResponse, reqwest::Error> {
+    pub fn get_session_by_id(&self, session_id: &str) -> Result<SessionDetailResponse, reqwest::Error> {
         self.client
             .get(&format!("{}/api/session/{}", self.base_url, session_id))
-            .send()
-            .await?
+            .send()?
             .json()
-            .await
     }
 
-    pub async fn send_message(&self, message: String, session_id: Option<String>) -> Result<MessageResponse, reqwest::Error> {
+    pub fn send_message(&self, message: String, session_id: Option<String>) -> Result<MessageResponse, reqwest::Error> {
         let req = MessageRequest {
             message,
             session_id,
@@ -140,9 +134,7 @@ impl ApiClient {
         self.client
             .post(&format!("{}/api/message", self.base_url))
             .json(&req)
-            .send()
-            .await?
+            .send()?
             .json()
-            .await
     }
 }

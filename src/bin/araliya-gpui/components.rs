@@ -58,7 +58,7 @@ impl AppView {
         cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
-                if let Ok(health) = client.check_health().await {
+                if let Ok(health) = client.check_health() {
                     view.update(&mut cx, |this, cx| {
                         this.state.health_status = Some(health);
                         cx.notify();
@@ -78,7 +78,7 @@ impl AppView {
         cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
-                let result = client.list_sessions().await;
+                let result = client.list_sessions();
                 view.update(&mut cx, |this, cx| {
                     this.state.is_loading_sessions = false;
                     if let Ok(res) = result {
@@ -102,7 +102,7 @@ impl AppView {
         cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
-                let result = client.get_session_by_id(&session_id).await;
+                let result = client.get_session_by_id(&session_id);
                 view.update(&mut cx, |this, cx| {
                     this.state.is_loading_messages = false;
                     if let Ok(res) = result {
@@ -139,7 +139,7 @@ impl AppView {
         cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
             let mut cx = cx.clone();
             async move {
-                let result = client.send_message(text, session_id.clone()).await;
+                let result = client.send_message(text, session_id.clone());
                 view.update(&mut cx, |this, cx| {
                     this.state.is_sending_message = false;
                     if let Ok(res) = result {
