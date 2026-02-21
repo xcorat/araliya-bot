@@ -47,14 +47,62 @@ When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
 
 ### Full-Featured Config (`full.toml`)
 
-For deployments using the `full` Cargo feature flag (`cargo run --features full`), a pre-configured `config/full.toml` is provided. This configuration turns off dummy/basic components and enables the full suite of features:
+`config/full.toml` is a **partial overlay** that inherits from `default.toml` via `[meta] base`.  It only lists the keys that differ from the base, so it stays short and easy to read:
 
-- **Agents**: Uses the session-aware `chat` agent as default and enables the `gmail` agent.
-- **LLM**: Uses the `openai` provider (requires `LLM_API_KEY`) with `gpt-4o`.
-- **Comms**: Enables `pty`, `telegram` (requires `TELEGRAM_BOT_TOKEN`), and `axum_channel`.
-- **UI**: Enables the Svelte-based web UI backend (`svui`).
+```toml
+[meta]
+base = "default.toml"  # path relative to this file
 
-To use it, replace `default.toml` with `full.toml` or point your configuration loader to it.
+[comms.telegram]
+enabled = true
+
+[agents]
+default = "chat"
+# … only changed entries …
+```
+
+To use it:
+
+```bash
+cargo run -- -f config/full.toml
+```
+
+The loader follows the `base` chain automatically, deep-merging each layer so that overlay keys win and everything else comes from the base.
+
+### Config Inheritance (`[meta] base`)
+
+Any config file can declare a base file it extends:
+
+```toml
+[meta]
+base = "default.toml"  # relative to *this* file's directory, or absolute
+```
+
+**Merge rules**
+
+- **Tables** are merged recursively — only the keys present in the overlay are changed; everything else is inherited.
+- **Scalars and arrays** follow the overlay-wins rule.
+- **Chains are supported** — the base can itself have a `[meta] base`, creating a stack (grandbase → base → overlay).
+- **Circular references** are detected and reported as a config error.
+- The `[meta]` table is internal bookkeeping and is stripped before the config is resolved.
+
+**Creating your own overlay**
+
+```toml
+# config/local.toml
+[meta]
+base = "default.toml"
+
+[supervisor]
+log_level = "debug"
+
+[llm.openai]
+model = "gpt-4o-mini"
+```
+
+```bash
+cargo run -- -f config/local.toml
+```
 
 ## Modular Features (Cargo Flags)
 
@@ -142,11 +190,15 @@ Gmail agent endpoint:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"` or `"openai"`). Requires `subsystem-llm` feature. |
+| `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Override for Ollama / LM Studio. |
+| `llm.openai.model` | string | `"gpt-4o-mini"` | Model name sent in each request. |
+| `llm.openai.temperature` | float | `0.2` | Sampling temperature (omitted automatically for `gpt-5` family). |
+| `llm.openai.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
 | `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
 | `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
 | `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
 
-These pricing fields are used for session spend accumulation and reporting in memory/session metadata.
+Pricing fields are used by `SessionHandle::accumulate_spend` to write per-session `spend.json` sidecars after each LLM turn. They default to `0.0` so cost is silently omitted rather than wrong when not set.
 
 Provider API keys are never stored in config — supply them via environment or `.env`:
 
@@ -211,8 +263,9 @@ Highest precedence wins:
 2. `RUST_LOG` env var (log level only)
 3. `ARALIYA_*` env vars
 4. `.env` file values
-5. `config/default.toml`
-6. Built-in defaults
+5. Selected config file (overlay, if `[meta] base` is set; base layers applied first, then overlay)
+6. `config/default.toml` (if no `-f` flag)
+7. Built-in defaults
 
 ## Data Directory Layout
 
@@ -224,11 +277,12 @@ All persistent data is stored under `work_dir` (default `~/.araliya`):
     ├── id_ed25519               ed25519 signing key seed (mode 0600)
     ├── id_ed25519.pub           ed25519 verifying key (mode 0644)
     └── memory/                  session data (when subsystem-memory enabled)
-        ├── sessions.json        session index
+        ├── sessions.json        session index (includes spend summary per session)
         └── sessions/
             └── {uuid}/
                 ├── kv.json
-                └── transcript.md
+                ├── transcript.md
+                └── spend.json   token & cost totals (created on first LLM turn)
 ```
 
 See [Memory Subsystem](architecture/subsystems/memory.md) for details on session data layout.

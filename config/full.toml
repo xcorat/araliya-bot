@@ -1,60 +1,28 @@
-[supervisor]
-bot_name = "araliya"
-work_dir = "~/.araliya"
-log_level = "info"
+# Full-featured overlay — extends default.toml.
+# Only keys that differ from default.toml are listed here.
+# All other settings are inherited from the base file.
 
-[comms.pty]
-enabled = true
+[meta]
+base = "default.toml"
 
 [comms.telegram]
 # Requires TELEGRAM_BOT_TOKEN env var
 enabled = true
 
-[comms.axum_channel]
-enabled = true
-bind = "127.0.0.1:8080"
-
 [agents]
-# Use the session-aware chat agent as default instead of echo or basic_chat
+# Session-aware chat agent instead of echo
 default = "chat"
 
 [agents.echo]
 enabled = false
 
-[agents.basic_chat]
-enabled = false
-
 [agents.chat]
-# Session-aware chat plugin
 enabled = true
-memory = ["basic_session"]
 
 [agents.gmail]
-# Gmail agent
+# Gmail agent (requires plugin-gmail-agent feature)
 enabled = true
-
-[agents.dummy]
-enabled = false
 
 [memory.basic_session]
 kv_cap = 200
 transcript_cap = 500
-
-[llm]
-# Use openai instead of dummy
-default = "openai"
-
-[llm.dummy]
-# No config
-
-[llm.openai]
-# API key must be set via LLM_API_KEY env var
-api_base_url = "https://api.openai.com/v1/chat/completions"
-model = "gpt-4o"
-temperature = 0.2
-timeout_seconds = 60
-
-[ui.svui]
-# Svelte-based web UI backend
-enabled = true
-static_dir = "ui/build"

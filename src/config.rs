@@ -385,6 +385,64 @@ fn default_false() -> bool {
     false
 }
 
+/// Deep-merge two TOML values.
+/// Tables are merged recursively — the overlay only needs to specify keys that
+/// differ from the base.  For every other type (string, integer, array, …)
+/// the overlay value replaces the base value wholesale.
+fn merge_toml(base: toml::Value, overlay: toml::Value) -> toml::Value {
+    match (base, overlay) {
+        (toml::Value::Table(mut base_tbl), toml::Value::Table(overlay_tbl)) => {
+            for (key, ov_val) in overlay_tbl {
+                let merged = match base_tbl.remove(&key) {
+                    Some(base_val) => merge_toml(base_val, ov_val),
+                    None => ov_val,
+                };
+                base_tbl.insert(key, merged);
+            }
+            toml::Value::Table(base_tbl)
+        }
+        (_, overlay) => overlay,
+    }
+}
+
+/// Read a config file, follow any `[meta] base = "..."` chain, and return the
+/// fully merged `toml::Value`.  `visited` carries canonicalized paths already
+/// seen in this chain so circular references are caught early.
+fn load_raw_merged(
+    path: &Path,
+    visited: &mut HashSet<PathBuf>,
+) -> Result<toml::Value, AppError> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(canonical) {
+        return Err(AppError::Config(format!(
+            "circular base reference detected at: {}",
+            path.display()
+        )));
+    }
+
+    let raw = fs::read_to_string(path)
+        .map_err(|e| AppError::Config(format!("cannot read {}: {e}", path.display())))?;
+
+    let overlay_val: toml::Value = toml::from_str(&raw)
+        .map_err(|e| AppError::Config(format!("parse error in {}: {e}", path.display())))?;
+
+    if let Some(base_str) = overlay_val
+        .get("meta")
+        .and_then(|m| m.get("base"))
+        .and_then(|b| b.as_str())
+    {
+        let base_path = if Path::new(base_str).is_absolute() {
+            PathBuf::from(base_str)
+        } else {
+            path.parent().unwrap_or(Path::new(".")).join(base_str)
+        };
+        let base_val = load_raw_merged(&base_path, visited)?;
+        Ok(merge_toml(base_val, overlay_val))
+    } else {
+        Ok(overlay_val)
+    }
+}
+
 /// Load config from the given path, or `config/default.toml`, then apply env-var overrides.
 /// If no path is given and `config/default.toml` does not exist, returns a hardcoded minimal default.
 pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
@@ -454,16 +512,16 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
 
 /// Internal loader — accepts an explicit path and optional overrides.
 /// Tests pass overrides directly instead of mutating env vars.
+/// Follows `[meta] base = "..."` inheritance chains before resolving.
 pub fn load_from(
     path: &Path,
     work_dir_override: Option<&str>,
     log_level_override: Option<&str>,
 ) -> Result<Config, AppError> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| AppError::Config(format!("cannot read {}: {e}", path.display())))?;
+    let merged_val = load_raw_merged(path, &mut HashSet::new())?;
 
-    let parsed: RawConfig = toml::from_str(&raw)
-        .map_err(|e| AppError::Config(format!("parse error in {}: {e}", path.display())))?;
+    let parsed: RawConfig = serde::Deserialize::deserialize(merged_val)
+        .map_err(|e: toml::de::Error| AppError::Config(format!("config error in {}: {e}", path.display())))?;
 
     let s = parsed.supervisor;
 
@@ -612,7 +670,7 @@ impl Config {
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, TempDir};
 
     const MINIMAL_TOML: &str = r#"
 [supervisor]
@@ -675,6 +733,126 @@ log_level = "info"
         let f = write_toml(MINIMAL_TOML);
         let cfg = load_from(f.path(), None, Some("debug")).unwrap();
         assert_eq!(cfg.log_level, "debug");
+    }
+
+    // ── layered config tests ──────────────────────────────────────────────────
+
+    const BASE_TOML: &str = r#"
+[supervisor]
+bot_name = "base-bot"
+work_dir = "~/.araliya"
+log_level = "info"
+
+[agents]
+default = "echo"
+
+[llm]
+default = "dummy"
+
+[llm.openai]
+model = "gpt-base"
+temperature = 0.1
+timeout_seconds = 30
+api_base_url = "https://api.openai.com/v1/chat/completions"
+"#;
+
+    fn write_named(dir: &TempDir, name: &str, content: &str) -> PathBuf {
+        let p = dir.path().join(name);
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn overlay_keeps_base_fields() {
+        let dir = TempDir::new().unwrap();
+        write_named(&dir, "base.toml", BASE_TOML);
+        let overlay = r#"
+[meta]
+base = "base.toml"
+
+[supervisor]
+log_level = "debug"
+"#;
+        let overlay_path = write_named(&dir, "overlay.toml", overlay);
+        let cfg = load_from(&overlay_path, None, None).unwrap();
+        assert_eq!(cfg.bot_name, "base-bot");   // from base
+        assert_eq!(cfg.log_level, "debug");      // from overlay
+    }
+
+    #[test]
+    fn overlay_wins_scalar() {
+        let dir = TempDir::new().unwrap();
+        write_named(&dir, "base.toml", BASE_TOML);
+        let overlay = r#"
+[meta]
+base = "base.toml"
+
+[llm.openai]
+model = "gpt-overlay"
+"#;
+        let overlay_path = write_named(&dir, "overlay.toml", overlay);
+        let cfg = load_from(&overlay_path, None, None).unwrap();
+        assert_eq!(cfg.llm.openai.model, "gpt-overlay");  // overlay wins
+        assert_eq!(cfg.llm.openai.temperature, 0.1);       // base preserved
+    }
+
+    #[test]
+    fn chained_bases() {
+        let dir = TempDir::new().unwrap();
+        write_named(&dir, "grandbase.toml", BASE_TOML);
+        let middle = r#"
+[meta]
+base = "grandbase.toml"
+
+[supervisor]
+bot_name = "middle-bot"
+"#;
+        write_named(&dir, "middle.toml", middle);
+        let top = r#"
+[meta]
+base = "middle.toml"
+
+[supervisor]
+log_level = "warn"
+"#;
+        let top_path = write_named(&dir, "top.toml", top);
+        let cfg = load_from(&top_path, None, None).unwrap();
+        assert_eq!(cfg.bot_name, "middle-bot"); // from middle (beats grandbase)
+        assert_eq!(cfg.log_level, "warn");       // from top
+    }
+
+    #[test]
+    fn missing_base_errors() {
+        let dir = TempDir::new().unwrap();
+        let overlay = r#"
+[meta]
+base = "nonexistent.toml"
+
+[supervisor]
+bot_name = "x"
+work_dir = "~/.araliya"
+log_level = "info"
+"#;
+        let overlay_path = write_named(&dir, "overlay.toml", overlay);
+        let result = load_from(&overlay_path, None, None);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("cannot read") || msg.contains("config error"));
+    }
+
+    #[test]
+    fn cycle_detection() {
+        let dir = TempDir::new().unwrap();
+        let self_path = dir.path().join("self.toml");
+        let content = format!(
+            "[meta]\nbase = \"{}\"\n\n{BASE_TOML}",
+            self_path.display()
+        );
+        std::fs::write(&self_path, content).unwrap();
+        let result = load_from(&self_path, None, None);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("circular"));
     }
 
 }

@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.4.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors.
+**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`**.
 
 ---
 
@@ -41,7 +41,9 @@ MemorySystem (owns session index + store factory)
 | `SessionStore` | `memory/store.rs` | Trait for pluggable session backends. |
 | `Store` | `memory/store.rs` | In-process `RwLock<HashMap<String, Collection>>` — the core collection map. |
 | `SessionRw` | `memory/rw.rs` | Shared session read/write orchestration layer (kv, transcript, file listing, tmp collections). |
-| `SessionHandle` | `memory/handle.rs` | Thin facade that delegates all data I/O to `SessionRw`. |
+| `SessionHandle` | `memory/handle.rs` | Thin facade that delegates all data I/O to `SessionRw`; also owns spend accumulation. |
+| `SessionInfo` | `memory/mod.rs` | Session metadata persisted in `sessions.json`; includes an optional `spend` summary. |
+| `SessionSpend` | `memory/mod.rs` | Aggregate token counts and cumulative cost; persisted as `spend.json`. |
 | `BasicSessionStore` | `memory/stores/basic_session.rs` | Capped JSON k-v + capped Markdown transcript, disk-backed. |
 | `TmpStore` | `memory/stores/tmp.rs` | Ephemeral in-process store wrapping a `Store`. Implements `SessionStore`. |
 | `Doc` | `memory/collections.rs` | String-keyed map of `PrimaryValue` scalars. |
@@ -181,12 +183,27 @@ Session IDs are UUIDv7 (time-ordered).  The `sessions.json` index tracks all ses
 ```
 {identity_dir}/
 └── memory/
-    ├── sessions.json              session index
+    ├── sessions.json              session index (includes spend summary)
     └── sessions/
         └── {uuid}/                only created for non-tmp sessions
             ├── kv.json            capped key-value store
-            └── transcript.md      capped Markdown transcript
+            ├── transcript.md      capped Markdown transcript
+            └── spend.json         aggregate token and cost totals (created on first LLM turn)
 ```
+
+### `spend.json` shape
+
+```json
+{
+  "total_input_tokens": 1240,
+  "total_output_tokens": 380,
+  "total_cached_tokens": 0,
+  "total_cost_usd": 0.000694,
+  "last_updated": "2026-02-21T10:59:42Z"
+}
+```
+
+The file is created on the first LLM turn that carries token usage. `sessions.json` mirrors the latest totals in `SessionInfo.spend` so aggregate spend can be queried without opening individual sidecar files.
 
 ---
 
@@ -203,6 +220,18 @@ pub async fn transcript_read_last(&self, n: usize)  -> Result<Vec<TranscriptEntr
 pub async fn working_memory_read(&self)              -> Result<String, AppError>;
 pub async fn list_files(&self)                       -> Result<Vec<SessionFileInfo>, AppError>;
 ```
+
+Spend accumulation (disk-backed sessions only; no-op for tmp sessions without a directory):
+
+```rust
+pub async fn accumulate_spend(
+    &self,
+    usage: &LlmUsage,
+    rates: &ModelRates,
+) -> Result<SessionSpend, AppError>;
+```
+
+Reads `spend.json`, adds the new token counts, recomputes the incremental cost, writes back, and returns the updated totals.
 
 Typed accessors for `tmp` sessions (synchronous — no file I/O):
 
@@ -225,9 +254,10 @@ These return `Err` for sessions without a `TmpStore` (i.e. `basic_session` sessi
 2. Appends user input as a `"user"` transcript entry.
 3. Reads the last 20 transcript entries and injects them as LLM context.
 4. Appends the LLM response as an `"assistant"` transcript entry.
-5. The session handle is cached in `Arc<Mutex<Option<SessionHandle>>>` for reuse.
+5. If the response carries token `usage`, calls `handle.accumulate_spend(usage, &state.llm_rates)` to update `spend.json`.
+6. The session handle is cached in `Arc<Mutex<Option<SessionHandle>>>` for reuse.
 
-The default agent store type is `"basic_session"` unless overridden in config:
+`state.llm_rates` is populated at startup by `AgentsSubsystem::with_llm_rates(rates)` using pricing values from `[llm.openai]` config.
 
 ```toml
 [agents.chat]
@@ -261,7 +291,7 @@ Memory is always compiled — there is no Cargo feature gate.
 
 - **Default store type "tmp":** when `agents.{id}.memory` is empty, automatically use `"tmp"` instead of returning an error.
 - **Observation store:** structured facts, summaries, reflections (JSONL or SQLite).
-- **Usage tracking:** token counts, cost estimates per session.
 - **Cross-session search:** full-text or embedding-based retrieval across sessions.
 - **Session expiry:** TTL-based cleanup of old sessions.
+- **Mirror spend → sessions.json:** after `accumulate_spend`, update `SessionInfo.spend` in the index so listings include live totals without opening sidecars.
 

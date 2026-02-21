@@ -580,7 +580,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None, usage: None },
             tx,
         );
 
@@ -708,6 +708,7 @@ mod tests {
                         channel_id,
                         content: format!("[fake] {content}"),
                         session_id: None,
+                        usage: None,
                     }));
                 }
             }
@@ -724,7 +725,7 @@ mod tests {
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None, usage: None },
             tx,
         );
 

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.4.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend)** · **Cron subsystem (timer-based event scheduling)** · **Tools subsystem (Gmail MVP)**.
+**Status:** v0.5.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend)** · **Cron subsystem (timer-based event scheduling)** · **Tools subsystem (Gmail MVP)** · **LLM token usage tracking + per-session cost accumulation (`spend.json`)**.
 
 ---
 
@@ -119,6 +119,7 @@ main()  [#[tokio::main]]
   ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
   ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
   ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
+  │                  .with_llm_rates(rates_from_config)    wire pricing into agent state
   ├─ (conditional) CronSubsystem::new(bus_handle, shutdown)  cron timer service
   ├─ ManagementSubsystem::new(control, bus_handle, info)  health/status handler
   ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm), Box::new(cron), ...]  register handlers
