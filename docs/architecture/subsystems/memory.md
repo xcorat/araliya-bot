@@ -1,14 +1,20 @@
 # Memory Subsystem
 
-**Status:** v0.3.0 — `MemorySystem` · `Store` trait · `BasicSessionStore` · `SessionHandle` · bot-scoped sessions with UUIDv7 IDs.
+**Status:** v0.4.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · memory always on (no feature gate).
 
 ---
 
 ## Overview
 
-The Memory subsystem owns all persistent session data for the bot instance. It provides a pluggable `Store` trait, a session lifecycle manager (`MemorySystem`), and an async-safe handle (`SessionHandle`) that agents use to read and write session state.
+The Memory subsystem owns all session data for the bot instance.  It provides:
 
-Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages. This avoids unnecessary serialisation overhead for high-frequency read/write operations.
+- A **typed value model** for structured, hashable agent memory.
+- Two concrete **collection types** (`Doc` for scalars, `Block` for rich payloads).
+- A **`TmpStore`** — ephemeral in-process storage backed by the new `Store` struct, ideal for scratch pads and default sessions.
+- A **`BasicSessionStore`** — disk-backed JSON + Markdown transcript store for durable sessions.
+- A **`SessionHandle`** — async-safe handle agents use to read and write session state, with direct typed accessors for `TmpStore` sessions.
+
+Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages.  Memory is **always compiled** with no Cargo feature gate.
 
 ---
 
@@ -18,160 +24,216 @@ Memory is **not bus-mediated** — agents receive a `SessionHandle` directly fro
 MemorySystem (owns session index + store factory)
     │
     ├── create_session(store_types, agent_id) → SessionHandle
-    └── load_session(session_id, agent_id) → SessionHandle
+    ├── load_session(session_id, agent_id)   → SessionHandle
+    └── create_tmp_store()                   → Arc<TmpStore> (standalone)
             │
             └── SessionHandle (Arc-wrapped, cloneable, async-safe)
                     │
-                    └── Store (trait object — e.g. BasicSessionStore)
-                            │
-                            ├── kv.json      capped key-value entries
-                            └── transcript.md  capped Markdown transcript
+                    ├── stores: Vec<Arc<dyn SessionStore>>    ← kv / transcript I/O
+                    └── tmp_store: Option<Arc<TmpStore>>      ← typed Doc/Block access
 ```
 
 ### Key types
 
 | Type | Location | Role |
 |------|----------|------|
-| `MemorySystem` | `subsystems/memory/mod.rs` | Session lifecycle: create, load, list. Maintains `sessions.json` index. |
-| `Store` | `subsystems/memory/store.rs` | Trait for pluggable stores. Default methods return `AppError::Memory("unsupported")`. |
-| `SessionHandle` | `subsystems/memory/handle.rs` | Async-safe wrapper. Wraps sync `Store` I/O in `tokio::task::spawn_blocking`. |
-| `BasicSessionStore` | `subsystems/memory/stores/basic_session.rs` | Reference implementation: capped JSON k-v + capped Markdown transcript. |
+| `MemorySystem` | `memory/mod.rs` | Session lifecycle: create, load, list. Maintains `sessions.json` index. |
+| `SessionStore` | `memory/store.rs` | Trait for pluggable session backends. |
+| `Store` | `memory/store.rs` | In-process `RwLock<HashMap<String, Collection>>` — the core collection map. |
+| `SessionHandle` | `memory/handle.rs` | Async-safe wrapper for `SessionStore` I/O + typed `tmp_doc`/`tmp_block` accessors. |
+| `BasicSessionStore` | `memory/stores/basic_session.rs` | Capped JSON k-v + capped Markdown transcript, disk-backed. |
+| `TmpStore` | `memory/stores/tmp.rs` | Ephemeral in-process store wrapping a `Store`. Implements `SessionStore`. |
+| `Doc` | `memory/collections.rs` | String-keyed map of `PrimaryValue` scalars. |
+| `Block` | `memory/collections.rs` | String-keyed map of `Value` (scalars + binary `Obj`). |
+| `Collection` | `memory/collections.rs` | Enum: `Doc`, `Block`, and stubs for future variants. |
+| `PrimaryValue` | `memory/types.rs` | `Bool` · `Int` · `Float` · `Str` — hashable, equatable. |
+| `Value` | `memory/types.rs` | `Primary(PrimaryValue)` or `Obj(Obj)`. |
+| `Obj` | `memory/types.rs` | Binary payload with `HashMap<String, String>` metadata sidecar. |
+
+---
+
+## Type System
+
+### `PrimaryValue`
+
+Scalar values suitable for indexing, hashing, and equality:
+
+```rust
+enum PrimaryValue { Bool(bool), Int(i64), Float(f64), Str(String) }
+```
+
+`Float` equality and hashing use bit patterns (`f64::to_bits()`).  `From` impls for all primitive types.
+
+### `Obj`
+
+Binary payload with a string-keyed metadata sidecar (MIME type, content hash, etc.):
+
+```rust
+struct Obj { pub data: Vec<u8>, pub metadata: HashMap<String, String> }
+```
+
+### `Value`
+
+Union type for `Block` entries — either a scalar or an object:
+
+```rust
+enum Value { Primary(PrimaryValue), Obj(Obj) }
+```
+
+### `Doc` and `Block`
+
+| | `Doc` | `Block` |
+|--|-------|---------|
+| Entry type | `PrimaryValue` | `Value` |
+| Use for | Config, extracted facts, session metadata | Blobs, embeddings, intermediate results |
+| Methods | `get`, `set`, `delete`, `keys`, `len`, `is_empty` | same |
+
+### `Collection`
+
+Enum wrapping all collection types.  `Doc` and `Block` are fully implemented.  `Set`, `List`, `Vec`, `Tuple`, `Tensor` are **stubs** that compile but `unimplemented!()` on access — reserved namespace, not silently wrong.
+
+```rust
+enum Collection { Doc(Doc), Block(Block), Set(()), List(()), Vec(()), Tuple(()), Tensor(()) }
+```
+
+Use `as_doc()` / `as_doc_mut()` / `into_doc()` / `as_block()` / ... to downcast.
+
+---
+
+## Store Abstractions
+
+### `SessionStore` trait
+
+Pluggable backend for session-scoped I/O.  All methods are default-no-op (return `AppError::Memory("unsupported")`); implementations override only what they support.
+
+```rust
+pub trait SessionStore: Send + Sync {
+    fn store_type(&self) -> &str;
+    fn init(&self, session_dir: &Path) -> Result<(), AppError>;
+    fn kv_get(&self, session_dir: &Path, key: &str)   -> Result<Option<String>, AppError>;
+    fn kv_set(&self, session_dir: &Path, key: &str, value: &str) -> Result<(), AppError>;
+    fn kv_delete(&self, session_dir: &Path, key: &str) -> Result<bool, AppError>;
+    fn transcript_append(&self, ...)  -> Result<(), AppError>;
+    fn transcript_read_last(&self, ...) -> Result<Vec<TranscriptEntry>, AppError>;
+}
+```
+
+### `Store` struct
+
+An in-process labeled collection map, safe for concurrent reads:
+
+```rust
+let store = Store::new();
+store.insert_collection("meta".into(), Collection::Doc(Doc::default()))?;
+let col = store.get_collection("meta")?.unwrap(); // returns a clone
+```
+
+Operations: `get_collection`, `insert_collection`, `remove_collection`, `labels`, `len`, `is_empty`.
+
+---
+
+## TmpStore
+
+`TmpStore` wraps a `Store` and provides two usage modes:
+
+### Standalone (agent scratch pad)
+
+```rust
+let ts: Arc<TmpStore> = memory.create_tmp_store();
+let mut doc = ts.doc()?;
+doc.set("status".into(), PrimaryValue::from("active"));
+ts.set_doc(doc)?;
+```
+
+`create_tmp_store()` always returns a fresh, independent store not tracked in the session index.
+
+### Session-backed
+
+When a session is created with `store_type = "tmp"`, `TmpStore` implements `SessionStore` using per-session namespaced collection labels (`"{session_dir}:doc"`, `"{session_dir}:block"`).  `kv_get`/`kv_set`/`kv_delete` delegate to the `"doc"` collection, serialising values as `PrimaryValue::Str`.
+
+`init()` is a no-op — no files are written to disk.
 
 ---
 
 ## Session Lifecycle
 
-Sessions are **bot-scoped** — each session belongs to one bot identity and one agent.
+Sessions are **bot-scoped** — any agent with the session ID can access it.
 
-1. **Create:** `MemorySystem::create_session(&["basic_session"], "chat")` allocates a UUIDv7 session directory and registers it in `sessions.json`.
+1. **Create:** `MemorySystem::create_session(&["tmp"], "chat")` — or `&["basic_session"]` for disk persistence.
 2. **Use:** Returns a `SessionHandle` for k-v and transcript operations.
 3. **Load:** `MemorySystem::load_session(session_id, "chat")` re-opens an existing session.
-4. **Ephemeral by default:** The current `SessionChatPlugin` creates a new session per process run. Persistent session resumption is possible via `load_session`.
+4. **Tmp sessions** can be reloaded within the same process run (data is in-process); they do not survive restart.
 
-Session IDs are UUIDv7 (time-ordered), providing natural chronological sorting.
+Session IDs are UUIDv7 (time-ordered).  The `sessions.json` index tracks all sessions including tmp ones.
 
 ---
 
-## Data Layout
+## Data Layout (disk-backed sessions)
 
 ```
 {identity_dir}/
 └── memory/
-    ├── sessions.json              session index (id, agent_id, store_types, created_at)
+    ├── sessions.json              session index
     └── sessions/
-        └── {uuid}/
+        └── {uuid}/                only created for non-tmp sessions
             ├── kv.json            capped key-value store
             └── transcript.md      capped Markdown transcript
 ```
-
-### `sessions.json`
-
-```json
-{
-  "sessions": [
-    {
-      "id": "01969c3a-...",
-      "agent_id": "chat",
-      "store_types": ["basic_session"],
-      "created_at": "2025-04-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-### `kv.json`
-
-```json
-{
-  "cap": 200,
-  "entries": [
-    { "key": "user_name", "value": "sachi", "ts": "2025-04-15T10:30:01Z" },
-    { "key": "topic", "value": "rust memory systems", "ts": "2025-04-15T10:31:00Z" }
-  ]
-}
-```
-
-Entries are FIFO-evicted when count exceeds `cap`. Keys are unique — setting an existing key updates in-place (moves to end).
-
-### `transcript.md`
-
-```markdown
-### user — 2025-04-15T10:30:01Z
-
-Hello, tell me about your memory system.
-
-### assistant — 2025-04-15T10:30:05Z
-
-I can store key-value pairs and maintain a conversation transcript…
-```
-
-Entries are parsed by the `### {role} — {timestamp}` header pattern. FIFO-evicted when entry count exceeds `transcript_cap`.
-
----
-
-## Store Trait
-
-```rust
-pub trait Store: Send + Sync {
-    fn kv_get(&self, key: &str) -> Result<Option<String>, AppError> { /* default: unsupported */ }
-    fn kv_set(&self, key: &str, value: &str) -> Result<(), AppError> { /* default: unsupported */ }
-    fn kv_delete(&self, key: &str) -> Result<bool, AppError> { /* default: unsupported */ }
-    fn transcript_append(&self, role: &str, content: &str) -> Result<(), AppError> { /* default: unsupported */ }
-    fn transcript_read_last(&self, n: usize) -> Result<Vec<TranscriptEntry>, AppError> { /* default: unsupported */ }
-}
-```
-
-Stores implement only the operations they support. The default methods return `AppError::Memory("unsupported")`, so a store that only provides k-v can skip transcript methods.
-
-### `BasicSessionStore`
-
-The reference store implementation. Supports both k-v and transcript operations using flat files (`kv.json` + `transcript.md`). All I/O is synchronous (file read/write); async wrapping is handled by `SessionHandle`.
 
 ---
 
 ## SessionHandle (async API)
 
-Agents interact with memory through `SessionHandle`, which wraps sync `Store` calls in `tokio::task::spawn_blocking`:
+String-based k-v and transcript operations (work for both `basic_session` and `tmp` sessions):
 
 ```rust
-pub async fn kv_get(&self, key: &str) -> Result<Option<String>, AppError>;
-pub async fn kv_set(&self, key: &str, value: &str) -> Result<(), AppError>;
-pub async fn kv_delete(&self, key: &str) -> Result<bool, AppError>;
+pub async fn kv_get(&self, key: &str)               -> Result<Option<String>, AppError>;
+pub async fn kv_set(&self, key: &str, value: &str)  -> Result<(), AppError>;
+pub async fn kv_delete(&self, key: &str)             -> Result<bool, AppError>;
 pub async fn transcript_append(&self, role: &str, content: &str) -> Result<(), AppError>;
-pub async fn transcript_read_last(&self, n: usize) -> Result<Vec<TranscriptEntry>, AppError>;
-pub async fn working_memory_read(&self) -> Result<String, AppError>;
-pub async fn list_files(&self) -> Result<Vec<SessionFileInfo>, AppError>;
+pub async fn transcript_read_last(&self, n: usize)  -> Result<Vec<TranscriptEntry>, AppError>;
+pub async fn working_memory_read(&self)              -> Result<String, AppError>;
+pub async fn list_files(&self)                       -> Result<Vec<SessionFileInfo>, AppError>;
 ```
 
-`SessionHandle` is `Clone + Send + Sync` — safe to share across tasks.
+Typed accessors for `tmp` sessions (synchronous — no file I/O):
 
-`working_memory_read()` currently reads the `working_memory` key from the session k-v store (empty string when not set). `list_files()` enumerates files in the session directory and returns name, size, and ISO-8601 modified timestamp metadata.
+```rust
+pub fn tmp_doc(&self)                  -> Result<Doc, AppError>;    // snapshot clone
+pub fn tmp_block(&self)                -> Result<Block, AppError>;  // snapshot clone
+pub fn set_tmp_doc(&self, doc: Doc)    -> Result<(), AppError>;     // write back
+pub fn set_tmp_block(&self, block: Block) -> Result<(), AppError>;  // write back
+```
+
+These return `Err` for sessions without a `TmpStore` (i.e. `basic_session` sessions).
 
 ---
 
 ## Agent Integration
 
-The `SessionChatPlugin` demonstrates memory integration:
+`SessionChatPlugin` demonstrates memory integration:
 
 1. On first message, creates a session via `state.memory.create_session(store_types, "chat")`.
 2. Appends user input as a `"user"` transcript entry.
-3. Reads the last 20 transcript entries and injects them as context for the LLM.
+3. Reads the last 20 transcript entries and injects them as LLM context.
 4. Appends the LLM response as an `"assistant"` transcript entry.
-5. The session handle is cached in an `Arc<Mutex<Option<SessionHandle>>>` for reuse.
+5. The session handle is cached in `Arc<Mutex<Option<SessionHandle>>>` for reuse.
 
-When the `subsystem-memory` feature is disabled, `SessionChatPlugin` falls back to stateless `ChatCore::basic_complete`.
+The default agent store type is `"basic_session"` unless overridden in config:
+
+```toml
+[agents.chat]
+memory = ["tmp"]   # use ephemeral in-process storage instead
+```
 
 ---
 
 ## Config
 
 ```toml
-[memory]
-# Global memory settings (currently empty, reserved for future use)
-
 [memory.basic_session]
-# kv_cap = 200         # max key-value entries (default: 200)
-# transcript_cap = 500 # max transcript entries (default: 500)
+# kv_cap = 200         # max key-value entries per session (default: 200)
+# transcript_cap = 500 # max transcript entries per session (default: 500)
 
 [agents.chat]
 memory = ["basic_session"]  # store types this agent uses
@@ -181,25 +243,17 @@ memory = ["basic_session"]  # store types this agent uses
 |-------|------|---------|-------------|
 | `memory.basic_session.kv_cap` | usize | 200 | Maximum k-v entries before FIFO eviction. |
 | `memory.basic_session.transcript_cap` | usize | 500 | Maximum transcript entries before FIFO eviction. |
-| `agents.{id}.memory` | array\<string\> | `[]` | Store types the agent requires. |
+| `agents.{id}.memory` | array\<string\> | `[]` | Store types (`"basic_session"` or `"tmp"`). |
 
----
-
-## Feature Gate
-
-The memory subsystem is behind the `subsystem-memory` Cargo feature. The `plugin-chat` feature implies `subsystem-memory`.
-
-```toml
-[features]
-subsystem-memory = []
-plugin-chat = ["subsystem-agents", "subsystem-memory"]
-```
+Memory is always compiled — there is no Cargo feature gate.
 
 ---
 
 ## Future
 
-- **Observation store:** structured facts, summaries, reflections (JSONL or SQLite)
-- **Usage tracking:** token counts, cost estimates per session
-- **Cross-session search:** full-text or embedding-based retrieval across sessions
-- **Session expiry:** TTL-based cleanup of old sessions
+- **Default store type "tmp":** when `agents.{id}.memory` is empty, automatically use `"tmp"` instead of returning an error.
+- **Observation store:** structured facts, summaries, reflections (JSONL or SQLite).
+- **Usage tracking:** token counts, cost estimates per session.
+- **Cross-session search:** full-text or embedding-based retrieval across sessions.
+- **Session expiry:** TTL-based cleanup of old sessions.
+

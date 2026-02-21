@@ -98,7 +98,7 @@ pub fn setup(config: &Config) -> Result<Identity, AppError> {
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
-
+// TODO: would it be better if these were in a seperate utils file?
 /// Generate a new ed25519 keypair. Returns `(signing_key_seed, verifying_key_bytes)`.
 fn generate_keypair() -> ([u8; 32], [u8; 32]) {
     let signing_key = SigningKey::generate(&mut OsRng);

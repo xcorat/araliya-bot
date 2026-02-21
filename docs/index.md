@@ -12,9 +12,9 @@ Deep dives:
 
 - [Architecture Overview](architecture/overview.md)
 - [Identity](architecture/identity.md)
-- [Agents](architecture/agents.md)
+- [Agents](architecture/subsystems/agents.md)
 - [Tools Subsystem](architecture/subsystems/tools.md)
-- [Memory](architecture/memory.md)
+- [Memory Subsystem](architecture/subsystems/memory.md) — typed value model, TmpStore, SessionHandle
 
 Operations:
 
