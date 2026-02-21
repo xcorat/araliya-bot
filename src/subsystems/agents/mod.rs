@@ -31,6 +31,8 @@ use crate::subsystems::memory::MemorySystem;
 mod chat;
 #[cfg(feature = "plugin-gmail-agent")]
 mod gmail;
+#[cfg(feature = "plugin-news-agent")]
+mod news;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -220,6 +222,12 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-gmail-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(gmail::GmailAgentPlugin);
+            agents.insert(agent.id().to_string(), agent);
+        }
+
+        #[cfg(feature = "plugin-news-agent")]
+        {
+            let agent: Box<dyn Agent> = Box::new(news::NewsAgentPlugin);
             agents.insert(agent.id().to_string(), agent);
         }
 
@@ -744,6 +752,57 @@ mod tests {
 
         match rx_reply.await.unwrap() {
             Ok(BusPayload::CommsMessage { content, .. }) => assert_eq!(content, "[fake] hello"),
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Verifies news-agent returns raw `newsmail_aggregator/get` payload as comms content.
+    #[cfg(feature = "plugin-news-agent")]
+    #[tokio::test]
+    async fn news_agent_returns_raw_tool_payload() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        tokio::spawn(async move {
+            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+                assert_eq!(method, "tools/execute");
+                if let BusPayload::ToolRequest { tool, action, args_json, channel_id, .. } = payload {
+                    assert_eq!(tool, "newsmail_aggregator");
+                    assert_eq!(action, "get");
+                    assert_eq!(args_json, "{}");
+                    assert_eq!(channel_id, "pty0");
+                    let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                        tool: "newsmail_aggregator".to_string(),
+                        action: "get".to_string(),
+                        ok: true,
+                        data_json: Some("[{\"subject\":\"A\"}]".to_string()),
+                        error: None,
+                    }));
+                }
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "news-agent".to_string(),
+            enabled: HashSet::from(["news-agent".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "ignored".to_string(), session_id: None, usage: None },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => {
+                assert_eq!(content, "[{\"subject\":\"A\"}]")
+            }
             other => panic!("unexpected response: {other:?}"),
         }
     }

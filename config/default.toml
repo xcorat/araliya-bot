@@ -62,6 +62,11 @@ memory = ["basic_session"]
 # Gmail agent — calls tools/gmail to read the latest email.
 # Bus method: agents/gmail/read
 
+[agents.news-agent]
+# News agent — calls tools/newsmail_aggregator/get and returns the raw payload.
+# Bus methods: agents/news-agent (default handle), agents/news-agent/read
+enabled = false
+
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false

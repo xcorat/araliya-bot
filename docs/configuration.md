@@ -72,6 +72,12 @@ To use it:
 cargo run -- -f config/full.toml
 ```
 
+For the news agent overlay:
+
+```bash
+cargo run -- -f config/news.toml
+```
+
 The loader follows the `base` chain automatically, deep-merging each layer so that overlay keys win and everything else comes from the base.
 
 ### Config Inheritance (`[meta] base`)
@@ -125,6 +131,7 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
 | `plugin-gmail-tool` | `--features plugin-gmail-tool` | No, Gmail tool implementation |
 | `plugin-gmail-agent` | `--features plugin-gmail-agent` | No, `agents/gmail/read` agent |
+| `plugin-news-agent` | `--features plugin-news-agent` | No, `agents/news-agent/(handle\|read)` via `newsmail_aggregator/get` |
 | `ui-gpui` | `--features ui-gpui` | No, enables the `araliya-gpui` desktop binary |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
@@ -189,6 +196,12 @@ Newsmail aggregator tool endpoint:
 - Tool/action: `tool = "newsmail_aggregator"`, `action = "get"`
 - Current request shape: empty `{}` supported; optional keys are `mailbox`, `n_last`, `tsec_last`
 - Healthcheck action: `tool = "newsmail_aggregator"`, `action = "healthcheck"` (returns one `newsletter`-filtered sample when available)
+
+News agent endpoint (MVP):
+
+- Bus methods: `agents/news-agent` (default `handle` action), `agents/news-agent/read`
+- Internal tool call: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
+- Current response behavior: returns raw `data_json` payload from tool as comms content
 
 ## Tools Configuration
 

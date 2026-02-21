@@ -45,7 +45,7 @@ default = [
     "channel-axum",
     "ui-svui",
 ]
-full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "channel-telegram", "cli", "gmail-app"]
+full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "plugin-news-agent", "channel-telegram", "cli", "gmail-app"]
 minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
 
 # Binaries
@@ -68,6 +68,7 @@ plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
+plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 
 # Comms Channels
 channel-pty = ["subsystem-comms"]

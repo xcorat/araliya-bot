@@ -55,3 +55,6 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 - Gmail agent plugin: `src/subsystems/agents/gmail.rs`
 - Agent bus method: `agents/gmail/read`
 - Flow: `agents/gmail/read` → `tools/execute` (`gmail/read_latest`) → agent formats summary reply
+- News agent plugin: `src/subsystems/agents/news.rs`
+- Agent bus methods: `agents/news-agent` (default handle), `agents/news-agent/read`
+- Flow: `agents/news-agent` → `tools/execute` (`newsmail_aggregator/get`) → agent returns raw tool payload

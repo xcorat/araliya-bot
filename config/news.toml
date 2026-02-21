@@ -1,0 +1,14 @@
+[meta]
+base = "full.toml"
+
+[agents]
+default = "echo"
+
+[agents.routing]
+pty0 = "news-agent"
+
+[agents.news-agent]
+enabled = true
+
+[comms.telegram]
+enabled = false
