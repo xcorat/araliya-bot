@@ -243,7 +243,17 @@ impl AgentsSubsystem {
             return Ok(mapped.as_str());
         }
 
-        Ok(self.default_agent.as_str())
+        // Use the default agent only if it is enabled, or if no agents have
+        // been explicitly enabled (empty set = no restrictions, for backward
+        // compat and minimal / test configurations).
+        if self.enabled_agents.is_empty() || self.enabled_agents.contains(&self.default_agent) {
+            return Ok(self.default_agent.as_str());
+        }
+
+        Err(BusError::new(
+            ERR_METHOD_NOT_FOUND,
+            format!("default agent '{}' is not enabled", self.default_agent),
+        ))
     }
 
     // ── Session query handlers ─────────────────────────────────────────────
@@ -698,6 +708,38 @@ mod tests {
             Ok(BusPayload::CommsMessage { content, .. }) => assert_eq!(content, "fallback"),
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    /// When `enabled_agents` is non-empty and does not contain the default
+    /// agent, `resolve_agent` must return an error rather than silently
+    /// routing to a disabled agent.
+    #[tokio::test]
+    async fn disabled_default_agent_returns_error() {
+        let (_bus, handle) = echo_bus();
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
+        // "chat" is the default but it is not in the enabled set.
+        let cfg = AgentsConfig {
+            default_agent: "chat".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+        };
+        let agents = AgentsSubsystem::new(
+            cfg,
+            handle,
+            #[cfg(feature = "subsystem-memory")]
+            memory,
+        );
+
+        let (tx, rx) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None },
+            tx,
+        );
+
+        assert!(rx.await.unwrap().is_err());
     }
 
     /// Verifies the full basic_chat -> llm/complete round-trip through the bus.
