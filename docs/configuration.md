@@ -39,6 +39,11 @@ memory = ["basic_session"]
 
 [llm]
 default = "dummy"
+
+[tools.newsmail_aggregator]
+mailbox = "inbox"
+n_last = 10
+# tsec_last = 86400
 ```
 
 When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
@@ -177,6 +182,21 @@ Gmail agent endpoint:
 
 - Bus method: `agents/gmail/read`
 - Internal tool call: `tools/execute` with `tool = "gmail"`, `action = "read_latest"`
+
+Newsmail aggregator tool endpoint:
+
+- Bus method: `tools/execute`
+- Tool/action: `tool = "newsmail_aggregator"`, `action = "get"`
+- Current request shape: empty `{}` supported; optional keys are `mailbox`, `n_last`, `tsec_last`
+- Healthcheck action: `tool = "newsmail_aggregator"`, `action = "healthcheck"` (returns one `newsletter`-filtered sample when available)
+
+## Tools Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tools.newsmail_aggregator.mailbox` | string | `"inbox"` | Gmail mailbox/query base used by `newsmail_aggregator/get`. |
+| `tools.newsmail_aggregator.n_last` | usize | `10` | Maximum number of latest emails to fetch before local filtering. |
+| `tools.newsmail_aggregator.tsec_last` | integer (optional) | none | Optional recent window in seconds. Only emails newer than `now - tsec_last` are returned. |
 
 ## Memory Configuration
 

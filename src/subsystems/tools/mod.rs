@@ -1,23 +1,32 @@
 #![cfg_attr(test, allow(unused_variables))]
 use tokio::sync::oneshot;
 
+use crate::config::NewsmailAggregatorConfig;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
 
 #[cfg(feature = "plugin-gmail-tool")]
 mod gmail;
+#[cfg(feature = "plugin-gmail-tool")]
+mod newsmail_aggregator;
 
-pub struct ToolsSubsystem;
+pub struct ToolsSubsystem {
+    newsmail_defaults: NewsmailAggregatorConfig,
+}
 
 impl ToolsSubsystem {
-    pub fn new() -> Self {
-        Self
+    pub fn new(newsmail_defaults: NewsmailAggregatorConfig) -> Self {
+        Self { newsmail_defaults }
     }
 }
 
 impl Default for ToolsSubsystem {
     fn default() -> Self {
-        Self::new()
+        Self::new(NewsmailAggregatorConfig {
+            mailbox: "inbox".to_string(),
+            n_last: 10,
+            tsec_last: None,
+        })
     }
 }
 
@@ -66,6 +75,66 @@ impl BusHandler for ToolsSubsystem {
                                 let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
                                     tool: "gmail".to_string(),
                                     action: "read_latest".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                #[cfg(feature = "plugin-gmail-tool")]
+                if tool == "newsmail_aggregator" && action == "get" {
+                    let defaults = self.newsmail_defaults.clone();
+                    tokio::spawn(async move {
+                        match newsmail_aggregator::get(defaults, &args_json).await {
+                            Ok(items) => {
+                                let data_json = serde_json::to_string(&items)
+                                    .unwrap_or_else(|_| "[]".to_string());
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "newsmail_aggregator".to_string(),
+                                    action: "get".to_string(),
+                                    ok: true,
+                                    data_json: Some(data_json),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "newsmail_aggregator".to_string(),
+                                    action: "get".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                #[cfg(feature = "plugin-gmail-tool")]
+                if tool == "newsmail_aggregator" && action == "healthcheck" {
+                    let defaults = self.newsmail_defaults.clone();
+                    tokio::spawn(async move {
+                        match newsmail_aggregator::healthcheck(defaults).await {
+                            Ok(result) => {
+                                let data_json = serde_json::to_string(&result)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "newsmail_aggregator".to_string(),
+                                    action: "healthcheck".to_string(),
+                                    ok: true,
+                                    data_json: Some(data_json),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "newsmail_aggregator".to_string(),
+                                    action: "healthcheck".to_string(),
                                     ok: false,
                                     data_json: None,
                                     error: Some(e),

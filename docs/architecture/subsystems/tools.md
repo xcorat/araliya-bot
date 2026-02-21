@@ -20,7 +20,7 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 
 ## Tool Types
 
-- **Built-in tools (current):** `gmail/read_latest`
+- **Built-in tools (current):** `gmail/read_latest`, `newsmail_aggregator/get`
 - **Future:** additional built-ins and optional runtime-loaded external tools
 
 ---
@@ -32,6 +32,15 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 - OAuth: Desktop loopback auth (`GOOGLE_CLIENT_ID`, optional `GOOGLE_CLIENT_SECRET`)
 - Token cache: `config/gmail_token.json`
 - Optional redirect override: `GOOGLE_REDIRECT_URI` (default `http://127.0.0.1:8080/oauth2/callback`)
+
+## Newsmail Aggregator Tool
+
+- Module: `src/subsystems/tools/newsmail_aggregator.rs`
+- Actions: `get`, `healthcheck`
+- Transport: `tools/execute` (same as all tools)
+- Uses Gmail core integration from `src/subsystems/tools/gmail.rs` (no duplicated OAuth/API stack)
+- Optional inputs: `mailbox`, `n_last`, `tsec_last`
+- `healthcheck` performs a minimal fetch (`maxResults=1`) with filter `in:{mailbox} newsletter`
 
 ---
 

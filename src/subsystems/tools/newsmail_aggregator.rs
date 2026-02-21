@@ -1,0 +1,137 @@
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::config::NewsmailAggregatorConfig;
+
+use super::gmail::{self, GmailSummary};
+
+#[derive(Debug, Deserialize, Default)]
+struct NewsmailArgs {
+    mailbox: Option<String>,
+    n_last: Option<usize>,
+    tsec_last: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedNewsmailConfig {
+    mailbox: String,
+    n_last: usize,
+    tsec_last: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthcheckResult {
+    pub ok: bool,
+    pub filter: String,
+    pub sample: Option<GmailSummary>,
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::from_secs(0))
+        .as_secs()
+}
+
+fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> ResolvedNewsmailConfig {
+    let args = serde_json::from_str::<NewsmailArgs>(args_json).unwrap_or_default();
+
+    let mailbox = args
+        .mailbox
+        .unwrap_or(defaults.mailbox)
+        .trim()
+        .to_string();
+
+    let mailbox = if mailbox.is_empty() {
+        "inbox".to_string()
+    } else {
+        mailbox
+    };
+
+    let n_last = args
+        .n_last
+        .unwrap_or(defaults.n_last)
+        .clamp(1, 100);
+
+    let tsec_last = args
+        .tsec_last
+        .or(defaults.tsec_last)
+        .filter(|v| *v > 0);
+
+    ResolvedNewsmailConfig {
+        mailbox,
+        n_last,
+        tsec_last,
+    }
+}
+
+pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<Vec<GmailSummary>, String> {
+    let resolved = resolve_config(defaults, args_json);
+    let query = format!("in:{}", resolved.mailbox);
+
+    let mut items = gmail::read_many(Some(&query), resolved.n_last as u32).await?;
+
+    if let Some(window_secs) = resolved.tsec_last {
+        let cutoff = now_unix().saturating_sub(window_secs);
+        items.retain(|item| item.internal_date_unix.map(|ts| ts >= cutoff).unwrap_or(false));
+    }
+
+    Ok(items)
+}
+
+fn healthcheck_query(mailbox: &str) -> String {
+    format!("in:{mailbox} newsletter")
+}
+
+pub async fn healthcheck(defaults: NewsmailAggregatorConfig) -> Result<HealthcheckResult, String> {
+    let query = healthcheck_query(&defaults.mailbox);
+    let mut items = gmail::read_many(Some(&query), 1).await?;
+    let sample = items.drain(..).next();
+
+    Ok(HealthcheckResult {
+        ok: sample.is_some(),
+        filter: query,
+        sample,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn defaults() -> NewsmailAggregatorConfig {
+        NewsmailAggregatorConfig {
+            mailbox: "inbox".to_string(),
+            n_last: 10,
+            tsec_last: Some(600),
+        }
+    }
+
+    #[test]
+    fn resolve_uses_tsec_last_key() {
+        let resolved = resolve_config(defaults(), r#"{"tsec_last": 120, "n_last": 5}"#);
+        assert_eq!(resolved.tsec_last, Some(120));
+        assert_eq!(resolved.n_last, 5);
+    }
+
+    #[test]
+    fn resolve_ignores_zero_tsec_last() {
+        let resolved = resolve_config(defaults(), r#"{"tsec_last": 0}"#);
+        assert_eq!(resolved.tsec_last, None);
+    }
+
+    #[test]
+    fn resolve_falls_back_to_defaults_on_invalid_json() {
+        let resolved = resolve_config(defaults(), "not-json");
+        assert_eq!(resolved.mailbox, "inbox");
+        assert_eq!(resolved.n_last, 10);
+        assert_eq!(resolved.tsec_last, Some(600));
+    }
+
+    #[test]
+    fn healthcheck_query_uses_newsletter_filter() {
+        assert_eq!(healthcheck_query("inbox"), "in:inbox newsletter");
+    }
+}
