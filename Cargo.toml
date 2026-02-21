@@ -38,13 +38,12 @@ default = [
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
-    "plugin-gmail-tool",
-    "plugin-gmail-agent",
     "channel-pty",
-    "channel-telegram",
     "channel-axum",
-    "ui-svui"
+    "ui-svui",
 ]
+full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "channel-telegram"]
+minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
 
 
 # Subsystems
@@ -66,7 +65,7 @@ plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"
 # Comms Channels
 channel-pty = ["subsystem-comms"]
 channel-telegram = ["subsystem-comms", "dep:teloxide"]
-channel-http = ["subsystem-comms"]
+channel-http = ["subsystem-comms"]   # deprecated: static file server, prefer channel-axum
 channel-axum = ["subsystem-comms", "dep:axum"]
 
 # UI Backends
