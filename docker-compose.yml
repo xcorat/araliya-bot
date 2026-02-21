@@ -13,13 +13,9 @@ services:
     volumes:
       # Persistent data: bot identity, memory stores, etc.
       # Replace ./data with any host path you want to use.
-      - ./data:/data/araliya
+      - ./data:/home/araliya/.araliya
 
     environment:
-      # Override the work directory (already set as image default, listed here for clarity).
-      ARALIYA_WORK_DIR: /data/araliya
-      # Bind to all interfaces so the mapped port is reachable from outside the container.
-      ARALIYA_HTTP_BIND: "0.0.0.0:8080"
       # Set your LLM API key here or via an .env file (see .env.example).
       # LLM_API_KEY: ""
       # Telegram bot token — only needed when the Telegram channel is enabled.

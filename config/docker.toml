@@ -1,0 +1,40 @@
+# Docker-specific config — replaces default.toml during the image build.
+# Bind addresses use 0.0.0.0 so mapped ports are reachable from outside the container.
+
+[supervisor]
+bot_name = "araliya"
+work_dir = "~/.araliya"
+log_level = "info"
+
+[comms.pty]
+enabled = false
+
+[comms.telegram]
+enabled = false
+
+[comms.http]
+enabled = false
+bind = "0.0.0.0:8080"
+
+[comms.axum_channel]
+enabled = true
+bind = "0.0.0.0:8080"
+
+[agents]
+default = "chat"
+
+[agents.routing]
+
+[agents.echo]
+
+[agents.basic_chat]
+
+[agents.chat]
+memory = ["basic_session"]
+
+[agents.gmail]
+
+[agents.dummy]
+enabled = false
+
+[memory]

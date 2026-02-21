@@ -375,12 +375,10 @@ fn default_false() -> bool {
 pub fn load() -> Result<Config, AppError> {
     let work_dir_override = env::var("ARALIYA_WORK_DIR").ok();
     let log_level_override = env::var("ARALIYA_LOG_LEVEL").ok();
-    let http_bind_override = env::var("ARALIYA_HTTP_BIND").ok();
     load_from(
         Path::new("config/default.toml"),
         work_dir_override.as_deref(),
         log_level_override.as_deref(),
-        http_bind_override.as_deref(),
     )
 }
 
@@ -390,7 +388,6 @@ pub fn load_from(
     path: &Path,
     work_dir_override: Option<&str>,
     log_level_override: Option<&str>,
-    http_bind_override: Option<&str>,
 ) -> Result<Config, AppError> {
     let raw = fs::read_to_string(path)
         .map_err(|e| AppError::Config(format!("cannot read {}: {e}", path.display())))?;
@@ -430,7 +427,7 @@ pub fn load_from(
             },
             axum_channel: AxumChannelConfig {
                 enabled: parsed.comms.axum_channel.enabled,
-                bind: http_bind_override.map(|s| s.to_string()).unwrap_or(parsed.comms.axum_channel.bind),
+                bind: parsed.comms.axum_channel.bind,
             },
         },
         agents: AgentsConfig {
@@ -557,7 +554,7 @@ log_level = "info"
     #[test]
     fn parse_basic_config() {
         let f = write_toml(MINIMAL_TOML);
-        let cfg = load_from(f.path(), None, None, None).unwrap();
+        let cfg = load_from(f.path(), None, None).unwrap();
         assert_eq!(cfg.bot_name, "test-bot");
         assert_eq!(cfg.log_level, "info");
     }
@@ -584,7 +581,7 @@ log_level = "info"
 
     #[test]
     fn missing_file_errors() {
-        let result = load_from(Path::new("/nonexistent/config.toml"), None, None, None);
+        let result = load_from(Path::new("/nonexistent/config.toml"), None, None);
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("config error"));
@@ -593,25 +590,16 @@ log_level = "info"
     #[test]
     fn env_work_dir_override() {
         let f = write_toml(MINIMAL_TOML);
-        let cfg = load_from(f.path(), Some("/tmp/test-override"), None, None).unwrap();
+        let cfg = load_from(f.path(), Some("/tmp/test-override"), None).unwrap();
         assert_eq!(cfg.work_dir, PathBuf::from("/tmp/test-override"));
     }
 
     #[test]
     fn env_log_level_override() {
         let f = write_toml(MINIMAL_TOML);
-        let cfg = load_from(f.path(), None, Some("debug"), None).unwrap();
+        let cfg = load_from(f.path(), None, Some("debug")).unwrap();
         assert_eq!(cfg.log_level, "debug");
     }
 
-    #[test]
-    fn env_http_bind_override() {
-        let f = write_toml(MINIMAL_TOML);
-        let bind = "0.0.0.0:8080";
-        let cfg = load_from(f.path(), None, None, Some(bind)).unwrap();
-        // Only the axum channel (active) bind is overridden.
-        assert_eq!(cfg.comms.axum_channel.bind, bind);
-        // The deprecated http channel bind is left unchanged.
-        assert_eq!(cfg.comms.http.bind, default_http_bind());
-    }
 }
+
