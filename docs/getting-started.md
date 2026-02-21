@@ -24,10 +24,16 @@ Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and ch
 | **Channels**  | `channel-pty`, `channel-http`, `channel-telegram` | I/O channels for the `comms` subsystem. |
 | **Tools**     | `subsystem-tools`, `plugin-gmail-tool` | Tool execution and implementations. |
 | **UI**        | `subsystem-ui`, `ui-svui` | Web UI backend served by the HTTP channel. |
+| **Binaries**  | `cli`, `gmail-app` | Additional binaries (`araliya-ctl`, `gmail_read_one`). |
 
-**Default build (All features enabled):**
+**Default build (Daemon only, all subsystems enabled):**
 ```bash
 cargo build
+```
+
+**Build all binaries (Daemon, CLI, Gmail App):**
+```bash
+cargo build --all-features
 ```
 
 **Minimal build (No subsystems enabled):**

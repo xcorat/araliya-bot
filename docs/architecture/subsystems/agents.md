@@ -76,6 +76,7 @@ pub trait Agent: Send + Sync {
     fn id(&self) -> &str;
     fn handle(
         &self,
+        action: String,
         channel_id: String,
         content: String,
         session_id: Option<String>,
@@ -88,6 +89,12 @@ pub trait Agent: Send + Sync {
 Agents are stored in a `HashMap<String, Box<dyn Agent>>` inside
 `AgentsSubsystem`. Resolution order (by `id()`) maps to the routing priority
 table above.
+
+### Agent and Subagent Identities
+
+Each registered agent is provisioned with its own cryptographic identity (`ed25519` keypair) during subsystem initialization. These identities are stored in `AgentsState::agent_identities` and persisted under `{memory_root}/agent/{agent_id}-{public_id}/`.
+
+Agents can also spawn **subagents** — ephemeral or task-specific workers that operate under their parent's identity structure. Subagents are provisioned via `AgentsState::get_or_create_subagent(agent_id, subagent_name)`, which creates a nested identity at `{memory_root}/agent/{agent_id}-{public_id}/subagents/{subagent_name}-{public_id}/`.
 
 > **Naming convention:** `Agent` for autonomous actors in the agents subsystem;
 > `Plugin` is reserved for capability extensions in the future tools subsystem.
