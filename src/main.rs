@@ -126,6 +126,8 @@ async fn run() -> Result<(), error::AppError> {
     // Build subsystem handlers and register with supervisor.
     #[allow(unused_mut)]
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
+    #[allow(unused_mut)]
+    let mut configured_handlers: Vec<String> = vec!["management".to_string()];
     
     handlers.push(Box::new(ManagementSubsystem::new(
         control_handle.clone(),
@@ -143,6 +145,7 @@ async fn run() -> Result<(), error::AppError> {
         let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
             .map_err(|e| error::AppError::Config(e.to_string()))?;
         handlers.push(Box::new(llm));
+        configured_handlers.push("llm".to_string());
     }
 
     #[cfg(feature = "subsystem-tools")]
@@ -150,6 +153,7 @@ async fn run() -> Result<(), error::AppError> {
         handlers.push(Box::new(ToolsSubsystem::new(
             config.tools.newsmail_aggregator.clone(),
         )));
+        configured_handlers.push("tools".to_string());
     }
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
@@ -162,12 +166,14 @@ async fn run() -> Result<(), error::AppError> {
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
             .with_llm_rates(rates);
         handlers.push(Box::new(agents));
+        configured_handlers.push("agents".to_string());
     }
 
     #[cfg(feature = "subsystem-cron")]
     {
         let cron = CronSubsystem::new(bus_handle.clone(), shutdown.clone());
         handlers.push(Box::new(cron));
+        configured_handlers.push("cron".to_string());
     }
 
     // Spawn supervisor run-loop (owns the bus receiver).
@@ -186,6 +192,13 @@ async fn run() -> Result<(), error::AppError> {
         shutdown.clone(),
         args.interactive,
         socket_path,
+    );
+
+    print_startup_summary(
+        &config,
+        &identity,
+        args.interactive,
+        &configured_handlers,
     );
 
     // Start comms channels as independent concurrent tasks.
@@ -222,6 +235,181 @@ async fn run() -> Result<(), error::AppError> {
     let _ = { use std::io::Write as _; std::io::stderr().flush() };
 
     Ok(())
+}
+
+fn print_startup_summary(
+    config: &config::Config,
+    identity: &identity::Identity,
+    interactive: bool,
+    configured_handlers: &[String],
+) {
+    let ansi_enabled = {
+        use std::io::IsTerminal as _;
+        std::io::stdout().is_terminal()
+    };
+
+    let pid = std::process::id();
+
+    let mut handlers = configured_handlers.to_vec();
+    handlers.sort();
+
+    let mode_text = if interactive { "interactive" } else { "daemon" };
+    let stdio_status = if interactive { "enabled" } else { "disabled" };
+
+    let mut subsystem_lines = Vec::new();
+    subsystem_lines.push("✅ management  • components: control, status, shutdown".to_string());
+
+    #[cfg(feature = "subsystem-llm")]
+    subsystem_lines.push(format!(
+        "✅ llm         • components: {} / {}",
+        config.llm.provider, config.llm.openai.model
+    ));
+
+    #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
+    {
+        let style_default_agent = |agent: &str| {
+            if ansi_enabled {
+                format!("\x1b[1m{agent}\x1b[0m")
+            } else {
+                agent.to_string()
+            }
+        };
+
+        let mut enabled_agents = config.agents.enabled.iter().cloned().collect::<Vec<_>>();
+        enabled_agents.sort();
+        let enabled_agents_display = if enabled_agents.is_empty() {
+            "none".to_string()
+        } else {
+            enabled_agents
+                .iter()
+                .map(|agent| {
+                    if agent == &config.agents.default_agent {
+                        style_default_agent(agent)
+                    } else {
+                        agent.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let default_agent_bold = style_default_agent(&config.agents.default_agent);
+        subsystem_lines.push(format!(
+            "✅ agents      • default: {} • enabled: {}",
+            default_agent_bold, enabled_agents_display
+        ));
+    }
+
+    #[cfg(feature = "subsystem-tools")]
+    {
+        let mut enabled_tools: Vec<String> = Vec::new();
+
+        #[cfg(feature = "plugin-gmail-tool")]
+        {
+            enabled_tools.push("gmail".to_string());
+            enabled_tools.push("newsmail_aggregator".to_string());
+        }
+
+        let enabled_tools_display = if enabled_tools.is_empty() {
+            "none".to_string()
+        } else {
+            enabled_tools.join(", ")
+        };
+
+        subsystem_lines.push(format!("✅ tools       • enabled: {}", enabled_tools_display));
+        subsystem_lines.push(format!(
+            "✅ tools       • defaults: newsmail_aggregator(mailbox={}, n_last={})",
+            config.tools.newsmail_aggregator.mailbox, config.tools.newsmail_aggregator.n_last
+        ));
+    }
+
+    #[cfg(feature = "subsystem-cron")]
+    subsystem_lines.push("✅ cron        • components: scheduler".to_string());
+
+    let mut comms_lines = Vec::new();
+    comms_lines.push(format!("🖥️  stdio-control: {}", stdio_status));
+
+    #[cfg(feature = "channel-pty")]
+    {
+        let pty_status = if config.comms.pty.enabled {
+            if interactive {
+                "disabled (interactive uses stdio control)"
+            } else {
+                "enabled"
+            }
+        } else {
+            "disabled"
+        };
+        comms_lines.push(format!("⌨️  pty: {}", pty_status));
+    }
+
+    #[cfg(feature = "channel-telegram")]
+    {
+        let status = if config.comms.telegram.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        comms_lines.push(format!("✈️  telegram: {}", status));
+    }
+
+    #[cfg(feature = "channel-http")]
+    {
+        if config.comms.http.enabled {
+            comms_lines.push(format!("🌐 http: {}", config.comms.http.bind));
+        } else {
+            comms_lines.push("🌐 http: disabled".to_string());
+        }
+    }
+
+    #[cfg(feature = "channel-axum")]
+    {
+        if config.comms.axum_channel.enabled {
+            comms_lines.push(format!("🧩 axum: {}", config.comms.axum_channel.bind));
+        } else {
+            comms_lines.push("🧩 axum: disabled".to_string());
+        }
+    }
+
+    #[cfg(not(feature = "channel-http"))]
+    if config.comms.http.enabled {
+        comms_lines.push("🌐 http: configured but not compiled in".to_string());
+    }
+
+    #[cfg(not(feature = "channel-axum"))]
+    if config.comms.axum_channel.enabled {
+        comms_lines.push("🧩 axum: configured but not compiled in".to_string());
+    }
+
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║ 🤖 Araliya Supervisor Status                                ║");
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ 🧾 Bot: {:<52}║", config.bot_name);
+    println!("║ 🆔 Public ID: {:<46}║", identity.public_id);
+    println!("║ 🧠 PID: {:<52}║", pid);
+    println!("║ 🛰️  Mode: {:<51}║", mode_text);
+    println!(
+        "║ 📦 Handlers: {:<47}║",
+        if handlers.is_empty() {
+            "none".to_string()
+        } else {
+            handlers.join(", ")
+        }
+    );
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ ⚙️  Subsystems                                               ║");
+    for line in subsystem_lines {
+        println!("║   {:<58}║", line);
+    }
+    println!("╟──────────────────────────────────────────────────────────────╢");
+    println!("║ 📡 Comms                                                    ║");
+    for line in comms_lines {
+        println!("║   {:<58}║", line);
+    }
+    println!("╚══════════════════════════════════════════════════════════════╝");
+
+    if interactive {
+        println!("💡 Type /help for help");
+    }
 }
 
 // TODO: We used to use clap, but for lean core, we use basic parsing. Check later.
