@@ -3,11 +3,15 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
     sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
-    ActiveTheme, h_flex, v_flex, Disableable,
+    Icon, IconName,
+    ActiveTheme, h_flex, v_flex, Disableable, Sizable,
     scroll::ScrollableElement,
 };
 
-use crate::state::{ActivitySection, AppState};
+use crate::state::{
+    ActivitySection, AppState, LayoutMode, DESKTOP_BREAKPOINT_PX, TABLET_BREAKPOINT_PX,
+    save_layout_prefs,
+};
 
 pub struct AppView {
     state: AppState,
@@ -69,14 +73,38 @@ impl AppView {
         cx.notify();
     }
 
+    fn section_icon(section: ActivitySection) -> IconName {
+        match section {
+            ActivitySection::Chat => IconName::Bot,
+            ActivitySection::Memory => IconName::Inbox,
+            ActivitySection::Tools => IconName::SquareTerminal,
+            ActivitySection::Status => IconName::ChartPie,
+            ActivitySection::Settings => IconName::Settings2,
+            ActivitySection::Docs => IconName::BookOpen,
+        }
+    }
+
     fn toggle_left_panel(&mut self, cx: &mut Context<Self>) {
         self.state.layout.left_panel_open = !self.state.layout.left_panel_open;
+        save_layout_prefs(&self.state.layout);
         cx.notify();
     }
 
     fn toggle_right_panel(&mut self, cx: &mut Context<Self>) {
         self.state.layout.right_panel_open = !self.state.layout.right_panel_open;
+        save_layout_prefs(&self.state.layout);
         cx.notify();
+    }
+
+    fn resolve_layout_mode(window: &Window) -> LayoutMode {
+        let width = window.viewport_size().width;
+        if width >= px(DESKTOP_BREAKPOINT_PX) {
+            LayoutMode::Desktop
+        } else if width >= px(TABLET_BREAKPOINT_PX) {
+            LayoutMode::Tablet
+        } else {
+            LayoutMode::Compact
+        }
     }
 
     fn fetch_health(&mut self, cx: &mut Context<Self>) {
@@ -197,7 +225,12 @@ impl AppView {
         .detach();
     }
 
-    fn render_sessions_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_sessions_sidebar(
+        &self,
+        cx: &mut Context<Self>,
+        width_px: f32,
+        is_drawer: bool,
+    ) -> impl IntoElement {
         let state = &self.state;
         let view = cx.entity().downgrade();
 
@@ -219,13 +252,34 @@ impl AppView {
             );
         }
 
+        let mut header_row = h_flex()
+            .justify_between()
+            .items_center()
+            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Sessions"));
+        if is_drawer {
+            header_row = header_row.child(
+                Button::new("close-sessions-drawer")
+                    .label("Close")
+                    .on_click({
+                        let view = view.clone();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.toggle_left_panel(cx);
+                            })
+                            .ok();
+                        }
+                    }),
+            );
+        }
+
         Sidebar::new(gpui_component::Side::Left)
-            .w(px(260.))
+            .w(px(width_px))
+            .h_full()
             .header(
                 SidebarHeader::new().child(
                     v_flex()
                         .gap_1()
-                        .child(div().text_sm().font_weight(FontWeight::BOLD).child("Sessions"))
+                        .child(header_row)
                         .child(
                             div()
                                 .text_xs()
@@ -244,6 +298,11 @@ impl AppView {
     fn render_chat_messages(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = &self.state;
         let theme = cx.theme();
+        let message_max_width = match self.state.layout.mode {
+            LayoutMode::Desktop => px(760.),
+            LayoutMode::Tablet => px(620.),
+            LayoutMode::Compact => px(460.),
+        };
 
         let mut messages_view = v_flex().flex_1().overflow_y_scrollbar().p_4().gap_4();
         if state.is_loading_messages {
@@ -271,7 +330,7 @@ impl AppView {
 
                 messages_view = messages_view.child(msg_container.child(
                     div()
-                        .max_w(px(680.))
+                        .max_w(message_max_width)
                         .p_3()
                         .rounded_lg()
                         .bg(bg_color)
@@ -385,9 +444,39 @@ impl AppView {
         panel
     }
 
-    fn render_right_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut panel = v_flex().w(px(300.)).p_3().gap_2().border_l_1().border_color(cx.theme().border);
-        panel = panel.child(div().font_weight(FontWeight::BOLD).child("Context Panel"));
+    fn render_right_panel(
+        &self,
+        cx: &mut Context<Self>,
+        width_px: f32,
+        is_drawer: bool,
+    ) -> impl IntoElement {
+        let mut title_row = h_flex()
+            .justify_between()
+            .items_center()
+            .child(div().font_weight(FontWeight::BOLD).child("Context Panel"));
+
+        if is_drawer {
+            let view = cx.entity().downgrade();
+            title_row = title_row.child(
+                Button::new("close-context-drawer")
+                    .label("Close")
+                    .on_click(move |_, _, cx| {
+                        view.update(cx, |this, cx| {
+                            this.toggle_right_panel(cx);
+                        })
+                        .ok();
+                    }),
+            );
+        }
+
+        let mut panel = v_flex()
+            .w(px(width_px))
+            .h_full()
+            .p_3()
+            .gap_2()
+            .border_l_1()
+            .border_color(cx.theme().border)
+            .child(title_row);
 
         match self.state.active_section {
             ActivitySection::Chat | ActivitySection::Tools => {
@@ -414,22 +503,43 @@ impl AppView {
 }
 
 impl Render for AppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.state.layout.mode = Self::resolve_layout_mode(window);
+
         let background = cx.theme().background;
         let foreground = cx.theme().foreground;
         let border = cx.theme().border;
         let muted_foreground = cx.theme().muted_foreground;
+        let is_desktop = matches!(self.state.layout.mode, LayoutMode::Desktop);
+        let left_panel_width = self.state.layout.left_panel_width.clamp(220.0, 360.0);
+        let right_panel_width = self.state.layout.right_panel_width.clamp(280.0, 420.0);
+        let show_left_inline = is_desktop && self.state.layout.left_panel_open;
+        let show_right_inline = is_desktop && self.state.layout.right_panel_open;
+        let show_left_drawer = !is_desktop && self.state.layout.left_panel_open;
+        let show_right_drawer = !is_desktop && self.state.layout.right_panel_open;
         let health_text = match &self.state.health_status {
             Some(h) => format!("{} · {}", h.status, h.llm_model),
             None => "Checking health...".to_string(),
         };
 
-        let mut activity_rail = v_flex().w(px(72.)).p_2().gap_2().border_r_1().border_color(border);
+        let mut activity_rail = v_flex()
+            .w(px(56.))
+            .h_full()
+            .p_2()
+            .gap_2()
+            .items_center()
+            .justify_start()
+            .border_r_1()
+            .border_color(border);
         for (index, section) in Self::activity_sections().into_iter().enumerate() {
             let section_label = section.label().to_string();
+            let icon = Self::section_icon(section);
             let is_active = self.state.active_section == section;
             let view = cx.entity().downgrade();
-            let mut button = Button::new(("activity", index)).label(section_label.clone());
+            let mut button = Button::new(("activity", index))
+                .icon(Icon::new(icon).small())
+                .compact()
+                .tooltip(section_label.clone());
             if is_active {
                 button = button.primary();
             }
@@ -452,10 +562,11 @@ impl Render for AppView {
             .child(div().font_weight(FontWeight::BOLD).child("Araliya"))
             .child(div().text_sm().text_color(muted_foreground).child(self.state.active_section.label()))
             .child(div().flex_1())
+            .child(div().text_sm().text_color(muted_foreground).child(self.state.layout.mode.label()))
             .child(div().text_sm().text_color(muted_foreground).child(health_text))
             .child(
                 Button::new("toggle-left")
-                    .label(if self.state.layout.left_panel_open { "Hide Left" } else { "Show Left" })
+                    .label(if self.state.layout.left_panel_open { "Hide Sessions" } else { "Show Sessions" })
                     .on_click({
                         let view = cx.entity().downgrade();
                         move |_, _, cx| {
@@ -468,7 +579,7 @@ impl Render for AppView {
             )
             .child(
                 Button::new("toggle-right")
-                    .label(if self.state.layout.right_panel_open { "Hide Right" } else { "Show Right" })
+                    .label(if self.state.layout.right_panel_open { "Hide Context" } else { "Show Context" })
                     .on_click({
                         let view = cx.entity().downgrade();
                         move |_, _, cx| {
@@ -480,15 +591,31 @@ impl Render for AppView {
                     }),
             );
 
-        let mut panel_row = h_flex().flex_1();
-        if self.state.layout.left_panel_open {
-            panel_row = panel_row.child(self.render_sessions_sidebar(cx));
-        }
+        let mut panel_row = h_flex().flex_1().w_full().h_full();
+        if show_right_drawer {
+            panel_row = panel_row.child(
+                v_flex()
+                    .w_full()
+                    .h_full()
+                    .child(self.render_right_panel(cx, right_panel_width, true)),
+            );
+        } else if show_left_drawer {
+            panel_row = panel_row.child(
+                v_flex()
+                    .w_full()
+                    .h_full()
+                    .child(self.render_sessions_sidebar(cx, left_panel_width, true)),
+            );
+        } else {
+            if show_left_inline {
+                panel_row = panel_row.child(self.render_sessions_sidebar(cx, left_panel_width, false));
+            }
 
-        panel_row = panel_row.child(v_flex().flex_1().child(self.render_main_panel(cx)));
+            panel_row = panel_row.child(v_flex().flex_1().h_full().child(self.render_main_panel(cx)));
 
-        if self.state.layout.right_panel_open {
-            panel_row = panel_row.child(self.render_right_panel(cx));
+            if show_right_inline {
+                panel_row = panel_row.child(self.render_right_panel(cx, right_panel_width, false));
+            }
         }
 
         let bottom_bar = h_flex()
@@ -511,17 +638,19 @@ impl Render for AppView {
             )))
             .child(div().text_sm().text_color(muted_foreground).child(format!(
                 "Mode: {}",
-                self.state.active_section.label()
+                self.state.layout.mode.label()
             )));
 
         h_flex()
             .size_full()
+            .items_start()
             .bg(background)
             .text_color(foreground)
             .child(activity_rail)
             .child(
                 v_flex()
                     .flex_1()
+                    .h_full()
                     .child(header)
                     .child(panel_row)
                     .child(bottom_bar)

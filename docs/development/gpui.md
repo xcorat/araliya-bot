@@ -90,4 +90,28 @@ The GPUI client now uses a basic shell mirroring the UI/UX PRD framework:
 
 This keeps layout extensibility in place while preserving existing API-backed chat and status behavior.
 
+## Responsive layout behavior
+
+The GPUI shell now adapts to window width using a single responsive shell model:
+
+- **Desktop** (`>= 1200px`): inline left sessions panel and inline right context panel.
+- **Tablet** (`>= 860px` and `< 1200px`): compact shell with activity rail always visible; side panels open as focused drawers.
+- **Compact** (`< 860px`): same drawer behavior as tablet with tighter content widths.
+
+Current interaction model:
+
+- Activity rail is always visible for section switching.
+- Header toggles control Sessions and Context panel visibility.
+- In tablet/compact modes, opening a side panel switches the center area into that panel view with a close action.
+
+Layout preferences are persisted between runs in:
+
+- `~/.config/araliya-bot/gpui-layout.json`
+
+Persisted fields include:
+
+- left/right panel open state
+- left/right panel widths
+- ISO-8601 `updated_at`
+
 See [notes/gpui-plan.md](../../../notes/gpui-plan.md) for the original design notes.

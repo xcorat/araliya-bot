@@ -25,6 +25,20 @@ Date: 2026-02-21
   - message send and transcript rendering
 - Introduced placeholder main-panel views for Memory, Tools, Settings, Docs to establish a stable extensible frame without adding extra behavior.
 
+## Responsive shell implementation (single adaptive model)
+- Added width-based responsive layout modes in GPUI state:
+  - Desktop (`>= 1200px`)
+  - Tablet (`>= 860px` and `< 1200px`)
+  - Compact (`< 860px`)
+- Switched shell behavior to mode-aware rendering while keeping one render tree:
+  - activity rail stays visible in all modes
+  - desktop keeps inline left/right side panels
+  - tablet/compact use drawer-style focused panels for Sessions/Context
+- Updated chat bubble constraints to mode-aware max widths for better readability at narrow sizes.
+- Added local layout preference persistence for panel visibility/width in:
+  - `~/.config/araliya-bot/gpui-layout.json`
+- Metadata field `updated_at` is written in ISO-8601 format.
+
 ## Paths
 - `src/bin/araliya-gpui/main.rs`
 - `src/bin/araliya-gpui/components.rs`

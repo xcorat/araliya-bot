@@ -7,7 +7,7 @@ use gpui_component::Root;
 use std::sync::Arc;
 
 use crate::api::ApiClient;
-use crate::state::AppState;
+use crate::state::{AppState, load_layout_prefs};
 use crate::components::AppView;
 
 fn main() {
@@ -17,7 +17,8 @@ fn main() {
         gpui_component::init(cx);
 
         let api_client = Arc::new(ApiClient::new("http://127.0.0.1:8080".to_string()));
-        let app_state = AppState::new(api_client);
+        let layout = load_layout_prefs().map(|prefs| prefs.into_layout()).unwrap_or_default();
+        let app_state = AppState::with_layout(api_client, layout);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
