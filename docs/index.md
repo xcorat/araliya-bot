@@ -8,6 +8,11 @@ Start here:
 - [Getting Started](getting-started.md) — build, run, and first-run verification.
 - [Configuration](configuration.md) — config files, runtime flags, and env vars.
 
+UI notes:
+
+- Svelte web UI: `ui/svui` (served by bot HTTP channel).
+- GPUI desktop UI: `araliya-gpui` binary (`cargo run --bin araliya-gpui --features ui-gpui`).
+
 Deep dives:
 
 - [Architecture Overview](architecture/overview.md)

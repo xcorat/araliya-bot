@@ -72,6 +72,7 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
 | `plugin-gmail-tool` | `--features plugin-gmail-tool` | No, Gmail tool implementation |
 | `plugin-gmail-agent` | `--features plugin-gmail-agent` | No, `agents/gmail/read` agent |
+| `ui-gpui` | `--features ui-gpui` | No, enables the `araliya-gpui` desktop binary |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
 
@@ -141,6 +142,11 @@ Gmail agent endpoint:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"` or `"openai"`). Requires `subsystem-llm` feature. |
+| `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
+| `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
+| `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
+
+These pricing fields are used for session spend accumulation and reporting in memory/session metadata.
 
 Provider API keys are never stored in config — supply them via environment or `.env`:
 

@@ -23,7 +23,7 @@ Araliya Bot uses Cargo features to enable or disable subsystems, plugins, and ch
 | **Agents**    | `plugin-echo`, `plugin-basic-chat`, `plugin-chat`, `plugin-gmail-agent` | Capabilities for the `agents` subsystem. |
 | **Channels**  | `channel-pty`, `channel-http`, `channel-telegram` | I/O channels for the `comms` subsystem. |
 | **Tools**     | `subsystem-tools`, `plugin-gmail-tool` | Tool execution and implementations. |
-| **UI**        | `subsystem-ui`, `ui-svui` | Web UI backend served by the HTTP channel. |
+| **UI**        | `subsystem-ui`, `ui-svui`, `ui-gpui` | Web UI backend and optional GPUI desktop client. |
 | **Binaries**  | `cli`, `gmail-app` | Additional binaries (`araliya-ctl`, `gmail_read_one`). |
 
 **Default build (Daemon only, all subsystems enabled):**
@@ -72,6 +72,17 @@ pnpm dev   # starts on http://localhost:5173/ui/
 
 Set `VITE_API_BASE_URL=http://127.0.0.1:8080` in the dev environment to proxy API calls to the running bot.
 
+### Building the GPUI Desktop Client
+
+The optional native desktop client is provided as a separate binary under `src/bin/araliya-gpui/` and is gated behind the `ui-gpui` feature.
+
+```bash
+cargo check --bin araliya-gpui --features ui-gpui
+cargo run --bin araliya-gpui --features ui-gpui
+```
+
+By default it targets `http://127.0.0.1:8080` and expects the bot API to be running there.
+
 For CI/reproducible environments:
 
 ```bash
@@ -114,6 +125,20 @@ Activates the stdio management adapter and PTY channel:
 # /chat <message>
 # /exit
 ```
+
+### GPUI Desktop mode
+
+Run the bot API and GPUI desktop client in separate terminals:
+
+```bash
+# Terminal 1: bot API
+cargo run
+
+# Terminal 2: desktop UI
+cargo run --bin araliya-gpui --features ui-gpui
+```
+
+The GPUI client currently covers baseline chat flows: health status, sessions list, transcript view, and message send.
 
 ### Management CLI (`araliya-ctl`)
 
