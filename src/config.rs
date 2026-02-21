@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(dead_code))]
 //! Configuration loading with env-var overrides.
 //!
 //! Reads `config/default.toml` relative to the current working directory,

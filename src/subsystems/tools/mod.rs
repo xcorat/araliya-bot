@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(unused_variables))]
 use tokio::sync::oneshot;
 
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};

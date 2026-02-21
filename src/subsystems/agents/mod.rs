@@ -18,9 +18,11 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 
 use crate::config::AgentsConfig;
+use crate::error::AppError;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
 
+use crate::identity::{self, Identity};
 use crate::subsystems::memory::MemorySystem;
 
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
@@ -42,6 +44,8 @@ pub struct AgentsState {
     pub memory: Arc<MemorySystem>,
     /// Per-agent memory store requirements from config.
     pub agent_memory: HashMap<String, Vec<String>>,
+    /// Cryptographic identities for each registered agent.
+    pub agent_identities: HashMap<String, Identity>,
 }
 
 impl AgentsState {
@@ -49,8 +53,21 @@ impl AgentsState {
         bus: BusHandle,
         memory: Arc<MemorySystem>,
         agent_memory: HashMap<String, Vec<String>>,
+        agent_identities: HashMap<String, Identity>,
     ) -> Self {
-        Self { bus, memory, agent_memory }
+        Self { bus, memory, agent_memory, agent_identities }
+    }
+
+    /// Get or create a subagent identity under the parent agent's memory directory.
+    ///
+    /// Subagents are ephemeral or task-specific workers that operate under their parent's
+    /// identity structure. Their keys are stored in `memory/agent/{agent_name}-{pkhash}/subagents/{subagent_name}-{pkhash}/`.
+    pub fn get_or_create_subagent(&self, agent_id: &str, subagent_name: &str) -> Result<Identity, AppError> {
+        let agent_identity = self.agent_identities.get(agent_id).ok_or_else(|| {
+            AppError::Identity(format!("agent '{}' not found", agent_id))
+        })?;
+        let subagents_dir = agent_identity.identity_dir.join("subagents");
+        identity::setup_named_identity(&subagents_dir, subagent_name)
     }
 
     /// Forward content to the LLM subsystem and return the completion.
@@ -164,7 +181,7 @@ impl AgentsSubsystem {
         config: AgentsConfig,
         bus: BusHandle,
         memory: Arc<MemorySystem>,
-    ) -> Self {
+    ) -> Result<Self, AppError> {
         // Default falls back to "echo" if config omits the default entirely.
         let default_agent = if config.default_agent.is_empty() {
             "echo".to_string()
@@ -203,13 +220,21 @@ impl AgentsSubsystem {
             agents.insert(agent.id().to_string(), agent);
         }
 
-        Self {
-            state: Arc::new(AgentsState::new(bus, memory, agent_memory)),
+        // Initialize cryptographic identities for all registered agents.
+        let mut agent_identities = HashMap::new();
+        let agent_memory_root = memory.memory_root().join("agent");
+        for agent_id in agents.keys() {
+            let identity = identity::setup_named_identity(&agent_memory_root, agent_id)?;
+            agent_identities.insert(agent_id.clone(), identity);
+        }
+
+        Ok(Self {
+            state: Arc::new(AgentsState::new(bus, memory, agent_memory, agent_identities)),
             agents,
             default_agent,
             channel_map: config.channel_map,
             enabled_agents,
-        }
+        })
     }
 
     fn resolve_agent<'a>(&'a self, method_agent_id: Option<&'a str>, channel_id: &str) -> Result<&'a str, BusError> {
@@ -538,7 +563,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -566,7 +591,7 @@ mod tests {
             channel_map,
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -591,7 +616,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -613,7 +638,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -642,7 +667,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -682,7 +707,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };
-        let agents = AgentsSubsystem::new(cfg, handle, memory);
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
@@ -695,5 +720,29 @@ mod tests {
             Ok(BusPayload::CommsMessage { content, .. }) => assert_eq!(content, "[fake] hello"),
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_or_create_subagent() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let subagent = agents.state.get_or_create_subagent("echo", "worker1").unwrap();
+        
+        assert!(subagent.identity_dir.exists());
+        
+        let dir_name = subagent.identity_dir.file_name().unwrap().to_str().unwrap();
+        assert!(dir_name.starts_with("worker1-"));
+        assert!(dir_name.ends_with(&subagent.public_id));
+        
+        let parent_dir = subagent.identity_dir.parent().unwrap();
+        assert!(parent_dir.ends_with("subagents"));
     }
 }

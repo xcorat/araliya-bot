@@ -140,6 +140,10 @@ impl MemorySystem {
         })
     }
 
+    pub fn memory_root(&self) -> &Path {
+        &self.memory_root
+    }
+
     /// Create a new session with the given store types.
     ///
     /// Returns a [`SessionHandle`] for reading and writing session data.

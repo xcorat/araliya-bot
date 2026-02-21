@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(dead_code, unused_variables, unused_imports, unused_mut, unused_macros, private_interfaces))]
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_macros, private_interfaces)]
 // TODO: move the core functionality to a `core` crate/folder
 //! Araliya Bot — supervisor entry point.
 //!
@@ -27,7 +29,8 @@ use tracing::info;
 use supervisor::bus::SupervisorBus;
 use supervisor::control::SupervisorControl;
 use supervisor::dispatch::BusHandler;
-#[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
+// CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
+#[cfg(feature = "subsystem-agents")]
 use subsystems::agents::AgentsSubsystem;
 
 #[cfg(feature = "subsystem-llm")]
@@ -83,7 +86,7 @@ async fn run() -> Result<(), error::AppError> {
 
     let identity = identity::setup(&config)?;
 
-    info!(bot_id = %identity.bot_id, "identity ready — starting subsystems");
+    info!(public_id = %identity.public_id, "identity ready — starting subsystems");
 
     // TODO: focus on the order, memory should be init after the sup bus for example.
     // Optionally build the memory system.
@@ -128,7 +131,7 @@ async fn run() -> Result<(), error::AppError> {
         control_handle.clone(),
         bus_handle.clone(),
         ManagementInfo {
-            bot_id: identity.bot_id.clone(),
+            bot_id: identity.public_id.clone(),
             llm_provider: config.llm.provider.clone(),
             llm_model: config.llm.openai.model.clone(),
             llm_timeout_seconds: config.llm.openai.timeout_seconds,
@@ -149,7 +152,7 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone());
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?;
         handlers.push(Box::new(agents));
     }
 

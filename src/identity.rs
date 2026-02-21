@@ -1,4 +1,5 @@
-//! Bot identity — ed25519 keypair generation, persistence, and `bot_id` derivation.
+#![cfg_attr(test, allow(dead_code))]
+//! Bot identity — ed25519 keypair generation, persistence, and `public_id` derivation.
 //!
 //! Layout under `work_dir`:
 //! ```text
@@ -8,7 +9,7 @@
 //!     └── id_ed25519.pub   (32-byte verifying key, mode 0644)
 //! ```
 //!
-//! `bot_id` is the first 8 hex characters of `SHA256(verifying_key_bytes)`.
+//! `public_id` is the first 8 hex characters of `SHA256(verifying_key_bytes)`.
 
 use std::{
     fs,
@@ -26,8 +27,8 @@ use crate::{config::Config, error::AppError};
 #[derive(Debug, Clone)]
 pub struct Identity {
     /// First 8 hex chars of `SHA256(verifying_key)`.
-    pub bot_id: String,
-    /// Path to the identity directory (`work_dir/bot-pkey{bot_id}/`).
+    pub public_id: String,
+    /// Path to the identity directory (`work_dir/bot-pkey{public_id}/`).
     pub identity_dir: PathBuf,
     verifying_key: [u8; 32],
     signing_key_seed: [u8; 32],
@@ -56,14 +57,14 @@ pub fn setup(config: &Config) -> Result<Identity, AppError> {
         }
     } else {
         // CHECK: this is not the best logic. Think a bit more about this workflow.
-        // We need the bot_id to name the directory, but the id comes from the key.
+        // We need the public_id to name the directory, but the id comes from the key.
         // Strategy: use a single discovered `bot-pkey*` directory if unambiguous, else generate.
         let dirs = find_existing_identity_dirs(&config.work_dir)?;
         match dirs.len() {
             0 => {
                 let (seed, vk) = generate_keypair();
-                let bot_id = compute_bot_id(&vk);
-                let dir = config.work_dir.join(format!("bot-pkey{}", bot_id));
+                let public_id = compute_public_id(&vk);
+                let dir = config.work_dir.join(format!("bot-pkey{}", public_id));
                 fs::create_dir_all(&dir)
                     .map_err(|e| AppError::Identity(format!("cannot create identity dir: {e}")))?;
                 save_keypair(&dir, &seed, &vk)?;
@@ -87,13 +88,59 @@ pub fn setup(config: &Config) -> Result<Identity, AppError> {
         }
     };
 
-    let bot_id = compute_bot_id(&verifying_bytes);
+    let public_id = compute_public_id(&verifying_bytes);
 
     Ok(Identity {
-        bot_id,
+        public_id,
         identity_dir,
         verifying_key: verifying_bytes,
         signing_key_seed: signing_seed,
+    })
+}
+
+/// Scan `base_dir` for a directory starting with `{prefix}-`.
+/// If found, load the keypair from it.
+/// If not, generate a new keypair, compute the `public_id`, create the directory `{base_dir}/{prefix}-{public_id}`,
+/// save the keypair, and return the `Identity`.
+pub fn setup_named_identity(base_dir: &Path, prefix: &str) -> Result<Identity, AppError> {
+    if !base_dir.exists() {
+        fs::create_dir_all(base_dir)
+            .map_err(|e| AppError::Identity(format!("cannot create base dir: {e}")))?;
+    }
+
+    let entries = fs::read_dir(base_dir)
+        .map_err(|e| AppError::Identity(format!("cannot read base_dir: {e}")))?;
+
+    let prefix_dash = format!("{}-", prefix);
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with(&prefix_dash) && entry.path().join("id_ed25519").exists() {
+            let dir = entry.path();
+            let (seed, vk) = load_keypair(&dir)?;
+            let public_id = compute_public_id(&vk);
+            return Ok(Identity {
+                public_id,
+                identity_dir: dir,
+                verifying_key: vk,
+                signing_key_seed: seed,
+            });
+        }
+    }
+
+    let (seed, vk) = generate_keypair();
+    let public_id = compute_public_id(&vk);
+    let dir = base_dir.join(format!("{}{}", prefix_dash, public_id));
+
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::Identity(format!("cannot create identity dir: {e}")))?;
+    save_keypair(&dir, &seed, &vk)?;
+
+    Ok(Identity {
+        public_id,
+        identity_dir: dir,
+        verifying_key: vk,
+        signing_key_seed: seed,
     })
 }
 
@@ -107,8 +154,8 @@ fn generate_keypair() -> ([u8; 32], [u8; 32]) {
     (seed, verifying_bytes)
 }
 
-/// Derive `bot_id`: first 8 hex chars of `SHA256(verifying_key_bytes)`.
-pub fn compute_bot_id(verifying_key_bytes: &[u8; 32]) -> String {
+/// Derive `public_id`: first 8 hex chars of `SHA256(verifying_key_bytes)`.
+pub fn compute_public_id(verifying_key_bytes: &[u8; 32]) -> String {
     let digest = Sha256::digest(verifying_key_bytes);
     hex::encode(digest)[..8].to_string()
 }
@@ -192,9 +239,9 @@ mod tests {
     }
 
     #[test]
-    fn compute_bot_id_is_8_hex_chars() {
+    fn compute_public_id_is_8_hex_chars() {
         let (_, vk) = generate_keypair();
-        let id = compute_bot_id(&vk);
+        let id = compute_public_id(&vk);
         assert_eq!(id.len(), 8);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -225,7 +272,7 @@ mod tests {
         assert!(identity.identity_dir.exists());
         assert!(identity.identity_dir.join("id_ed25519").exists());
         assert!(identity.identity_dir.join("id_ed25519.pub").exists());
-        assert_eq!(identity.bot_id.len(), 8);
+        assert_eq!(identity.public_id.len(), 8);
     }
 
     #[test]
@@ -234,7 +281,20 @@ mod tests {
         let cfg = test_config(tmp.path());
         let id1 = setup(&cfg).unwrap();
         let id2 = setup(&cfg).unwrap();
-        assert_eq!(id1.bot_id, id2.bot_id);
+        assert_eq!(id1.public_id, id2.public_id);
+    }
+
+    #[test]
+    fn setup_named_identity_creates_and_loads() {
+        let tmp = TempDir::new().unwrap();
+        let id1 = setup_named_identity(tmp.path(), "test-agent").unwrap();
+        
+        assert!(id1.identity_dir.exists());
+        assert!(id1.identity_dir.file_name().unwrap().to_string_lossy().starts_with("test-agent-"));
+        
+        let id2 = setup_named_identity(tmp.path(), "test-agent").unwrap();
+        assert_eq!(id1.public_id, id2.public_id);
+        assert_eq!(id1.identity_dir, id2.identity_dir);
     }
 
     #[test]

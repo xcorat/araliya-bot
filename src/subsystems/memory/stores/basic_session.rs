@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(private_interfaces))]
 //! `basic_session` store — capped key-value (Doc-backed) + capped Markdown transcript.
 //!
 //! ## On-disk format

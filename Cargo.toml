@@ -42,8 +42,12 @@ default = [
     "channel-axum",
     "ui-svui",
 ]
-full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "channel-telegram"]
+full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "channel-telegram", "cli", "gmail-app"]
 minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
+
+# Binaries
+cli = []
+gmail-app = []
 
 
 # Subsystems
@@ -82,3 +86,17 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+[[bin]]
+name = "araliya-bot"
+path = "src/main.rs"
+
+[[bin]]
+name = "araliya-ctl"
+path = "src/bin/araliya-ctl.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "gmail_read_one"
+path = "src/bin/gmail_read_one.rs"
+required-features = ["gmail-app"]

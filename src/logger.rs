@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(dead_code))]
 //! Logging initialisation via tracing-subscriber.
 //!
 //! Call [`init`] once at startup, after runtime settings are resolved.
