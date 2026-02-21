@@ -30,7 +30,7 @@ pub use collections::{Block, Collection, Doc};
 #[allow(unused_imports)]
 pub use store::Store;
 #[allow(unused_imports)]
-pub use types::{Obj, PrimaryValue, Value};
+pub use types::{Obj, PrimaryValue, TextFile, Value};
 
 use std::collections::HashMap;
 use std::fs;

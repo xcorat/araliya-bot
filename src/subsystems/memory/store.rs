@@ -14,15 +14,6 @@ use std::sync::RwLock;
 
 use crate::error::AppError;
 
-/// A single key-value entry with a timestamp.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct KvEntry {
-    pub key: String,
-    pub value: String,
-    /// ISO-8601 timestamp of when this entry was written.
-    pub ts: String,
-}
-
 /// A parsed transcript entry.
 #[derive(Debug, Clone)]
 pub struct TranscriptEntry {
@@ -90,6 +81,39 @@ pub trait SessionStore: Send + Sync {
     ) -> Result<Vec<TranscriptEntry>, AppError> {
         Err(AppError::Memory(format!(
             "store '{}' does not support transcript_read_last",
+            self.store_type()
+        )))
+    }
+
+    // ── Typed Collection views ────────────────────────────────────────
+
+    /// Return the current k-v store as a [`Doc`] collection.
+    ///
+    /// Default implementation returns an error; override in stores that
+    /// have a doc-backed k-v layer (e.g. `BasicSessionStore`).
+    fn read_kv_doc(
+        &self,
+        _session_dir: &Path,
+    ) -> Result<super::collections::Doc, AppError> {
+        Err(AppError::Memory(format!(
+            "store '{}' does not support read_kv_doc",
+            self.store_type()
+        )))
+    }
+
+    /// Return all transcript entries as a [`Block`] collection.
+    ///
+    /// Each entry is keyed by its zero-padded position.  The value is a
+    /// `Value::Obj` with `data = content bytes` and metadata `{ role, ts }`.
+    ///
+    /// Default implementation returns an error; override in stores that
+    /// manage a structured transcript.
+    fn read_transcript_block(
+        &self,
+        _session_dir: &Path,
+    ) -> Result<super::collections::Block, AppError> {
+        Err(AppError::Memory(format!(
+            "store '{}' does not support read_transcript_block",
             self.store_type()
         )))
     }

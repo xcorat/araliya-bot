@@ -14,7 +14,7 @@ Deep dives:
 - [Identity](architecture/identity.md)
 - [Agents](architecture/subsystems/agents.md)
 - [Tools Subsystem](architecture/subsystems/tools.md)
-- [Memory Subsystem](architecture/subsystems/memory.md) — typed value model, TmpStore, SessionHandle
+- [Memory Subsystem](architecture/subsystems/memory.md) — typed value model, TmpStore, SessionHandle (v0.4.0: typed Value/Collection model, `TmpStore`, memory always enabled)
 
 Operations:
 

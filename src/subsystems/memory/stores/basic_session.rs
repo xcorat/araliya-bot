@@ -1,18 +1,31 @@
-//! `basic_session` store — capped JSON key-value + capped Markdown transcript.
+//! `basic_session` store — capped key-value (Doc-backed) + capped Markdown transcript.
 //!
-//! Files managed per session directory:
-//! - `kv.json`         — `{ "entries": [...], "cap": N }`
-//! - `transcript.md`   — Markdown with `### {role} — {timestamp}` delimiters
+//! ## On-disk format
 //!
-//! Both files are capped by entry count (FIFO — oldest entries dropped first).
+//! Two files per session directory:
+//!
+//! - `kv.json` — `{ "cap": N, "order": ["k1","k2",...], "values": {"k1":"v1",...} }`
+//!   The flat `values` map is the canonical serialisation of a [`Doc`] collection.
+//!   `order` preserves insertion order for FIFO eviction.
+//!
+//! - `transcript.md` — Markdown with `### {role} — {timestamp}` delimiters.
+//!   Human-readable; also exposed as a [`Block`] collection via
+//!   [`read_transcript_block`](BasicSessionStore::read_transcript_block).
+//!   Each entry becomes a `Value::Text(TextFile)` keyed by zero-padded index.
+//!
+//! Both stores are capped by entry count (FIFO — oldest entries dropped first).
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
 use crate::error::AppError;
-use super::super::store::{KvEntry, SessionStore, TranscriptEntry};
+use super::super::collections::{Block, Doc};
+use super::super::store::{SessionStore, TranscriptEntry};
+use super::super::types::{PrimaryValue, TextFile, Value};
 
+//  TODO: these  should be const  definied top or config.
 /// Default maximum number of k-v entries before FIFO eviction.
 const DEFAULT_KV_CAP: usize = 200;
 /// Default maximum number of transcript entries before FIFO eviction.
@@ -21,12 +34,58 @@ const DEFAULT_TRANSCRIPT_CAP: usize = 500;
 const KV_FILENAME: &str = "kv.json";
 const TRANSCRIPT_FILENAME: &str = "transcript.md";
 
+// ── On-disk structures ────────────────────────────────────────────────────────
+
 /// On-disk shape of `kv.json`.
+///
+/// `order` records insertion order so FIFO eviction is deterministic.
+/// `values` is a plain string map — structurally identical to a serialised [`Doc`].
 #[derive(serde::Serialize, serde::Deserialize)]
 struct KvFile {
     cap: usize,
-    entries: Vec<KvEntry>,
+    /// Insertion-ordered list of active keys.
+    order: Vec<String>,
+    /// Flat string map — direct serialisation of a [`Doc`].
+    values: HashMap<String, String>,
 }
+
+impl KvFile {
+    fn empty(cap: usize) -> Self {
+        Self { cap, order: Vec::new(), values: HashMap::new() }
+    }
+
+    /// Build a [`Doc`] from the current k-v values.
+    fn to_doc(&self) -> Doc {
+        let mut doc = Doc::default();
+        for (k, v) in &self.values {
+            doc.set(k.clone(), PrimaryValue::Str(v.clone()));
+        }
+        doc
+    }
+
+    fn get(&self, key: &str) -> Option<&str> {
+        self.values.get(key).map(|s| s.as_str())
+    }
+
+    /// Upsert, maintaining insertion order and FIFO cap.
+    fn set(&mut self, key: &str, value: &str) {
+        self.order.retain(|k| k != key);
+        self.order.push(key.to_string());
+        self.values.insert(key.to_string(), value.to_string());
+        while self.order.len() > self.cap {
+            let oldest = self.order.remove(0);
+            self.values.remove(&oldest);
+        }
+    }
+
+    fn delete(&mut self, key: &str) -> bool {
+        let removed = self.values.remove(key).is_some();
+        if removed { self.order.retain(|k| k != key); }
+        removed
+    }
+}
+
+// ── BasicSessionStore ─────────────────────────────────────────────────────────
 
 pub struct BasicSessionStore {
     kv_cap: usize,
@@ -47,7 +106,7 @@ impl BasicSessionStore {
         session_dir.join(KV_FILENAME)
     }
 
-    fn read_kv(session_dir: &Path) -> Result<KvFile, AppError> {
+    pub(crate) fn read_kv(session_dir: &Path) -> Result<KvFile, AppError> {
         let path = Self::kv_path(session_dir);
         let data = fs::read_to_string(&path)
             .map_err(|e| AppError::Memory(format!("cannot read {}: {e}", path.display())))?;
@@ -63,14 +122,11 @@ impl BasicSessionStore {
             .map_err(|e| AppError::Memory(format!("cannot write {}: {e}", path.display())))
     }
 
-    fn now_iso8601() -> String {
-        // Use UTC wall-clock via std — no extra crate needed.
-        // Format: "2026-02-19T12:34:56Z"
+    pub(crate) fn now_iso8601() -> String {
         let d = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
         let secs = d.as_secs();
-        // Simple but correct UTC formatter (no sub-second precision needed).
         let (s, m, h, day, mon, yr) = secs_to_utc(secs);
         format!("{yr:04}-{mon:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
     }
@@ -81,14 +137,13 @@ impl BasicSessionStore {
         session_dir.join(TRANSCRIPT_FILENAME)
     }
 
-    /// Parse transcript.md into entries by splitting on `### ` headers.
+    /// Parse `transcript.md` into typed entries.
     fn parse_transcript(text: &str) -> Vec<TranscriptEntry> {
         let mut entries = Vec::new();
         let mut current: Option<(String, String, Vec<String>)> = None;
 
         for line in text.lines() {
             if let Some(header) = line.strip_prefix("### ") {
-                // Flush previous entry.
                 if let Some((role, ts, lines)) = current.take() {
                     entries.push(TranscriptEntry {
                         role,
@@ -96,7 +151,6 @@ impl BasicSessionStore {
                         content: lines.join("\n").trim().to_string(),
                     });
                 }
-                // Parse "role — timestamp"
                 let (role, ts) = if let Some((r, t)) = header.split_once(" — ") {
                     (r.trim().to_string(), t.trim().to_string())
                 } else {
@@ -107,7 +161,6 @@ impl BasicSessionStore {
                 lines.push(line.to_string());
             }
         }
-        // Flush last entry.
         if let Some((role, ts, lines)) = current {
             entries.push(TranscriptEntry {
                 role,
@@ -118,13 +171,46 @@ impl BasicSessionStore {
         entries
     }
 
-    /// Serialise entries back to Markdown.
     fn serialise_transcript(entries: &[TranscriptEntry]) -> String {
         let mut out = String::new();
         for e in entries {
             out.push_str(&format!("### {} — {}\n\n{}\n\n", e.role, e.timestamp, e.content));
         }
         out
+    }
+
+    // ── Typed Collection views ────────────────────────────────────────
+
+    /// Return the current k-v store as a [`Doc`] collection.
+    ///
+    /// All values are `PrimaryValue::Str`.  Changes to the returned [`Doc`] are
+    /// not automatically persisted — call [`kv_set`](SessionStore::kv_set) as
+    /// normal to write mutations back.
+    pub fn read_kv_doc(&self, session_dir: &Path) -> Result<Doc, AppError> {
+        Ok(Self::read_kv(session_dir)?.to_doc())
+    }
+
+    /// Return all transcript entries as a [`Block`] collection.
+    ///
+    /// Each entry is keyed by its zero-padded position (`"000000"`, `"000001"`,…).
+    /// The value is a [`Value::Text`] where:
+    /// - `content` = the entry text,
+    /// - `metadata` = `{ "role": ..., "ts": ..., "mime": "text/plain" }`.
+    pub fn read_transcript_block(&self, session_dir: &Path) -> Result<Block, AppError> {
+        let path = Self::transcript_path(session_dir);
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        let entries = Self::parse_transcript(&text);
+
+        let mut block = Block::default();
+        for (i, entry) in entries.iter().enumerate() {
+            let key = format!("{i:06}");
+            let mut tf = TextFile::new(entry.content.clone());
+            tf.metadata.insert("role".to_string(), entry.role.clone());
+            tf.metadata.insert("ts".to_string(), entry.timestamp.clone());
+            tf.metadata.insert("mime".to_string(), "text/plain".to_string());
+            block.set(key, Value::Text(tf));
+        }
+        Ok(block)
     }
 }
 
@@ -134,55 +220,28 @@ impl SessionStore for BasicSessionStore {
     }
 
     fn init(&self, session_dir: &Path) -> Result<(), AppError> {
-        // Create empty kv.json
-        let kv = KvFile {
-            cap: self.kv_cap,
-            entries: Vec::new(),
-        };
-        Self::write_kv(session_dir, &kv)?;
-
-        // Create empty transcript.md
+        Self::write_kv(session_dir, &KvFile::empty(self.kv_cap))?;
         let path = Self::transcript_path(session_dir);
         fs::write(&path, "")
             .map_err(|e| AppError::Memory(format!("cannot create {}: {e}", path.display())))?;
-
         Ok(())
     }
 
     // ── K-V ───────────────────────────────────────────────────────────
 
     fn kv_get(&self, session_dir: &Path, key: &str) -> Result<Option<String>, AppError> {
-        let kv = Self::read_kv(session_dir)?;
-        // Return the latest entry with matching key.
-        Ok(kv.entries.iter().rev().find(|e| e.key == key).map(|e| e.value.clone()))
+        Ok(Self::read_kv(session_dir)?.get(key).map(|s| s.to_string()))
     }
 
     fn kv_set(&self, session_dir: &Path, key: &str, value: &str) -> Result<(), AppError> {
         let mut kv = Self::read_kv(session_dir)?;
-
-        // Remove any existing entry with the same key.
-        kv.entries.retain(|e| e.key != key);
-
-        // Append new entry.
-        kv.entries.push(KvEntry {
-            key: key.to_string(),
-            value: value.to_string(),
-            ts: Self::now_iso8601(),
-        });
-
-        // FIFO cap: drop oldest.
-        while kv.entries.len() > kv.cap {
-            kv.entries.remove(0);
-        }
-
+        kv.set(key, value);
         Self::write_kv(session_dir, &kv)
     }
 
     fn kv_delete(&self, session_dir: &Path, key: &str) -> Result<bool, AppError> {
         let mut kv = Self::read_kv(session_dir)?;
-        let before = kv.entries.len();
-        kv.entries.retain(|e| e.key != key);
-        let removed = kv.entries.len() < before;
+        let removed = kv.delete(key);
         Self::write_kv(session_dir, &kv)?;
         Ok(removed)
     }
@@ -196,8 +255,6 @@ impl SessionStore for BasicSessionStore {
         content: &str,
     ) -> Result<(), AppError> {
         let path = Self::transcript_path(session_dir);
-
-        // Read, parse, append, cap, write-back.
         let existing = fs::read_to_string(&path).unwrap_or_default();
         let mut entries = Self::parse_transcript(&existing);
 
@@ -207,7 +264,6 @@ impl SessionStore for BasicSessionStore {
             content: content.to_string(),
         });
 
-        // FIFO cap: drop oldest.
         while entries.len() > self.transcript_cap {
             entries.remove(0);
         }
@@ -217,7 +273,6 @@ impl SessionStore for BasicSessionStore {
             .map_err(|e| AppError::Memory(format!("cannot write {}: {e}", path.display())))?;
         f.write_all(out.as_bytes())
             .map_err(|e| AppError::Memory(format!("write {}: {e}", path.display())))?;
-
         Ok(())
     }
 
@@ -232,9 +287,23 @@ impl SessionStore for BasicSessionStore {
         let start = entries.len().saturating_sub(n);
         Ok(entries[start..].to_vec())
     }
+
+    fn read_kv_doc(
+        &self,
+        session_dir: &Path,
+    ) -> Result<super::super::collections::Doc, AppError> {
+        self.read_kv_doc(session_dir)
+    }
+
+    fn read_transcript_block(
+        &self,
+        session_dir: &Path,
+    ) -> Result<super::super::collections::Block, AppError> {
+        self.read_transcript_block(session_dir)
+    }
 }
 
-// ── Minimal UTC formatter (avoids chrono/time dependency) ─────────────────
+// ── Minimal UTC formatter (avoids chrono/time dependency) ─────────────────────
 
 fn secs_to_utc(epoch_secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     let s = epoch_secs % 60;
@@ -244,27 +313,21 @@ fn secs_to_utc(epoch_secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     let h = total_hr % 24;
     let mut days = total_hr / 24;
 
-    // Compute year/month/day from days since epoch (1970-01-01).
     let mut yr = 1970u64;
     loop {
         let ydays = if is_leap(yr) { 366 } else { 365 };
-        if days < ydays {
-            break;
-        }
+        if days < ydays { break; }
         days -= ydays;
         yr += 1;
     }
     let leap = is_leap(yr);
     let mdays: [u64; 12] = [
-        31,
-        if leap { 29 } else { 28 },
+        31, if leap { 29 } else { 28 },
         31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
     ];
     let mut mon = 1u64;
     for &md in &mdays {
-        if days < md {
-            break;
-        }
+        if days < md { break; }
         days -= md;
         mon += 1;
     }
@@ -314,13 +377,50 @@ mod tests {
         }
 
         let kv = BasicSessionStore::read_kv(dir.path()).unwrap();
-        assert_eq!(kv.entries.len(), 5);
-        // Oldest (k0..k2) should be evicted.
+        assert_eq!(kv.order.len(), 5);
         assert!(store.kv_get(dir.path(), "k0").unwrap().is_none());
-        assert!(store.kv_get(dir.path(), "k1").unwrap().is_none());
         assert!(store.kv_get(dir.path(), "k2").unwrap().is_none());
         assert_eq!(store.kv_get(dir.path(), "k3").unwrap(), Some("v3".into()));
         assert_eq!(store.kv_get(dir.path(), "k7").unwrap(), Some("v7".into()));
+    }
+
+    #[test]
+    fn kv_as_doc() {
+        let (dir, store) = setup();
+        store.kv_set(dir.path(), "agent", "chat").unwrap();
+        store.kv_set(dir.path(), "model", "gpt-4o").unwrap();
+
+        let doc = store.read_kv_doc(dir.path()).unwrap();
+        assert_eq!(doc.get("agent"), Some(&PrimaryValue::Str("chat".into())));
+        assert_eq!(doc.get("model"), Some(&PrimaryValue::Str("gpt-4o".into())));
+        assert_eq!(doc.len(), 2);
+    }
+
+    #[test]
+    fn transcript_as_block() {
+        let (dir, store) = setup();
+        store.transcript_append(dir.path(), "user", "hello").unwrap();
+        store.transcript_append(dir.path(), "assistant", "hi").unwrap();
+
+        let block = store.read_transcript_block(dir.path()).unwrap();
+        assert_eq!(block.len(), 2);
+
+        let v0 = block.get("000000").unwrap();
+        if let Value::Text(tf) = v0 {
+            assert_eq!(tf.content, "hello");
+            assert_eq!(tf.metadata.get("role").unwrap(), "user");
+            assert_eq!(tf.metadata.get("mime").unwrap(), "text/plain");
+        } else {
+            panic!("expected Text, got {:?}", v0);
+        }
+
+        let v1 = block.get("000001").unwrap();
+        if let Value::Text(tf) = v1 {
+            assert_eq!(tf.content, "hi");
+            assert_eq!(tf.metadata.get("role").unwrap(), "assistant");
+        } else {
+            panic!("expected Text, got {:?}", v1);
+        }
     }
 
     #[test]
@@ -369,7 +469,6 @@ mod tests {
     #[test]
     fn iso8601_format() {
         let ts = BasicSessionStore::now_iso8601();
-        // Should match pattern: YYYY-MM-DDTHH:MM:SSZ
         assert!(ts.ends_with('Z'));
         assert_eq!(ts.len(), 20);
         assert_eq!(&ts[4..5], "-");

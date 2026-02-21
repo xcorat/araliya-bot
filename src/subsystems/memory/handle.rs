@@ -129,6 +129,37 @@ impl SessionHandle {
         Ok(self.kv_get("working_memory").await?.unwrap_or_default())
     }
 
+    // ── Typed Collection views (disk-backed stores) ───────────────────
+
+    /// Return the session's k-v store as a [`Doc`] collection.
+    ///
+    /// Delegates to [`SessionStore::read_kv_doc`] on the default store.
+    /// Returns an error for stores that don't support it (e.g. `TmpStore` —
+    /// use [`tmp_doc`](Self::tmp_doc) instead for those sessions).
+    pub async fn kv_doc(&self) -> Result<Doc, AppError> {
+        let store = self.default_store()?;
+        let dir = self.session_dir.clone();
+        tokio::task::spawn_blocking(move || store.read_kv_doc(&dir))
+            .await
+            .map_err(|e| AppError::Memory(format!("kv_doc join: {e}")))?
+    }
+
+    /// Return the session's transcript as a [`Block`] collection.
+    ///
+    /// Each entry is keyed by its zero-padded position (`"000000"`, …).
+    /// The value is a `Value::Obj` with `data = content bytes` and
+    /// metadata `{ "role": ..., "ts": ... }`.
+    ///
+    /// Delegates to [`SessionStore::read_transcript_block`] on the default
+    /// store. Returns an error for stores that don't support it.
+    pub async fn transcript_block(&self) -> Result<Block, AppError> {
+        let store = self.default_store()?;
+        let dir = self.session_dir.clone();
+        tokio::task::spawn_blocking(move || store.read_transcript_block(&dir))
+            .await
+            .map_err(|e| AppError::Memory(format!("transcript_block join: {e}")))?
+    }
+
     // ── Typed tmp-store access ────────────────────────────────────────
 
     /// Returns a snapshot clone of the session-scoped [`Doc`] collection.

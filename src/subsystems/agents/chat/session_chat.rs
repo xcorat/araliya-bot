@@ -162,7 +162,7 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
         .agent_memory
         .get("chat")
         .map(|v| v.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["basic_session"]);
+        .unwrap_or_else(|| vec!["tmp"]);
 
     memory.create_session(&store_types, Some("chat"))
 }

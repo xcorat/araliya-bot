@@ -154,6 +154,14 @@ impl SessionStore for TmpStore {
         self.store.insert_collection(label, Collection::Doc(doc))?;
         Ok(removed)
     }
+
+    /// Return the session's k-v doc collection directly (zero-copy clone).
+    fn read_kv_doc(&self, session_dir: &Path) -> Result<super::super::collections::Doc, AppError> {
+        self.store
+            .get_collection(&Self::doc_label(session_dir))?
+            .and_then(|c| c.into_doc())
+            .ok_or_else(|| AppError::Memory("tmp session 'doc' collection not found".into()))
+    }
 }
 
 #[cfg(test)]
