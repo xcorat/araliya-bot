@@ -1,0 +1,24 @@
+# Build artifacts
+target/
+
+# UI build artifacts and dependencies
+ui/svui/node_modules/
+ui/svui/.svelte-kit/
+ui/build/
+
+# Environment files (never bake secrets into the image)
+.env
+.env.*
+!.env.example
+
+# Version control
+.git/
+.github/
+
+# Editor / OS metadata
+.DS_Store
+*.swp
+*.swo
+
+# Sensitive config
+config/gmail_token.json

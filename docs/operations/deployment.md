@@ -17,6 +17,55 @@ RUST_LOG=debug cargo run
 ARALIYA_WORK_DIR=/tmp/araliya-dev cargo run
 ```
 
+## Docker
+
+### Quick start
+
+```bash
+# Copy and edit the env file with your API keys.
+cp .env.example .env
+$EDITOR .env
+
+# Build and run (data persisted in ./data/).
+docker compose up --build
+```
+
+The HTTP/axum channel is available at `http://localhost:8080`.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARALIYA_WORK_DIR` | `/data/araliya` | Persistent state (identity, memory) |
+| `ARALIYA_HTTP_BIND` | `0.0.0.0:8080` | Bind address for the HTTP/axum channel |
+| `ARALIYA_LOG_LEVEL` | *(from config)* | Log level override (`info`, `debug`, …) |
+| `LLM_API_KEY` | *(none)* | API key for the configured LLM provider |
+| `TELEGRAM_BOT_TOKEN` | *(none)* | Telegram bot token (when Telegram channel is enabled) |
+
+### Persistent data
+
+The bot stores its identity keypair, memory, and other state under `ARALIYA_WORK_DIR`.
+Mount a host directory or a named volume over `/data/araliya` so the identity is preserved
+across container restarts:
+
+```yaml
+volumes:
+  - ./data:/data/araliya   # host-directory bind mount (default in docker-compose.yml)
+  # or
+  - araliya_data:/data/araliya   # named Docker volume
+```
+
+### Building the image manually
+
+```bash
+docker build -t araliya-bot:latest .
+docker run --rm \
+  -p 8080:8080 \
+  -v "$(pwd)/data:/data/araliya" \
+  -e LLM_API_KEY=sk-... \
+  araliya-bot:latest
+```
+
 ## Production (Single Machine)
 
 Build a release binary:

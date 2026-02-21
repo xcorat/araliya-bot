@@ -1,0 +1,32 @@
+services:
+  araliya-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: araliya-bot:latest
+    restart: unless-stopped
+
+    ports:
+      # Map host port 8080 to the container's HTTP/axum channel port.
+      - "8080:8080"
+
+    volumes:
+      # Persistent data: bot identity, memory stores, etc.
+      # Replace ./data with any host path you want to use.
+      - ./data:/data/araliya
+
+    environment:
+      # Override the work directory (already set as image default, listed here for clarity).
+      ARALIYA_WORK_DIR: /data/araliya
+      # Bind to all interfaces so the mapped port is reachable from outside the container.
+      ARALIYA_HTTP_BIND: "0.0.0.0:8080"
+      # Set your LLM API key here or via an .env file (see .env.example).
+      # LLM_API_KEY: ""
+      # Telegram bot token — only needed when the Telegram channel is enabled.
+      # TELEGRAM_BOT_TOKEN: ""
+
+    # Read secrets from a local .env file so they are never hard-coded here.
+    # Copy .env.example to .env and fill in your keys before running.
+    env_file:
+      - path: .env
+        required: false
