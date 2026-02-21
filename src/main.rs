@@ -57,11 +57,17 @@ async fn run() -> Result<(), error::AppError> {
     // Load .env if present — ignore errors (file is optional).
     let _ = dotenvy::dotenv();
 
-    let config = config::load()?;
+    let mut config = config::load()?;
 
-    let cli_log_level = cli_log_level_override_from_args();
-    let effective_log_level = cli_log_level.unwrap_or(config.log_level.as_str());
-    let force_cli_level = cli_log_level.is_some();
+    let args = parse_cli_args();
+
+    // Without -i, no stdio channels are active (daemon-safe default).
+    if !args.interactive {
+        config.comms.pty.enabled = false;
+    }
+
+    let effective_log_level = args.log_level.unwrap_or(config.log_level.as_str());
+    let force_cli_level = args.log_level.is_some();
 
     logger::init(effective_log_level, force_cli_level)?;
 
@@ -70,6 +76,7 @@ async fn run() -> Result<(), error::AppError> {
         work_dir = %config.work_dir.display(),
         configured_log_level = %config.log_level,
         effective_log_level = %effective_log_level,
+        interactive = %args.interactive,
         "config loaded"
     );
 
@@ -159,11 +166,12 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Start supervisor-internal transport adapters for control/chat over stdio.
+    // The management adapter is only active when the user passes -i / --interactive.
     supervisor::adapters::start(
         control_handle,
         bus_handle.clone(),
         shutdown.clone(),
-        config.stdio_management_interactive,
+        args.interactive,
     );
 
     // Start comms channels as independent concurrent tasks.
@@ -196,33 +204,40 @@ async fn run() -> Result<(), error::AppError> {
 
     sup_handle.await.ok();
 
-    // Final newline + flush so the shell prompt appears on a clean line
-    // after all tracing output (stderr) has been written.
-    {
+    // In interactive mode, print a clean exit line so the shell prompt
+    // appears below the tracing output.  In daemon mode, exit silently.
+    if args.interactive {
         use std::io::Write as _;
         println!("\nBye :)");
         let _ = std::io::stdout().flush();
-        let _ = std::io::stderr().flush();
     }
+    let _ = { use std::io::Write as _; std::io::stderr().flush() };
 
     Ok(())
 }
 
-fn cli_log_level_override_from_args() -> Option<&'static str> {
-    let mut verbosity = 0u8;
+struct CliArgs {
+    log_level: Option<&'static str>,
+    interactive: bool,
+}
 
-    for arg in std::env::args().skip(1) {
+fn parse_cli_args() -> CliArgs {
+    let mut verbosity = 0u8;
+    let mut interactive = false;
+
+    let mut iter = std::env::args().skip(1);
+    while let Some(arg) = iter.next() {
         if arg == "--" {
             break;
         }
 
-        if arg == "--verbose" {
-            verbosity = verbosity.saturating_add(1);
-            continue;
-        }
-
-        if arg.starts_with('-') && arg.len() > 1 && arg.chars().skip(1).all(|c| c == 'v') {
-            verbosity = verbosity.saturating_add((arg.len() - 1) as u8);
+        match arg.as_str() {
+            "-i" | "--interactive" => interactive = true,
+            "--verbose" => verbosity = verbosity.saturating_add(1),
+            a if a.starts_with('-') && a.len() > 1 && a.chars().skip(1).all(|c| c == 'v') => {
+                verbosity = verbosity.saturating_add((a.len() - 1) as u8);
+            }
+            _ => {}
         }
     }
 
@@ -231,12 +246,14 @@ fn cli_log_level_override_from_args() -> Option<&'static str> {
     //   -vv     → info   (normal operational output — the typical default)
     //   -vvv    → debug  (flow-level diagnostics: routing, handler registration)
     //   -vvvv+  → trace  (full payload dumps, very verbose)
-    match verbosity {
+    let log_level = match verbosity {
         0 => None,
         1 => Some("warn"),
         2 => Some("info"),
         3 => Some("debug"),
         _ => Some("trace"),
-    }
+    };
+
+    CliArgs { log_level, interactive }
 }
 

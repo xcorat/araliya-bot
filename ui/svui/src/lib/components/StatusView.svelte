@@ -101,30 +101,6 @@
 		return info.subsystems ?? [];
 	}
 
-	type CronScheduleInfo = {
-		schedule_id: string;
-		target_method: string;
-		spec: string;
-		next_fire_unix_ms: number;
-	};
-
-	function cronSchedules(process: MainProcessStatus): CronScheduleInfo[] {
-		const raw = process.details?.cron_schedules;
-		if (!Array.isArray(raw)) return [];
-		return raw as CronScheduleInfo[];
-	}
-
-	function formatCronNext(unixMs: number): string {
-		if (!unixMs) return '—';
-		const d = new Date(unixMs);
-		const now = Date.now();
-		const delta = unixMs - now;
-		if (delta < 0) return 'overdue';
-		if (delta < 60_000) return `in ${Math.ceil(delta / 1000)}s`;
-		if (delta < 3_600_000) return `in ${Math.ceil(delta / 60_000)}m`;
-		return d.toLocaleTimeString();
-	}
-
 	function statusDotClass(status: string): string {
 		const normalized = status.toLowerCase();
 		if (normalized === 'ok' || normalized === 'running') return 'bg-emerald-500';
@@ -365,10 +341,6 @@
 						<div class="mb-1 text-xs text-muted-foreground">Subsystems</div>
 						<div class="font-medium">{subsystems(serviceInfo).length}</div>
 					</div>
-					<div>
-						<div class="mb-1 text-xs text-muted-foreground">Cron Schedules</div>
-						<div class="font-medium">{process.details?.cron_active ?? 0} active</div>
-					</div>
 					<div class="sm:col-span-2 lg:col-span-4">
 						<div class="mb-1 text-xs text-muted-foreground">
 							Enabled Tools ({serviceInfo.enabled_tools?.length ?? 0})
@@ -382,22 +354,6 @@
 							>
 						</div>
 					</div>
-					{#if cronSchedules(process).length > 0}
-						<div class="sm:col-span-2 lg:col-span-4">
-							<div class="mb-1 text-xs text-muted-foreground">Active Cron Schedules</div>
-							<div class="space-y-1">
-								{#each cronSchedules(process) as sched}
-									<div class="flex items-center gap-2 rounded border px-2 py-1 text-xs">
-										<Badge variant="outline" class="font-mono text-[10px]">{sched.target_method}</Badge>
-										<span class="text-muted-foreground">{sched.spec}</span>
-										<span class="ml-auto font-mono text-[10px] text-muted-foreground">
-											{formatCronNext(sched.next_fire_unix_ms)}
-										</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
 				</div>
 			</CardContent>
 		</Card>

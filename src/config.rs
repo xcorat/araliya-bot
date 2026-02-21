@@ -117,8 +117,6 @@ pub struct Config {
     /// Optional explicit identity directory (absolute path or relative to `work_dir`).
     pub identity_dir: Option<PathBuf>,
     pub log_level: String,
-    /// Force supervisor stdio management adapter active in interactive TTY runs.
-    pub stdio_management_interactive: bool,
     pub comms: CommsConfig,
     pub agents: AgentsConfig,
     pub llm: LlmConfig,
@@ -181,8 +179,6 @@ struct RawSupervisor {
     #[serde(default)]
     identity_dir: Option<String>,
     log_level: String,
-    #[serde(default = "default_false")]
-    stdio_management_interactive: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -418,7 +414,6 @@ pub fn load_from(
         work_dir,
         identity_dir,
         log_level,
-        stdio_management_interactive: s.stdio_management_interactive,
         comms: CommsConfig {
             pty: PtyConfig {
                 enabled: parsed.comms.pty.enabled,
@@ -497,7 +492,6 @@ impl Config {
             work_dir: work_dir.to_path_buf(),
             identity_dir: None,
             log_level: "info".into(),
-            stdio_management_interactive: false,
             comms: CommsConfig {
                 pty: PtyConfig { enabled: true },
                 telegram: TelegramConfig { enabled: false },

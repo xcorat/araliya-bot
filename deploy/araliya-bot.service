@@ -1,0 +1,65 @@
+# TODO: Update and validate!
+# Araliya Bot — systemd service unit
+#
+# INSTALL
+# -------
+# 1. Build:         cargo build --release
+# 2. Copy binary:   install -m 755 target/release/araliya-bot /usr/local/bin/araliya-bot
+# 3. Create user:   useradd -r -s /sbin/nologin araliya
+# 4. Secrets file:  mkdir -p /etc/araliya-bot && install -m 600 /dev/null /etc/araliya-bot/env
+#                   echo "LLM_API_KEY=sk-..." >> /etc/araliya-bot/env
+# 5. Config:        set work_dir = "/var/lib/araliya-bot" in config/default.toml, then
+#                   install -m 644 -D config/default.toml /etc/araliya-bot/config/default.toml
+#                   (or point ExecStart to a dir that contains config/default.toml)
+# 6. Install unit:  cp deploy/araliya-bot.service /etc/systemd/system/
+# 7. Enable:        systemctl daemon-reload && systemctl enable --now araliya-bot
+# 8. Logs:          journalctl -u araliya-bot -f
+#
+# /etc/araliya-bot/env (mode 0600, owned root) — example:
+#   LLM_API_KEY=sk-...
+#   RUST_LOG=info              # optional override; default comes from config log_level
+#   TELEGRAM_BOT_TOKEN=...     # if channel-telegram is enabled
+#
+# INTERACTIVE SHELL (local use, not via systemd)
+# -----------------------------------------------
+#   araliya-bot -i             # enables the management adapter (slash commands on stdin)
+#   araliya-bot -i -vv         # interactive + verbose info logging
+
+[Unit]
+Description=Araliya Bot — modular agentic assistant
+Documentation=https://github.com/xcorat/araliya-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=araliya
+Group=araliya
+
+# Binary is invoked without -i: no stdin interaction, exits silently on stop.
+ExecStart=/usr/local/bin/araliya-bot
+
+# Silence stdout; route stderr (tracing logs) to journald.
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+
+# Secrets and optional env overrides (never commit this file).
+EnvironmentFile=/etc/araliya-bot/env
+
+# systemd auto-creates and owns /var/lib/araliya-bot.
+# Set work_dir = "/var/lib/araliya-bot" in your config.
+StateDirectory=araliya-bot
+
+# Restart policy.
+Restart=on-failure
+RestartSec=5s
+
+# Basic hardening.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/araliya-bot
+
+[Install]
+WantedBy=multi-user.target
