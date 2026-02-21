@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{config::Config, error::AppError};
 
+// TODO: validate/check this implementation
 /// Loaded bot identity.
 #[derive(Debug, Clone)]
 pub struct Identity {
@@ -54,6 +55,7 @@ pub fn setup(config: &Config) -> Result<Identity, AppError> {
             (seed, vk, dir)
         }
     } else {
+        // CHECK: this is not the best logic. Think a bit more about this workflow.
         // We need the bot_id to name the directory, but the id comes from the key.
         // Strategy: use a single discovered `bot-pkey*` directory if unambiguous, else generate.
         let dirs = find_existing_identity_dirs(&config.work_dir)?;

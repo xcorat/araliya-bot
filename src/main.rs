@@ -1,3 +1,4 @@
+// TODO: move the core functionality to a `core` crate/folder
 //! Araliya Bot — supervisor entry point.
 //!
 //! Startup sequence:

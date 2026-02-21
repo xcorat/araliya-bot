@@ -3,13 +3,27 @@
 //! Agents receive a `SessionHandle` when they create or load a session.
 //! All I/O is dispatched to a blocking thread pool so callers remain
 //! non-blocking.
+//!
+//! ### Typed memory (TmpStore sessions)
+//!
+//! When a session was created with the `"tmp"` store type, the handle also
+//! holds a direct `Arc<TmpStore>` reference.  Use [`tmp_doc`] / [`tmp_block`]
+//! to read a snapshot of the session-scoped [`Doc`] or [`Block`] collection,
+//! then call [`set_tmp_doc`] / [`set_tmp_block`] to write modifications back.
+//!
+//! [`tmp_doc`]: SessionHandle::tmp_doc
+//! [`tmp_block`]: SessionHandle::tmp_block
+//! [`set_tmp_doc`]: SessionHandle::set_tmp_doc
+//! [`set_tmp_block`]: SessionHandle::set_tmp_block
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use crate::error::AppError;
+use super::collections::{Block, Collection, Doc};
 use super::store::{SessionStore, TranscriptEntry};
+use super::stores::tmp::TmpStore;
 
 #[derive(Debug, Clone)]
 pub struct SessionFileInfo {
@@ -27,6 +41,9 @@ pub struct SessionHandle {
     pub session_id: String,
     session_dir: PathBuf,
     stores: Vec<Arc<dyn SessionStore>>,
+    /// Present when the session was created / loaded with the `"tmp"` store
+    /// type.  Used by [`tmp_doc`](Self::tmp_doc) and friends.
+    tmp_store: Option<Arc<TmpStore>>,
 }
 
 impl SessionHandle {
@@ -34,12 +51,9 @@ impl SessionHandle {
         session_id: String,
         session_dir: PathBuf,
         stores: Vec<Arc<dyn SessionStore>>,
+        tmp_store: Option<Arc<TmpStore>>,
     ) -> Self {
-        Self {
-            session_id,
-            session_dir,
-            stores,
-        }
+        Self { session_id, session_dir, stores, tmp_store }
     }
 
     /// Get the first store that matches `store_type`, or the first store if
@@ -113,6 +127,57 @@ impl SessionHandle {
 
     pub async fn working_memory_read(&self) -> Result<String, AppError> {
         Ok(self.kv_get("working_memory").await?.unwrap_or_default())
+    }
+
+    // ── Typed tmp-store access ────────────────────────────────────────
+
+    /// Returns a snapshot clone of the session-scoped [`Doc`] collection.
+    ///
+    /// Only available when the session was created with store type `"tmp"`.
+    /// Mutations are not visible until written back with [`set_tmp_doc`](Self::set_tmp_doc).
+    pub fn tmp_doc(&self) -> Result<Doc, AppError> {
+        self.tmp_store()?
+            .inner()
+            .get_collection(&self.tmp_label("doc"))?
+            .and_then(|c| c.into_doc())
+            .ok_or_else(|| AppError::Memory("tmp session 'doc' collection not found".into()))
+    }
+
+    /// Returns a snapshot clone of the session-scoped [`Block`] collection.
+    ///
+    /// Only available when the session was created with store type `"tmp"`.
+    pub fn tmp_block(&self) -> Result<Block, AppError> {
+        self.tmp_store()?
+            .inner()
+            .get_collection(&self.tmp_label("block"))?
+            .and_then(|c| c.into_block())
+            .ok_or_else(|| AppError::Memory("tmp session 'block' collection not found".into()))
+    }
+
+    /// Write a modified [`Doc`] snapshot back to the session's tmp store.
+    pub fn set_tmp_doc(&self, doc: Doc) -> Result<(), AppError> {
+        self.tmp_store()?.inner().insert_collection(
+            self.tmp_label("doc"),
+            Collection::Doc(doc),
+        )
+    }
+
+    /// Write a modified [`Block`] snapshot back to the session's tmp store.
+    pub fn set_tmp_block(&self, block: Block) -> Result<(), AppError> {
+        self.tmp_store()?.inner().insert_collection(
+            self.tmp_label("block"),
+            Collection::Block(block),
+        )
+    }
+
+    fn tmp_store(&self) -> Result<&Arc<TmpStore>, AppError> {
+        self.tmp_store
+            .as_ref()
+            .ok_or_else(|| AppError::Memory("session has no tmp store (not a 'tmp' session)".into()))
+    }
+
+    fn tmp_label(&self, kind: &str) -> String {
+        format!("{}:{kind}", self.session_dir.display())
     }
 
     pub async fn list_files(&self) -> Result<Vec<SessionFileInfo>, AppError> {
@@ -195,6 +260,7 @@ impl std::fmt::Debug for SessionHandle {
             .field("session_id", &self.session_id)
             .field("session_dir", &self.session_dir)
             .field("stores", &self.stores.iter().map(|s| s.store_type()).collect::<Vec<_>>())
+            .field("has_tmp_store", &self.tmp_store.is_some())
             .finish()
     }
 }

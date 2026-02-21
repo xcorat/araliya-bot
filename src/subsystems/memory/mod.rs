@@ -91,6 +91,9 @@ pub struct MemorySystem {
     memory_root: PathBuf,
     sessions_dir: PathBuf,
     stores: HashMap<String, Arc<dyn SessionStore>>,
+    /// Typed reference to the shared `TmpStore` instance, used to populate
+    /// [`SessionHandle::tmp_store`] for sessions created with store type `"tmp"`.
+    tmp_store: Arc<stores::tmp::TmpStore>,
 }
 
 impl MemorySystem {
@@ -120,7 +123,7 @@ impl MemorySystem {
         ));
         stores.insert(basic.store_type().to_string(), basic);
         let tmp = Arc::new(stores::tmp::TmpStore::new());
-        stores.insert(tmp.store_type().to_string(), tmp);
+        stores.insert(tmp.store_type().to_string(), tmp.clone() as Arc<dyn SessionStore>);
 
         info!(
             memory_root = %memory_root.display(),
@@ -132,6 +135,7 @@ impl MemorySystem {
             memory_root,
             sessions_dir,
             stores,
+            tmp_store: tmp,
         })
     }
 
@@ -183,6 +187,11 @@ impl MemorySystem {
             idx.sessions.insert(session_id.clone(), info);
         })?;
 
+        // Attach the typed TmpStore reference when the session uses it.
+        let tmp_store = store_types
+            .contains(&"tmp")
+            .then(|| self.tmp_store.clone());
+
         info!(
             session_id = %session_id,
             stores = ?store_types,
@@ -190,29 +199,32 @@ impl MemorySystem {
             "session created"
         );
 
-        Ok(SessionHandle::new(session_id, session_dir, session_stores))
+        Ok(SessionHandle::new(session_id, session_dir, session_stores, tmp_store))
     }
 
     /// Load an existing session by ID.
     ///
-    /// Returns `Err` if the session does not exist.
+    /// Returns `Err` if the session does not exist in the index.
     pub fn load_session(
         &self,
         session_id: &str,
         agent_id: Option<&str>,
     ) -> Result<SessionHandle, AppError> {
-        let session_dir = self.sessions_dir.join(session_id);
-        if !session_dir.exists() {
-            return Err(AppError::Memory(format!(
-                "session not found: {session_id}"
-            )));
-        }
-
-        // Read index to find store types.
+        // Read index first — the session must be registered regardless of type.
         let idx = self.read_index()?;
         let info = idx.sessions.get(session_id).ok_or_else(|| {
-            AppError::Memory(format!("session {session_id} exists on disk but not in index"))
+            AppError::Memory(format!("session not found: {session_id}"))
         })?;
+
+        let session_dir = self.sessions_dir.join(session_id);
+
+        // Disk-backed sessions require the directory to be present.
+        let all_tmp = info.store_types.iter().all(|s| s == "tmp");
+        if !all_tmp && !session_dir.exists() {
+            return Err(AppError::Memory(format!(
+                "session dir missing for {session_id}"
+            )));
+        }
 
         let mut session_stores = Vec::new();
         for st in &info.store_types {
@@ -237,10 +249,17 @@ impl MemorySystem {
 
         info!(session_id = %session_id, agent = ?agent_id, "session loaded");
 
+        let tmp_store = info
+            .store_types
+            .iter()
+            .any(|s| s == "tmp")
+            .then(|| self.tmp_store.clone());
+
         Ok(SessionHandle::new(
             session_id.to_string(),
             session_dir,
             session_stores,
+            tmp_store,
         ))
     }
 
@@ -396,5 +415,72 @@ mod tests {
 
         let sessions = mem.list_sessions().unwrap();
         assert_eq!(sessions.len(), 3);
+    }
+
+    // ── Phase 3: SessionHandle tmp_doc / tmp_block ─────────────────────
+
+    #[test]
+    fn tmp_session_has_typed_collections() {
+        let (_dir, mem) = setup();
+        let handle = mem.create_session(&["tmp"], Some("agent")).unwrap();
+
+        // Both collections start empty.
+        assert!(handle.tmp_doc().unwrap().is_empty());
+        assert!(handle.tmp_block().unwrap().is_empty());
+    }
+
+    #[test]
+    fn tmp_session_set_and_read_doc() {
+        let (_dir, mem) = setup();
+        let handle = mem.create_session(&["tmp"], Some("agent")).unwrap();
+
+        let mut doc = handle.tmp_doc().unwrap();
+        doc.set("status".into(), PrimaryValue::from("active"));
+        handle.set_tmp_doc(doc).unwrap();
+
+        let doc2 = handle.tmp_doc().unwrap();
+        assert_eq!(doc2.get("status"), Some(&PrimaryValue::from("active")));
+    }
+
+    #[test]
+    fn basic_session_has_no_tmp_store() {
+        let (_dir, mem) = setup();
+        let handle = mem.create_session(&["basic_session"], None).unwrap();
+        assert!(handle.tmp_doc().is_err());
+        assert!(handle.tmp_block().is_err());
+    }
+
+    #[test]
+    fn tmp_session_survives_reload() {
+        // Data written to a tmp session persists within the same MemorySystem
+        // instance (same in-process TmpStore), even when the handle is re-created via load_session.
+        let (_dir, mem) = setup();
+        let handle = mem.create_session(&["tmp"], Some("agent")).unwrap();
+        let sid = handle.session_id.clone();
+
+        let mut doc = handle.tmp_doc().unwrap();
+        doc.set("key".into(), PrimaryValue::Int(42));
+        handle.set_tmp_doc(doc).unwrap();
+
+        // Load the same session through a new handle.
+        let handle2 = mem.load_session(&sid, None).unwrap();
+        assert_eq!(
+            handle2.tmp_doc().unwrap().get("key"),
+            Some(&PrimaryValue::Int(42))
+        );
+    }
+
+    #[test]
+    fn create_tmp_store_is_independent() {
+        let (_dir, mem) = setup();
+        let ts = mem.create_tmp_store();
+        // Standalone store has empty doc/block by default.
+        assert!(ts.doc().unwrap().is_empty());
+        let mut d = Doc::default();
+        d.set("x".into(), PrimaryValue::Bool(true));
+        ts.set_doc(d).unwrap();
+        // A second call gives another independent store.
+        let ts2 = mem.create_tmp_store();
+        assert!(ts2.doc().unwrap().is_empty(), "new standalone store should be empty");
     }
 }
