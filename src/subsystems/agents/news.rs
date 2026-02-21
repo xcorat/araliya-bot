@@ -21,9 +21,18 @@ impl Agent for NewsAgentPlugin {
         state: Arc<AgentsState>,
     ) {
         tokio::spawn(async move {
+            if action == "health" {
+                let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                    channel_id,
+                    content: "news component: active".to_string(),
+                    session_id,
+                    usage: None,
+                }));
+                return;
+            }
+
             let tool_action = match action.as_str() {
                 "handle" | "read" => "get",
-                "healthcheck" => "healthcheck",
                 _ => {
                     let _ = reply_tx.send(Err(BusError::new(
                         ERR_METHOD_NOT_FOUND,

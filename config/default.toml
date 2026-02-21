@@ -7,6 +7,8 @@ work_dir = "~/.araliya"
 # identity_dir = "bot-pkey51aee87e"
 log_level = "info"
 
+## ------------------------- Comms Subsystem ---------------------------------
+
 [comms.pty]
 # PTY (console) channel — requires -i / --interactive at runtime.
 # Setting enabled = true here has no effect without -i; the runtime gate
@@ -27,6 +29,7 @@ bind = "127.0.0.1:8080"
 enabled = true
 bind = "127.0.0.1:8080"
 
+## ------------------------- Agents Subsystem ---------------------------------
 
 [agents]
 # Which agent handles unrouted messages.
@@ -62,14 +65,16 @@ memory = ["basic_session"]
 # Gmail agent — calls tools/gmail to read the latest email.
 # Bus method: agents/gmail/read
 
-[agents.news-agent]
+[agents.news]
 # News agent — calls tools/newsmail_aggregator/get and returns the raw payload.
-# Bus methods: agents/news-agent (default handle), agents/news-agent/read
+# Bus methods: agents/news (default handle), agents/news/read
 enabled = false
 
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false
+
+## ------------------------- Memory Subsystem ---------------------------------
 
 [memory]
 # Global memory subsystem configuration.
@@ -78,26 +83,12 @@ enabled = false
 # kv_cap = 200
 # transcript_cap = 500
 
+## ------------------------- LLM Subsystem ---------------------------------
+
 [llm]
 # Which LLM component to activate. Each component has its own config section below.
 # Options: "dummy", "openai"
 default = "openai"
-
-[tools.newsmail_aggregator]
-mailbox = "inbox"
-n_last = 10
-# Optional time window in seconds for recent-email filtering.
-# Example: 86400 = last 24 hours. Omit to disable time filtering.
-# tsec_last = 86400
-
-[ui.svui]
-# Svelte-based web UI backend — served by the HTTP channel.
-# When enabled, non-API HTTP requests are delegated to this backend.
-enabled = true
-# Path to the static build directory (Svelte output from ui/svui).
-# Relative to the working directory where the bot binary runs.
-# If the directory doesn't exist, a built-in placeholder page is served.
-static_dir = "ui/build"
 
 [llm.dummy]
 # No config — echoes input back as "[echo] {input}". Useful for testing.
@@ -114,3 +105,23 @@ timeout_seconds = 60
 input_per_million_usd = 0.05
 output_per_million_usd = 0.40
 cached_input_per_million_usd = 0.005
+
+## ------------------------- Tools Subsystem ---------------------------------
+
+[tools.newsmail_aggregator]
+mailbox = "inbox"
+n_last = 10
+# Optional time window in seconds for recent-email filtering.
+# Example: 86400 = last 24 hours. Omit to disable time filtering.
+# tsec_last = 86400
+
+## ------------------------- UI Subsystem ---------------------------------
+
+[ui.svui]
+# Svelte-based web UI backend — served by the HTTP channel.
+# When enabled, non-API HTTP requests are delegated to this backend.
+enabled = true
+# Path to the static build directory (Svelte output from ui/svui).
+# Relative to the working directory where the bot binary runs.
+# If the directory doesn't exist, a built-in placeholder page is served.
+static_dir = "ui/build"

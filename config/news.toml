@@ -2,12 +2,13 @@
 base = "full.toml"
 
 [agents]
-default = "echo"
+default = "news"
 
-[agents.routing]
-pty0 = "news-agent"
+# Future command style examples (not parsed yet):
+# /chat news --mailbox inbox --n_last 5
+# /chat news --tsec_last 86400
 
-[agents.news-agent]
+[agents.news]
 enabled = true
 
 [comms.telegram]

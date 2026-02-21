@@ -99,13 +99,13 @@ pub fn start(
                                 Err(err) => eprintln!("chat transport error: {err}"),
                             }
                         }
-                        Ok(Some(StdioFrame::NewsHealth)) => {
+                        Ok(Some(StdioFrame::AgentHealth { agent_id })) => {
                             match bus
                                 .request(
-                                    "agents/news/healthcheck",
+                                    format!("agents/{agent_id}/health"),
                                     BusPayload::CommsMessage {
                                         channel_id: VIRTUAL_PTY_CHANNEL_ID.to_string(),
-                                        content: "healthcheck".to_string(),
+                                        content: "health".to_string(),
                                         session_id: None,
                                         usage: None,
                                     },
@@ -114,8 +114,8 @@ pub fn start(
                             {
                                 Ok(Ok(BusPayload::CommsMessage { content, .. })) => println!("{content}"),
                                 Ok(Ok(other)) => println!("{other:?}"),
-                                Ok(Err(err)) => eprintln!("news health error: {} ({})", err.message, err.code),
-                                Err(err) => eprintln!("news health transport error: {err}"),
+                                Ok(Err(err)) => eprintln!("agent health error: {} ({})", err.message, err.code),
+                                Err(err) => eprintln!("agent health transport error: {err}"),
                             }
                         }
                         Ok(Some(StdioFrame::Control(command))) => {
@@ -141,7 +141,7 @@ pub fn start(
 #[derive(Debug)]
 enum StdioFrame {
     Chat { content: String },
-    NewsHealth,
+    AgentHealth { agent_id: String },
     Control(ControlCommand),
     Help,
 }
@@ -179,8 +179,15 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
                 }))
             }
         }
-        "news-health" => ensure_no_args(rest, StdioFrame::NewsHealth),
-        "health" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Health)),
+        "health" => {
+            if rest.is_empty() {
+                Ok(Some(StdioFrame::Control(ControlCommand::Health)))
+            } else {
+                Ok(Some(StdioFrame::AgentHealth {
+                    agent_id: rest.to_string(),
+                }))
+            }
+        }
         "status" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Status)),
         "subsys" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::SubsystemsList)),
         "exit" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Shutdown)),
@@ -201,8 +208,7 @@ fn ensure_no_args(rest: &str, frame: StdioFrame) -> Result<Option<StdioFrame>, S
 fn print_usage() {
     eprintln!("commands:");
     eprintln!("  /chat <message>");
-    eprintln!("  /news-health");
-    eprintln!("  /health");
+    eprintln!("  /health [agent]");
     eprintln!("  /status");
     eprintln!("  /subsys");
     eprintln!("  /exit");
@@ -256,9 +262,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_news_health_command() {
-        match parse_tty_protocol("/news-health") {
-            Ok(Some(StdioFrame::NewsHealth)) => {}
+    fn parse_health_news_command() {
+        match parse_tty_protocol("/health news") {
+            Ok(Some(StdioFrame::AgentHealth { agent_id })) => assert_eq!(agent_id, "news"),
+            other => panic!("unexpected parse result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_plain_health_command() {
+        match parse_tty_protocol("/health") {
+            Ok(Some(StdioFrame::Control(super::ControlCommand::Health))) => {}
             other => panic!("unexpected parse result: {other:?}"),
         }
     }

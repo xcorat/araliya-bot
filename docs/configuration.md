@@ -131,7 +131,7 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `channel-telegram` | `--features channel-telegram` | No, for Telegram bot |
 | `plugin-gmail-tool` | `--features plugin-gmail-tool` | No, Gmail tool implementation |
 | `plugin-gmail-agent` | `--features plugin-gmail-agent` | No, `agents/gmail/read` agent |
-| `plugin-news-agent` | `--features plugin-news-agent` | No, `agents/news-agent/(handle\|read)` via `newsmail_aggregator/get` |
+| `plugin-news-agent` | `--features plugin-news-agent` | No, `agents/news/(handle\|read)` via `newsmail_aggregator/get` |
 | `ui-gpui` | `--features ui-gpui` | No, enables the `araliya-gpui` desktop binary |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
@@ -199,10 +199,10 @@ Newsmail aggregator tool endpoint:
 
 News agent endpoint (MVP):
 
-- Bus methods: `agents/news` (default `handle` action), `agents/news/read`, `agents/news/healthcheck`
+- Bus methods: `agents/news` (default `handle` action), `agents/news/read`, `agents/news/health`
 - Internal tool call: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
-- Health path: `agents/news/healthcheck` uses `newsmail_aggregator/healthcheck`
-- Interactive shortcut: `/news-health` in stdio mode
+- Health path: `agents/news/health` returns local component status text
+- Interactive shortcut: `/health news` in stdio mode
 
 ## Tools Configuration
 

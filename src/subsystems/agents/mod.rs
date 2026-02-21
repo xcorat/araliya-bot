@@ -756,7 +756,7 @@ mod tests {
         }
     }
 
-    /// Verifies news-agent returns raw `newsmail_aggregator/get` payload as comms content.
+    /// Verifies news returns raw `newsmail_aggregator/get` payload as comms content.
     #[cfg(feature = "plugin-news-agent")]
     #[tokio::test]
     async fn news_agent_returns_raw_tool_payload() {
@@ -785,8 +785,8 @@ mod tests {
         });
 
         let cfg = AgentsConfig {
-            default_agent: "news-agent".to_string(),
-            enabled: HashSet::from(["news-agent".to_string()]),
+            default_agent: "news".to_string(),
+            enabled: HashSet::from(["news".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
         };

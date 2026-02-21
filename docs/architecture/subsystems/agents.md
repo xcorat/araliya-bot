@@ -16,7 +16,7 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 |-------|-----------|
 | `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
 | `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
-| `news-agent` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
+| `news` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
