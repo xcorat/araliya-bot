@@ -62,6 +62,7 @@ async fn run() -> Result<(), error::AppError> {
     let args = parse_cli_args();
 
     // Without -i, no stdio channels are active (daemon-safe default).
+    // TODO: warn in this case that pty is available only when interactive.
     if !args.interactive {
         config.comms.pty.enabled = false;
     }
@@ -84,6 +85,7 @@ async fn run() -> Result<(), error::AppError> {
 
     info!(bot_id = %identity.bot_id, "identity ready — starting subsystems");
 
+    // TODO: focus on the order, memory should be init after the sup bus for example.
     // Optionally build the memory system.
     #[cfg(feature = "subsystem-memory")]
     let memory = {
@@ -105,6 +107,7 @@ async fn run() -> Result<(), error::AppError> {
     let control = SupervisorControl::new(32);
 
     // Clone the handle before moving bus into the supervisor task.
+    // CHECK: why clone? does all systems that uses the bus need a clone?
     let bus_handle = bus.handle.clone();
     let control_handle = control.handle.clone();
 

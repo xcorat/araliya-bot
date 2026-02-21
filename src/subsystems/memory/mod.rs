@@ -156,13 +156,17 @@ impl MemorySystem {
         let session_id = uuid::Uuid::now_v7().to_string();
         let session_dir = self.sessions_dir.join(&session_id);
 
-        fs::create_dir_all(&session_dir)
-            .map_err(|e| AppError::Memory(format!(
-                "cannot create session dir {}: {e}",
-                session_dir.display()
-            )))?;
+        // Skip disk I/O for purely in-memory sessions.
+        let all_tmp = store_types.iter().all(|&s| s == "tmp");
+        if !all_tmp {
+            fs::create_dir_all(&session_dir)
+                .map_err(|e| AppError::Memory(format!(
+                    "cannot create session dir {}: {e}",
+                    session_dir.display()
+                )))?;
+        }
 
-        // Initialise each store's files.
+        // Initialise each store's files (no-op for TmpStore).
         for store in &session_stores {
             store.init(&session_dir)?;
         }
@@ -238,6 +242,18 @@ impl MemorySystem {
             session_dir,
             session_stores,
         ))
+    }
+
+    /// Create a standalone ephemeral store not tracked by the session index.
+    ///
+    /// The returned [`TmpStore`] owns its own isolated [`Store`] pre-populated
+    /// with `"doc"` and `"block"` collections.  All data is discarded when the
+    /// `Arc` is dropped — nothing is written to disk.
+    ///
+    /// Use this when an agent needs a scratch pad for the duration of a task
+    /// without caring about persistence or session identity.
+    pub fn create_tmp_store(&self) -> Arc<stores::tmp::TmpStore> {
+        Arc::new(stores::tmp::TmpStore::new())
     }
 
     /// List all known sessions.

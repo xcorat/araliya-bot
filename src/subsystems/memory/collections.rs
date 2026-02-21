@@ -188,6 +188,18 @@ impl Collection {
         if let Collection::Block(b) = self { Some(b) } else { None }
     }
 
+    // ── Consuming accessors ───────────────────────────────────────────
+
+    /// Consume `self` and return the inner [`Doc`], or `None`.
+    pub fn into_doc(self) -> Option<Doc> {
+        if let Collection::Doc(d) = self { Some(d) } else { None }
+    }
+
+    /// Consume `self` and return the inner [`Block`], or `None`.
+    pub fn into_block(self) -> Option<Block> {
+        if let Collection::Block(b) = self { Some(b) } else { None }
+    }
+
     // ── Stub accessors (panic, not silently wrong) ─────────────────────
 
     /// Panics — `Set` is not yet implemented.
