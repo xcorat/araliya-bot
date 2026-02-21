@@ -90,6 +90,25 @@ The GPUI client now uses a basic shell mirroring the UI/UX PRD framework:
 
 This keeps layout extensibility in place while preserving existing API-backed chat and status behavior.
 
+### Canvas-first surface mode
+
+The main panel now supports two runtime surfaces:
+
+- **Canvas:** renders a GPUI polygon scene (`canvas` + `Path`) as the primary interaction surface.
+- **Shell:** renders the existing section-based content panels.
+
+Behavior:
+
+- Header action toggles between `Canvas` and `Shell`.
+- In `Canvas`, footer buttons toggle Sessions/Context panels and move focus to `Chat`/`Status` sections.
+- Canvas mode keeps the existing activity rail, header, and bottom status bar so shell controls stay available.
+
+Implementation locations:
+
+- `src/bin/araliya-gpui/canvas_scene.rs` — geometry + hit-test helpers
+- `src/bin/araliya-gpui/components.rs` — canvas rendering and interaction wiring
+- `src/bin/araliya-gpui/state.rs` — `SurfaceMode` state (`Canvas`/`Shell`)
+
 ## Responsive layout behavior
 
 The GPUI shell now adapts to window width using a single responsive shell model:

@@ -18,4 +18,4 @@ n_last = 10
 # t_interval = "1d"  # also supports: 1mon, 1min, 1h, 1w
 
 [comms.telegram]
-enabled = false
+enabled = true

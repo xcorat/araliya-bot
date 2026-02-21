@@ -46,7 +46,7 @@ impl Agent for NewsAgentPlugin {
                 .execute_tool(
                     "newsmail_aggregator",
                     tool_action,
-                    "{}".to_string(),
+                    state.news_query_args_json.clone(),
                     &channel_id,
                     session_id.clone(),
                 )

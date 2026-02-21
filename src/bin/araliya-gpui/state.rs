@@ -45,6 +45,21 @@ impl LayoutMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceMode {
+    Canvas,
+    Shell,
+}
+
+impl SurfaceMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Canvas => "Canvas",
+            Self::Shell => "Shell",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LayoutState {
     pub mode: LayoutMode,
@@ -112,6 +127,7 @@ impl LayoutPrefs {
 pub struct AppState {
     pub api_client: Arc<ApiClient>,
     pub active_section: ActivitySection,
+    pub surface_mode: SurfaceMode,
     pub layout: LayoutState,
     pub health_status: Option<HealthResponse>,
     pub sessions: Vec<SessionInfo>,
@@ -129,6 +145,7 @@ impl AppState {
         Self {
             api_client,
             active_section: ActivitySection::Chat,
+            surface_mode: SurfaceMode::Canvas,
             layout: LayoutState::default(),
             health_status: None,
             sessions: Vec::new(),

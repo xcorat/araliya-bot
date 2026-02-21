@@ -1,6 +1,7 @@
 mod api;
 mod state;
 mod components;
+mod canvas_scene;
 
 use gpui::*;
 use gpui_component::Root;

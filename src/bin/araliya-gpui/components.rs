@@ -9,9 +9,10 @@ use gpui_component::{
 };
 
 use crate::state::{
-    ActivitySection, AppState, LayoutMode, DESKTOP_BREAKPOINT_PX, TABLET_BREAKPOINT_PX,
+    ActivitySection, AppState, LayoutMode, SurfaceMode, DESKTOP_BREAKPOINT_PX, TABLET_BREAKPOINT_PX,
     save_layout_prefs,
 };
+use crate::canvas_scene::CanvasGeometry;
 
 pub struct AppView {
     state: AppState,
@@ -93,6 +94,14 @@ impl AppView {
     fn toggle_right_panel(&mut self, cx: &mut Context<Self>) {
         self.state.layout.right_panel_open = !self.state.layout.right_panel_open;
         save_layout_prefs(&self.state.layout);
+        cx.notify();
+    }
+
+    fn toggle_surface_mode(&mut self, cx: &mut Context<Self>) {
+        self.state.surface_mode = match self.state.surface_mode {
+            SurfaceMode::Canvas => SurfaceMode::Shell,
+            SurfaceMode::Shell => SurfaceMode::Canvas,
+        };
         cx.notify();
     }
 
@@ -480,7 +489,7 @@ impl AppView {
             .child(div().text_sm().child(subtitle))
     }
 
-    fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_section_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let mut panel = v_flex().flex_1();
         match self.state.active_section {
             ActivitySection::Chat => panel = panel.child(self.render_chat_view(cx)),
@@ -511,6 +520,173 @@ impl AppView {
             }
         }
         panel
+    }
+
+    fn render_canvas_surface(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let left_open = self.state.layout.left_panel_open;
+        let right_open = self.state.layout.right_panel_open;
+        let hex_fill = cx.theme().secondary;
+        let hex_outline = cx.theme().border;
+        let icon_fill = if left_open {
+            cx.theme().primary
+        } else {
+            cx.theme().accent
+        };
+        let icon_glyph = cx.theme().primary_foreground;
+
+        v_flex()
+            .size_full()
+            .child(
+                canvas(
+                    |bounds, _, _| CanvasGeometry::from_size(f32::from(bounds.size.width), f32::from(bounds.size.height)),
+                    move |bounds, geometry: CanvasGeometry, window, _| {
+                        let to_point = |x: f32, y: f32| {
+                            point(
+                                px(f32::from(bounds.origin.x) + x),
+                                px(f32::from(bounds.origin.y) + y),
+                            )
+                        };
+
+                        let vertices = geometry.hex_vertices();
+                        let mut hex_path = Path::new(to_point(vertices[0].0, vertices[0].1));
+                        for &(x, y) in &vertices[1..] {
+                            hex_path.line_to(to_point(x, y));
+                        }
+                        hex_path.line_to(to_point(vertices[0].0, vertices[0].1));
+                        window.paint_path(hex_path.clone(), hex_outline);
+
+                        let inset_vertices: Vec<(f32, f32)> = vertices
+                            .iter()
+                            .map(|(x, y)| {
+                                let dx = x - geometry.center_x;
+                                let dy = y - geometry.center_y;
+                                let len = (dx * dx + dy * dy).sqrt();
+                                let nx = if len > 0.0 { dx / len } else { 0.0 };
+                                let ny = if len > 0.0 { dy / len } else { 0.0 };
+                                (x - nx * 3.0, y - ny * 3.0)
+                            })
+                            .collect();
+                        let mut inner_hex = Path::new(to_point(inset_vertices[0].0, inset_vertices[0].1));
+                        for &(x, y) in &inset_vertices[1..] {
+                            inner_hex.line_to(to_point(x, y));
+                        }
+                        inner_hex.line_to(to_point(inset_vertices[0].0, inset_vertices[0].1));
+                        window.paint_path(inner_hex, hex_fill);
+
+                        let circle_steps = 40usize;
+                        let mut icon_points = Vec::with_capacity(circle_steps);
+                        for index in 0..circle_steps {
+                            let angle = std::f32::consts::TAU / circle_steps as f32 * index as f32;
+                            icon_points.push((
+                                geometry.center_x + geometry.icon_radius * angle.cos(),
+                                geometry.center_y + geometry.icon_radius * angle.sin(),
+                            ));
+                        }
+                        let mut icon_path = Path::new(to_point(icon_points[0].0, icon_points[0].1));
+                        for &(x, y) in &icon_points[1..] {
+                            icon_path.line_to(to_point(x, y));
+                        }
+                        icon_path.line_to(to_point(icon_points[0].0, icon_points[0].1));
+                        let icon_visible = geometry.icon_contains(geometry.center_x, geometry.center_y);
+                        if icon_visible {
+                            window.paint_path(icon_path, icon_fill);
+                        }
+
+                        let glyph_half = geometry.icon_glyph_half();
+                        let bar_thickness = (geometry.icon_radius * 0.24).max(3.0);
+
+                        let h_bar = [
+                            (geometry.center_x - glyph_half, geometry.center_y - bar_thickness * 0.5),
+                            (geometry.center_x + glyph_half, geometry.center_y - bar_thickness * 0.5),
+                            (geometry.center_x + glyph_half, geometry.center_y + bar_thickness * 0.5),
+                            (geometry.center_x - glyph_half, geometry.center_y + bar_thickness * 0.5),
+                        ];
+                        let mut h_path = Path::new(to_point(h_bar[0].0, h_bar[0].1));
+                        for &(x, y) in &h_bar[1..] {
+                            h_path.line_to(to_point(x, y));
+                        }
+                        h_path.line_to(to_point(h_bar[0].0, h_bar[0].1));
+                        window.paint_path(h_path, icon_glyph);
+
+                        if !right_open {
+                            let v_bar = [
+                                (geometry.center_x - bar_thickness * 0.5, geometry.center_y - glyph_half),
+                                (geometry.center_x + bar_thickness * 0.5, geometry.center_y - glyph_half),
+                                (geometry.center_x + bar_thickness * 0.5, geometry.center_y + glyph_half),
+                                (geometry.center_x - bar_thickness * 0.5, geometry.center_y + glyph_half),
+                            ];
+                            let mut v_path = Path::new(to_point(v_bar[0].0, v_bar[0].1));
+                            for &(x, y) in &v_bar[1..] {
+                                v_path.line_to(to_point(x, y));
+                            }
+                            v_path.line_to(to_point(v_bar[0].0, v_bar[0].1));
+                            window.paint_path(v_path, icon_glyph);
+                        }
+                    },
+                )
+                .size_full(),
+            )
+            .child(
+                h_flex()
+                    .p_2()
+                    .justify_between()
+                    .items_center()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Canvas controls panel visibility and section focus."),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("canvas-toggle-sessions")
+                                    .label(if self.state.layout.left_panel_open {
+                                        "Hide Sessions"
+                                    } else {
+                                        "Show Sessions"
+                                    })
+                                    .on_click({
+                                        let view = cx.entity().downgrade();
+                                        move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.toggle_left_panel(cx);
+                                                this.state.active_section = ActivitySection::Chat;
+                                            })
+                                            .ok();
+                                        }
+                                    }),
+                            )
+                            .child(
+                                Button::new("canvas-toggle-context")
+                                    .label(if self.state.layout.right_panel_open {
+                                        "Hide Context"
+                                    } else {
+                                        "Show Context"
+                                    })
+                                    .on_click({
+                                        let view = cx.entity().downgrade();
+                                        move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.toggle_right_panel(cx);
+                                                this.set_active_section(ActivitySection::Status, cx);
+                                            })
+                                            .ok();
+                                        }
+                                    }),
+                            ),
+                    ),
+            )
+    }
+
+    fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        match self.state.surface_mode {
+            SurfaceMode::Canvas => self.render_canvas_surface(cx).into_any_element(),
+            SurfaceMode::Shell => self.render_section_content(cx).into_any_element(),
+        }
     }
 
     fn render_right_panel(
@@ -645,6 +821,22 @@ impl Render for AppView {
             .child(div().text_sm().text_color(muted_foreground).child(self.state.layout.mode.label()))
             .child(div().text_sm().text_color(muted_foreground).child(health_text))
             .child(
+                Button::new("toggle-surface")
+                    .label(match self.state.surface_mode {
+                        SurfaceMode::Canvas => "Use Shell",
+                        SurfaceMode::Shell => "Use Canvas",
+                    })
+                    .on_click({
+                        let view = cx.entity().downgrade();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.toggle_surface_mode(cx);
+                            })
+                            .ok();
+                        }
+                    }),
+            )
+            .child(
                 Button::new("toggle-left")
                     .label(if self.state.layout.left_panel_open { "Hide Sessions" } else { "Show Sessions" })
                     .on_click({
@@ -719,6 +911,10 @@ impl Render for AppView {
             .child(div().text_sm().text_color(muted_foreground).child(format!(
                 "Mode: {}",
                 self.state.layout.mode.label()
+            )))
+            .child(div().text_sm().text_color(muted_foreground).child(format!(
+                "Surface: {}",
+                self.state.surface_mode.label()
             )));
 
         h_flex()

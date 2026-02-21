@@ -27,6 +27,10 @@ teloxide = { version = "0.13", optional = true, default-features = false, featur
 axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
 gpui = { version = "0.2.2", optional = true }
 gpui-component = { version = "0.5.1", optional = true }
+winit = { version = "0.30", optional = true }
+vello = { version = "0.4", optional = true }
+wgpu = { version = "23", optional = true }
+pollster = { version = "0.3", optional = true }
 chrono = "0.4"
 
 [features]
@@ -79,6 +83,7 @@ channel-axum = ["subsystem-comms", "dep:axum"]
 # UI Backends
 ui-svui = ["subsystem-ui"]
 ui-gpui = ["dep:gpui", "dep:gpui-component"]
+ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster"]
 
 [dev-dependencies]
 tempfile = "3"
@@ -110,3 +115,8 @@ required-features = ["gmail-app"]
 name = "araliya-gpui"
 path = "src/bin/araliya-gpui/main.rs"
 required-features = ["ui-gpui"]
+
+[[bin]]
+name = "araliya-beacon"
+path = "src/bin/araliya-beacon/main.rs"
+required-features = ["ui-beacon"]
