@@ -12,7 +12,7 @@ default = "news"
 enabled = true
 
 [agents.news.query]
-label = "News"
+label = "news"
 mailbox = "inbox"
 n_last = 10
 # t_interval = "1d"  # also supports: 1mon, 1min, 1h, 1w

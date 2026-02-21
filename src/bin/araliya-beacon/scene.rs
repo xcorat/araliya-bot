@@ -1,18 +1,15 @@
 
 //! Vello scene builder for the beacon widget.
 //!
+//! Minimal: filled hexagon body + status dot + ping button circle.
 //! Layout (160 × 80 logical px):
 //!
-//!   ┌────────────────────────────────────────────┐
-//!   │          ╱‾‾╲         ╭──────╮            │
-//!   │        ╱ DOT ╲        │  ●   │  beacon    │
-//!   │       ╲  HEX ╱        │button│            │
-//!   │         ╲──╱          ╰──────╯            │
-//!   └────────────────────────────────────────────┘
-//!    ← hex body (draggable) →← status button →
-//!
-//! The hex body is transparent-background, drawn over a fully-transparent
-//! window. The "ping" button on the right triggers the IPC health call.
+//!   ┌──────────────────────┐
+//!   │   ╱‾‾╲     ●        │
+//!   │  ╱ ·  ╲  [ping]     │
+//!   │  ╲    ╱             │
+//!   │   ╲──╱              │
+//!   └──────────────────────┘
 
 use vello::kurbo::{Affine, BezPath, Circle, Stroke};
 use vello::peniko::{Color, Fill};
@@ -20,14 +17,14 @@ use vello::Scene;
 
 // ── Layout constants ──────────────────────────────────────────────────────
 
-const HEX_CX: f64 = 66.0;
+const HEX_CX: f64 = 55.0;
 const HEX_CY: f64 = 40.0;
-const HEX_R: f64 = 32.0;
+const HEX_R: f64 = 30.0;
 
 /// Centre and radius of the "ping" status button.
-pub const BTN_CX: f64 = 130.0;
+pub const BTN_CX: f64 = 128.0;
 pub const BTN_CY: f64 = 40.0;
-pub const BTN_R: f64 = 18.0;
+pub const BTN_R: f64 = 20.0;
 
 /// Returns true when (x, y) falls within the ping button.
 pub fn is_button_hit(x: f64, y: f64) -> bool {
@@ -40,95 +37,77 @@ pub fn is_button_hit(x: f64, y: f64) -> bool {
 
 /// Build one frame of the beacon scene into `scene`.
 ///
-/// `status` is `None` while idle, `Some(text)` after the last IPC reply.
+/// `status` is `None` while idle, `Some(text)` after the last IPC reply (shown
+/// as green dot), `Some("err:…")` shown as red dot.
 pub fn build(scene: &mut Scene, status: Option<&str>) {
-    // ── Hex body ──────────────────────────────────────────────────────────
+    // ── Hex body (filled polygon) ─────────────────────────────────────────
 
     let hex = hex_path(HEX_CX, HEX_CY, HEX_R);
 
-    // Fill
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        Color::from_rgba8(14, 14, 22, 210),
+        Color::from_rgba8(18, 18, 28, 230),
         None,
         &hex,
     );
-
-    // Outline
     scene.stroke(
-        &Stroke::new(1.5),
+        &Stroke::new(2.0),
         Affine::IDENTITY,
-        Color::from_rgba8(70, 170, 240, 180),
+        Color::from_rgba8(80, 160, 255, 200),
         None,
         &hex,
     );
 
-    // ── Status indicator dot at hex centre ────────────────────────────────
+    // ── Status dot at hex centre ──────────────────────────────────────────
 
     let dot_color = match status {
-        None => Color::from_rgba8(70, 70, 90, 190),
-        Some(s) if s.starts_with("err") => Color::from_rgba8(220, 60, 60, 230),
-        Some(_) => Color::from_rgba8(50, 210, 110, 230),
+        None => Color::from_rgba8(80, 80, 100, 200),
+        Some(s) if s.starts_with("err") => Color::from_rgba8(220, 60, 60, 240),
+        Some(_) => Color::from_rgba8(60, 210, 120, 240),
     };
-
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
         dot_color,
         None,
-        &Circle::new((HEX_CX, HEX_CY), 9.0),
+        &Circle::new((HEX_CX, HEX_CY), 8.0),
     );
 
-    // Inner ring on dot
-    scene.stroke(
-        &Stroke::new(1.0),
-        Affine::IDENTITY,
-        Color::from_rgba8(200, 200, 220, 100),
-        None,
-        &Circle::new((HEX_CX, HEX_CY), 9.0),
-    );
+    // ── Ping button (filled circle + outline) ─────────────────────────────
 
-    // ── Ping button ───────────────────────────────────────────────────────
-
-    // Background pill
     scene.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        Color::from_rgba8(20, 20, 36, 200),
+        Color::from_rgba8(24, 24, 40, 220),
         None,
         &Circle::new((BTN_CX, BTN_CY), BTN_R),
     );
-
-    // Outer ring
     scene.stroke(
-        &Stroke::new(1.5),
+        &Stroke::new(2.0),
         Affine::IDENTITY,
-        Color::from_rgba8(100, 160, 255, 200),
+        Color::from_rgba8(80, 160, 255, 200),
         None,
         &Circle::new((BTN_CX, BTN_CY), BTN_R),
     );
 
-    // Inner send-pulse icon (three concentric arcs faking a signal icon)
-    for (i, r) in [4.0_f64, 8.0, 12.0].iter().enumerate() {
-        let a = 0.5 * (i as f64 + 1.0); // fade outer arcs
-        let alpha = (180.0 * a / 3.0) as u8;
-        scene.stroke(
-            &Stroke::new(1.2),
-            Affine::IDENTITY,
-            Color::from_rgba8(100, 160, 255, alpha),
-            None,
-            &Circle::new((BTN_CX, BTN_CY), *r),
-        );
-    }
+    // tiny inner dot as "send" icon
+    scene.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        Color::from_rgba8(120, 180, 255, 220),
+        None,
+        &Circle::new((BTN_CX, BTN_CY), 5.0),
+    );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-fn hex_path(cx: f64, cy: f64 , r: f64) -> BezPath {
+fn hex_path(cx: f64, cy: f64, r: f64) -> BezPath {
     let mut path = BezPath::new();
     for i in 0..6_u32 {
-        let angle = std::f64::consts::FRAC_PI_3 * i as f64;
+        // Start at top (subtract FRAC_PI_2 so flat edge is at top)
+        let angle = std::f64::consts::FRAC_PI_3 * i as f64 - std::f64::consts::FRAC_PI_2;
         let x = cx + r * angle.cos();
         let y = cy + r * angle.sin();
         if i == 0 {

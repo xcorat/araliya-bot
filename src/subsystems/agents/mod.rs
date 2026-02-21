@@ -73,6 +73,23 @@ impl AgentsState {
         }
     }
 
+    /// Open (or create) the persistent [`AgentStore`] for `agent_id`.
+    ///
+    /// The store is rooted at `{agent_identity_dir}/store/` and survives
+    /// restarts.  This call is synchronous (blocking I/O) — wrap in
+    /// `spawn_blocking` when called from an async context.
+    ///
+    /// [`AgentStore`]: crate::subsystems::memory::stores::agent::AgentStore
+    pub fn open_agent_store(
+        &self,
+        agent_id: &str,
+    ) -> Result<crate::subsystems::memory::stores::agent::AgentStore, AppError> {
+        let identity = self.agent_identities.get(agent_id).ok_or_else(|| {
+            AppError::Identity(format!("agent '{}' not found", agent_id))
+        })?;
+        crate::subsystems::memory::stores::agent::AgentStore::open(&identity.identity_dir)
+    }
+
     /// Get or create a subagent identity under the parent agent's memory directory.
     ///
     /// Subagents are ephemeral or task-specific workers that operate under their parent's
@@ -800,29 +817,42 @@ mod tests {
         }
     }
 
-    /// Verifies news returns raw `newsmail_aggregator/get` payload as comms content.
+    /// Verifies news fetches, calls LLM, and returns the LLM summary.
     #[cfg(feature = "plugin-news-agent")]
     #[tokio::test]
-    async fn news_agent_returns_raw_tool_payload() {
+    async fn news_agent_summarises_via_llm() {
         let bus = SupervisorBus::new(16);
         let handle = bus.handle.clone();
         let mut rx = bus.rx;
         let (_dir, memory) = test_memory();
 
+        // Handle two sequential bus requests: tool then LLM.
         tokio::spawn(async move {
+            // First: tools/execute
             if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
                 assert_eq!(method, "tools/execute");
-                if let BusPayload::ToolRequest { tool, action, args_json, channel_id, .. } = payload {
+                if let BusPayload::ToolRequest { tool, action, .. } = payload {
                     assert_eq!(tool, "newsmail_aggregator");
                     assert_eq!(action, "get");
-                    assert_eq!(args_json, "{}");
-                    assert_eq!(channel_id, "pty0");
-                    let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
-                        tool: "newsmail_aggregator".to_string(),
-                        action: "get".to_string(),
-                        ok: true,
-                        data_json: Some("[{\"subject\":\"A\"}]".to_string()),
-                        error: None,
+                }
+                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                    tool: "newsmail_aggregator".to_string(),
+                    action: "get".to_string(),
+                    ok: true,
+                    data_json: Some("[{\"subject\":\"Test Headline\",\"from\":\"news@example.com\",\"date\":\"2026-02-21\"}]".to_string()),
+                    error: None,
+                }));
+            }
+            // Second: llm/complete
+            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+                assert_eq!(method, "llm/complete");
+                if let BusPayload::LlmRequest { content, channel_id } = payload {
+                    assert!(content.contains("Test Headline"), "prompt should contain subject");
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: "Summary: Test Headline from news@example.com.".to_string(),
+                        session_id: None,
+                        usage: None,
                     }));
                 }
             }
@@ -840,13 +870,60 @@ mod tests {
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "ignored".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
             tx,
         );
 
         match rx_reply.await.unwrap() {
             Ok(BusPayload::CommsMessage { content, .. }) => {
-                assert_eq!(content, "[{\"subject\":\"A\"}]")
+                assert!(content.contains("Summary:"), "response should be LLM summary, got: {content}");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Empty inbox skips LLM entirely and returns a fixed message.
+    #[cfg(feature = "plugin-news-agent")]
+    #[tokio::test]
+    async fn news_agent_empty_inbox_skips_llm() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        tokio::spawn(async move {
+            // Only one bus message: the tool request.
+            if let Some(BusMessage::Request { reply_tx, .. }) = rx.recv().await {
+                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                    tool: "newsmail_aggregator".to_string(),
+                    action: "get".to_string(),
+                    ok: true,
+                    data_json: Some("[]".to_string()),
+                    error: None,
+                }));
+            }
+            // No further messages — asserting LLM is not called.
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "news".to_string(),
+            enabled: HashSet::from(["news".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => {
+                assert_eq!(content, "No new news emails.");
             }
             other => panic!("unexpected response: {other:?}"),
         }

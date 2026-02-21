@@ -175,12 +175,27 @@ impl BeaconApp {
             .expect("wgpu device");
 
         let caps = surface.get_capabilities(&adapter);
-        let format = caps
-            .formats
-            .iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(caps.formats[0]);
+        eprintln!("[beacon] surface formats: {:?}", caps.formats);
+        eprintln!("[beacon] alpha modes:     {:?}", caps.alpha_modes);
+
+        // Vello only accepts Bgra8Unorm or Rgba8Unorm (not sRGB variants).
+        // If the driver only exposes sRGB variants (e.g. llvmpipe), strip the
+        // suffix so the surface is configured with a vello-compatible format.
+        let format = [
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
+        ]
+        .iter()
+        .find(|f| caps.formats.contains(f))
+        .copied()
+        .unwrap_or_else(|| {
+            let fallback = caps.formats[0].remove_srgb_suffix();
+            eprintln!(
+                "[beacon] no non-sRGB format in caps; stripping sRGB suffix: {:?} → {:?}",
+                caps.formats[0], fallback
+            );
+            fallback
+        });
 
         // Pick the first alpha mode that supports transparency.
         let alpha_mode = [
