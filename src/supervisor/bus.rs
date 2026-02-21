@@ -34,6 +34,11 @@ pub enum BusPayload {
         channel_id: String,
         content: String,
         session_id: Option<String>,
+        /// Token usage reported by the LLM provider for this turn.
+        /// `None` when the message did not originate from an LLM call,
+        /// or when the provider does not report usage (e.g. dummy).
+        #[serde(default)]
+        usage: Option<crate::llm::LlmUsage>,
     },
     /// A completion request to the LLM subsystem.
     /// `channel_id` is threaded through so the LLM subsystem can attach it to

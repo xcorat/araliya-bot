@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, trace};
 
-use crate::llm::ProviderError;
+use crate::llm::{LlmResponse, LlmUsage, ProviderError};
 
 // ── Public provider ───────────────────────────────────────────────────────────
 
@@ -47,11 +47,11 @@ impl OpenAiCompatibleProvider {
         Ok(Self { client, api_base_url, model, temperature, api_key })
     }
 
-    /// Send `content` as a single user message and return the assistant's reply.
+    /// Send `content` as a single user message and return the assistant's reply with usage.
     ///
     /// History management and tool-call loops are intentionally the agent's
     /// responsibility — this method is one round-trip only.
-    pub async fn complete(&self, content: &str) -> Result<String, ProviderError> {
+    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
         // Some models (gpt-5 family) do not accept a temperature parameter.
         let temperature = if self.model.starts_with("gpt-5") {
             None
@@ -110,7 +110,15 @@ impl OpenAiCompatibleProvider {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| ProviderError::Request("empty or missing content in response".into()))?;
 
-        Ok(text)
+        let usage = parsed.usage.map(|u| LlmUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+            cached_input_tokens: u.prompt_tokens_details
+                .map(|d| d.cached_tokens)
+                .unwrap_or(0),
+        });
+
+        Ok(LlmResponse { text, usage })
     }
 }
 
@@ -133,6 +141,22 @@ struct ChatCompletionRequest {
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<UsageData>,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+struct UsageData {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    #[serde(default)]
+    prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+struct PromptTokensDetails {
+    #[serde(default)]
+    cached_tokens: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

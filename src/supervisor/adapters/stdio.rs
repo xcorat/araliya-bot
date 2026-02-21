@@ -88,6 +88,7 @@ pub fn start(
                                         channel_id: VIRTUAL_PTY_CHANNEL_ID.to_string(),
                                         content,
                                         session_id: None,
+                                        usage: None,
                                     },
                                 )
                                 .await

@@ -45,6 +45,17 @@ When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
 `comms.http.bind` and forwards the request to the management bus method
 `manage/http/get`.
 
+### Full-Featured Config (`full.toml`)
+
+For deployments using the `full` Cargo feature flag (`cargo run --features full`), a pre-configured `config/full.toml` is provided. This configuration turns off dummy/basic components and enables the full suite of features:
+
+- **Agents**: Uses the session-aware `chat` agent as default and enables the `gmail` agent.
+- **LLM**: Uses the `openai` provider (requires `LLM_API_KEY`) with `gpt-4o`.
+- **Comms**: Enables `pty`, `telegram` (requires `TELEGRAM_BOT_TOKEN`), and `axum_channel`.
+- **UI**: Enables the Svelte-based web UI backend (`svui`).
+
+To use it, replace `default.toml` with `full.toml` or point your configuration loader to it.
+
 ## Modular Features (Cargo Flags)
 
 Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin is disabled via Cargo feature, it will not be loaded even if configured in `default.toml`.
@@ -137,7 +148,9 @@ Provider API keys are never stored in config — supply them via environment or 
 
 | Flag | Effect |
 |------|--------|
+| `-h`, `--help` | Print help information and exit. |
 | `-i`, `--interactive` | Activates the stdio management adapter (`/status`, `/health`, `/chat`, …) and the PTY channel. Without this flag the bot runs as a daemon — no stdin is read and no stdout is written. |
+| `-f`, `--config <PATH>` | Path to configuration file (default: `config/default.toml`). |
 | `-v` … `-vvvv` | Override log level (see Verbosity table below) |
 
 ## CLI Verbosity Flags

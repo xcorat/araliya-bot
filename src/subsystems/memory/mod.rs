@@ -53,6 +53,22 @@ pub struct SessionInfo {
     /// Last agent that accessed this session (informational).
     #[serde(default)]
     pub last_agent: Option<String>,
+    /// Aggregate token spend for this session, mirrored from `spend.json`.
+    #[serde(default)]
+    pub spend: Option<SessionSpend>,
+}
+
+/// Aggregate token and cost totals for a session.
+/// Persisted as `sessions/{session_id}/spend.json` and mirrored into `sessions.json`.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SessionSpend {
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cached_tokens: u64,
+    /// Cumulative cost in USD. Recomputed on every accumulation using current rates.
+    pub total_cost_usd: f64,
+    /// ISO-8601 timestamp of the last accumulation.
+    pub last_updated: String,
 }
 
 /// On-disk shape of `sessions.json`.
@@ -187,6 +203,7 @@ impl MemorySystem {
             created_at: now,
             store_types: store_types.iter().map(|s| s.to_string()).collect(),
             last_agent: agent_id.map(|s| s.to_string()),
+            spend: None,
         };
         self.update_index(|idx| {
             idx.sessions.insert(session_id.clone(), info);

@@ -137,18 +137,24 @@ async fn handle_with_memory(
     // Get LLM completion.
     let result = ChatCore::basic_complete(state, channel_id, &prompt).await;
 
-    // Record assistant reply in transcript.
-    if let Ok(BusPayload::CommsMessage { content: ref reply, .. }) = result {
+    // Record assistant reply in transcript + accumulate token spend.
+    if let Ok(BusPayload::CommsMessage { content: ref reply, ref usage, .. }) = result {
         if let Err(e) = handle.transcript_append("assistant", reply).await {
             warn!("session_chat: transcript_append(assistant) failed: {e}");
+        }
+        if let Some(u) = usage {
+            if let Err(e) = handle.accumulate_spend(u, &state.llm_rates).await {
+                warn!("session_chat: accumulate_spend failed: {e}");
+            }
         }
     }
 
     match result {
-        Ok(BusPayload::CommsMessage { channel_id, content, .. }) => Ok(BusPayload::CommsMessage {
+        Ok(BusPayload::CommsMessage { channel_id, content, usage, .. }) => Ok(BusPayload::CommsMessage {
             channel_id,
             content,
             session_id: Some(handle.session_id.clone()),
+            usage,
         }),
         other => other,
     }

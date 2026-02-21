@@ -54,6 +54,7 @@ impl Agent for GmailAgentPlugin {
                         channel_id,
                         content,
                         session_id,
+                        usage: None,
                     }));
                 }
                 Ok(BusPayload::ToolResponse { ok: false, error, .. }) => {

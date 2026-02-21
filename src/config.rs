@@ -83,6 +83,10 @@ pub struct OpenAiConfig {
     pub temperature: f32,
     /// Per-request HTTP timeout in seconds.
     pub timeout_seconds: u64,
+    /// Token pricing rates (USD per 1 million tokens).
+    pub input_per_million_usd: f64,
+    pub output_per_million_usd: f64,
+    pub cached_input_per_million_usd: f64,
 }
 
 /// LLM subsystem configuration.
@@ -243,6 +247,12 @@ struct RawOpenAiConfig {
     temperature: f32,
     #[serde(default = "default_openai_timeout_seconds")]
     timeout_seconds: u64,
+    #[serde(default)]
+    input_per_million_usd: f64,
+    #[serde(default)]
+    output_per_million_usd: f64,
+    #[serde(default)]
+    cached_input_per_million_usd: f64,
 }
 
 impl Default for RawOpenAiConfig {
@@ -252,6 +262,9 @@ impl Default for RawOpenAiConfig {
             model: default_openai_model(),
             temperature: default_openai_temperature(),
             timeout_seconds: default_openai_timeout_seconds(),
+            input_per_million_usd: 0.0,
+            output_per_million_usd: 0.0,
+            cached_input_per_million_usd: 0.0,
         }
     }
 }
@@ -372,15 +385,71 @@ fn default_false() -> bool {
     false
 }
 
-/// Load config from `config/default.toml`, then apply env-var overrides.
-pub fn load() -> Result<Config, AppError> {
+/// Load config from the given path, or `config/default.toml`, then apply env-var overrides.
+/// If no path is given and `config/default.toml` does not exist, returns a hardcoded minimal default.
+pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
     let work_dir_override = env::var("ARALIYA_WORK_DIR").ok();
     let log_level_override = env::var("ARALIYA_LOG_LEVEL").ok();
-    load_from(
-        Path::new("config/default.toml"),
-        work_dir_override.as_deref(),
-        log_level_override.as_deref(),
-    )
+
+    if let Some(path) = config_path {
+        // If explicitly provided, it must exist and be valid.
+        return load_from(
+            Path::new(path),
+            work_dir_override.as_deref(),
+            log_level_override.as_deref(),
+        );
+    }
+
+    let default_path = Path::new("config/default.toml");
+    if default_path.exists() {
+        load_from(
+            default_path,
+            work_dir_override.as_deref(),
+            log_level_override.as_deref(),
+        )
+    } else {
+        // Hardcoded minimal default
+        let work_dir_str = work_dir_override.unwrap_or("~/.araliya".to_string());
+        let work_dir = expand_home(&work_dir_str);
+        let log_level = log_level_override.unwrap_or("info".to_string());
+
+        Ok(Config {
+            bot_name: "araliya".to_string(),
+            work_dir,
+            identity_dir: None,
+            log_level,
+            comms: CommsConfig {
+                pty: PtyConfig { enabled: true },
+                telegram: TelegramConfig { enabled: false },
+                http: HttpConfig { enabled: false, bind: "127.0.0.1:8080".to_string() },
+                axum_channel: AxumChannelConfig { enabled: false, bind: "127.0.0.1:8080".to_string() },
+            },
+            agents: AgentsConfig {
+                default_agent: "basic_chat".to_string(),
+                channel_map: HashMap::new(),
+                enabled: HashSet::from(["basic_chat".to_string()]),
+                agent_memory: HashMap::new(),
+            },
+            llm: LlmConfig {
+                provider: "dummy".to_string(),
+                openai: OpenAiConfig {
+                    api_base_url: "https://api.openai.com/v1/chat/completions".to_string(),
+                    model: "gpt-4o-mini".to_string(),
+                    temperature: 0.2,
+                    timeout_seconds: 60,
+                    input_per_million_usd: 0.0,
+                    output_per_million_usd: 0.0,
+                    cached_input_per_million_usd: 0.0,
+                },
+            },
+            llm_api_key: env::var("LLM_API_KEY").ok(),
+            ui: UiConfig {
+                svui: SvuiConfig { enabled: false, static_dir: None },
+            },
+            memory_kv_cap: Some(200),
+            memory_transcript_cap: Some(500),
+        })
+    }
 }
 
 /// Internal loader — accepts an explicit path and optional overrides.
@@ -452,6 +521,9 @@ pub fn load_from(
                 model: parsed.llm.openai.model,
                 temperature: parsed.llm.openai.temperature,
                 timeout_seconds: parsed.llm.openai.timeout_seconds,
+                input_per_million_usd: parsed.llm.openai.input_per_million_usd,
+                output_per_million_usd: parsed.llm.openai.output_per_million_usd,
+                cached_input_per_million_usd: parsed.llm.openai.cached_input_per_million_usd,
             },
         },
         llm_api_key: env::var("LLM_API_KEY").ok(),
@@ -518,6 +590,9 @@ impl Config {
                     model: "test-model".into(),
                     temperature: 0.0,
                     timeout_seconds: 1,
+                    input_per_million_usd: 0.0,
+                    output_per_million_usd: 0.0,
+                    cached_input_per_million_usd: 0.0,
                 },
             },
             llm_api_key: None,

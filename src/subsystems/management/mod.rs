@@ -125,6 +125,7 @@ impl BusHandler for ManagementSubsystem {
                         channel_id: "manage-http".to_string(),
                         content: body.to_string(),
                         session_id: None,
+                        usage: None,
                     })
                 }
                 Ok(Ok(_)) => Err(BusError::new(-32000, "unexpected control response for status")),

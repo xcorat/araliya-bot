@@ -25,6 +25,9 @@ thiserror = "2"
 dotenvy = "0.15"
 teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
 axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
+gpui = { version = "0.2.2", optional = true }
+gpui-component = { version = "0.5.1", optional = true }
+chrono = "0.4"
 
 [features]
 default = [
@@ -74,6 +77,7 @@ channel-axum = ["subsystem-comms", "dep:axum"]
 
 # UI Backends
 ui-svui = ["subsystem-ui"]
+ui-gpui = ["dep:gpui", "dep:gpui-component"]
 
 [dev-dependencies]
 tempfile = "3"
@@ -100,3 +104,8 @@ required-features = ["cli"]
 name = "gmail_read_one"
 path = "src/bin/gmail_read_one.rs"
 required-features = ["gmail-app"]
+
+[[bin]]
+name = "araliya-gpui"
+path = "src/bin/araliya-gpui/main.rs"
+required-features = ["ui-gpui"]

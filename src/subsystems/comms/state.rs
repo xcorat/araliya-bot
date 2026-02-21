@@ -65,6 +65,7 @@ impl CommsState {
             channel_id: channel_id.to_string(),
             content,
             session_id,
+            usage: None,
         };
 
         match self.bus.request("agents", payload).await {

@@ -8,20 +8,26 @@ use tokio::sync::oneshot;
 use tracing::debug;
 
 use crate::config::LlmConfig;
-use crate::llm::{LlmProvider, ProviderError};
+use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use crate::llm::providers;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
 
 pub struct LlmSubsystem {
     provider: LlmProvider,
+    rates: ModelRates,
 }
 
 impl LlmSubsystem {
     /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
     pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
         let provider = providers::build(config, api_key)?;
-        Ok(Self { provider })
+        let rates = ModelRates {
+            input_per_million_usd: config.openai.input_per_million_usd,
+            output_per_million_usd: config.openai.output_per_million_usd,
+            cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
+        };
+        Ok(Self { provider, rates })
     }
 }
 
@@ -36,15 +42,29 @@ impl BusHandler for LlmSubsystem {
         match payload {
             BusPayload::LlmRequest { channel_id, content } => {
                 let provider = self.provider.clone();
+                let rates = self.rates.clone();
                 debug!(%method, %channel_id, "dispatching to llm provider");
                 tokio::spawn(async move {
                     let result = provider
                         .complete(&content)
                         .await
-                        .map(|reply| BusPayload::CommsMessage {
-                            channel_id,
-                            content: reply,
-                            session_id: None,
+                        .map(|resp| {
+                            let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));
+                            if let (Some(u), Some(c)) = (&resp.usage, cost) {
+                                tracing::debug!(
+                                    input_tokens = u.input_tokens,
+                                    output_tokens = u.output_tokens,
+                                    cached_tokens = u.cached_input_tokens,
+                                    cost_usd = c,
+                                    "llm usage"
+                                );
+                            }
+                            BusPayload::CommsMessage {
+                                channel_id,
+                                content: resp.text,
+                                session_id: None,
+                                usage: resp.usage,
+                            }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));
                     let _ = reply_tx.send(result);

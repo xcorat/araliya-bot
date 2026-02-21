@@ -60,9 +60,9 @@ async fn run() -> Result<(), error::AppError> {
     // Load .env if present — ignore errors (file is optional).
     let _ = dotenvy::dotenv();
 
-    let mut config = config::load()?;
-
     let args = parse_cli_args();
+
+    let mut config = config::load(args.config_path.as_deref())?;
 
     // Without -i, no stdio channels are active (daemon-safe default).
     // TODO: warn in this case that pty is available only when interactive.
@@ -152,7 +152,13 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?;
+        let rates = crate::llm::ModelRates {
+            input_per_million_usd: config.llm.openai.input_per_million_usd,
+            output_per_million_usd: config.llm.openai.output_per_million_usd,
+            cached_input_per_million_usd: config.llm.openai.cached_input_per_million_usd,
+        };
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
+            .with_llm_rates(rates);
         handlers.push(Box::new(agents));
     }
 
@@ -220,11 +226,13 @@ async fn run() -> Result<(), error::AppError> {
 struct CliArgs {
     log_level: Option<&'static str>,
     interactive: bool,
+    config_path: Option<String>,
 }
 
 fn parse_cli_args() -> CliArgs {
     let mut verbosity = 0u8;
     let mut interactive = false;
+    let mut config_path = None;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -233,7 +241,25 @@ fn parse_cli_args() -> CliArgs {
         }
 
         match arg.as_str() {
+            "-h" | "--help" => {
+                println!("Usage: araliya-bot [OPTIONS]");
+                println!("");
+                println!("Options:");
+                println!("  -h, --help                 Print help");
+                println!("  -i, --interactive          Run in interactive mode (enables PTY console)");
+                println!("  -f, --config <PATH>        Path to configuration file (default: config/default.toml)");
+                println!("  -v, -vv, -vvv, -vvvv       Increase logging verbosity");
+                std::process::exit(0);
+            }
             "-i" | "--interactive" => interactive = true,
+            "-f" | "--config" => {
+                if let Some(path) = iter.next() {
+                    config_path = Some(path);
+                } else {
+                    eprintln!("error: -f/--config requires a path argument");
+                    std::process::exit(1);
+                }
+            }
             "--verbose" => verbosity = verbosity.saturating_add(1),
             a if a.starts_with('-') && a.len() > 1 && a.chars().skip(1).all(|c| c == 'v') => {
                 verbosity = verbosity.saturating_add((a.len() - 1) as u8);
@@ -255,6 +281,6 @@ fn parse_cli_args() -> CliArgs {
         _ => Some("trace"),
     };
 
-    CliArgs { log_level, interactive }
+    CliArgs { log_level, interactive, config_path }
 }
 

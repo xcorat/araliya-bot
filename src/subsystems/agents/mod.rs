@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 
 use crate::config::AgentsConfig;
 use crate::error::AppError;
+use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::dispatch::BusHandler;
 
@@ -46,6 +47,8 @@ pub struct AgentsState {
     pub agent_memory: HashMap<String, Vec<String>>,
     /// Cryptographic identities for each registered agent.
     pub agent_identities: HashMap<String, Identity>,
+    /// Pricing rates for the active LLM model — used to compute per-session spend.
+    pub llm_rates: ModelRates,
 }
 
 impl AgentsState {
@@ -55,7 +58,7 @@ impl AgentsState {
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
     ) -> Self {
-        Self { bus, memory, agent_memory, agent_identities }
+        Self { bus, memory, agent_memory, agent_identities, llm_rates: ModelRates::default() }
     }
 
     /// Get or create a subagent identity under the parent agent's memory directory.
@@ -154,7 +157,7 @@ struct EchoAgent;
 impl Agent for EchoAgent {
     fn id(&self) -> &str { "echo" }
     fn handle(&self, _action: String, channel_id: String, content: String, session_id: Option<String>, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
-        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content, session_id }));
+        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content, session_id, usage: None }));
     }
 }
 
@@ -235,6 +238,15 @@ impl AgentsSubsystem {
             channel_map: config.channel_map,
             enabled_agents,
         })
+    }
+
+    /// Set the LLM pricing rates on the shared state.
+    /// Call this after `new()` when rates are available from config.
+    pub fn with_llm_rates(mut self, rates: ModelRates) -> Self {
+        Arc::get_mut(&mut self.state)
+            .expect("AgentsState Arc must be exclusive at build time")
+            .llm_rates = rates;
+        self
     }
 
     fn resolve_agent<'a>(&'a self, method_agent_id: Option<&'a str>, channel_id: &str) -> Result<&'a str, BusError> {
@@ -486,7 +498,7 @@ impl BusHandler for AgentsSubsystem {
         };
 
         match payload {
-            BusPayload::CommsMessage { channel_id, content, session_id } => {
+            BusPayload::CommsMessage { channel_id, content, session_id, .. } => {
                 let agent_id = match self.resolve_agent(method_agent_id.as_deref(), &channel_id) {
                     Ok(id) => id,
                     Err(e) => { let _ = reply_tx.send(Err(e)); return; }
@@ -596,7 +608,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "mapped".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "mapped".to_string(), session_id: None, usage: None },
             tx,
         );
 
@@ -621,7 +633,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/unknown",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
             tx,
         );
 
@@ -643,7 +655,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "fallback".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "fallback".to_string(), session_id: None, usage: None },
             tx,
         );
 
@@ -672,7 +684,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None },
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
             tx,
         );
 

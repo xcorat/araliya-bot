@@ -1,14 +1,17 @@
 //! Dummy LLM provider — echoes input back prefixed with `[echo]`.
 //! Used for testing the full bus round-trip without a real API key.
 
-use crate::llm::ProviderError;
+use crate::llm::{LlmResponse, ProviderError};
 
 #[derive(Debug, Clone)]
 pub struct DummyProvider;
 
 impl DummyProvider {
-    pub async fn complete(&self, content: &str) -> Result<String, ProviderError> {
-        Ok(format!("[echo] {content}"))
+    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
+        Ok(LlmResponse {
+            text: format!("[echo] {content}"),
+            usage: None,
+        })
     }
 }
 
@@ -19,12 +22,18 @@ mod tests {
     #[tokio::test]
     async fn complete_prefixes_echo() {
         let p = DummyProvider;
-        assert_eq!(p.complete("hello").await.unwrap(), "[echo] hello");
+        assert_eq!(p.complete("hello").await.unwrap().text, "[echo] hello");
     }
 
     #[tokio::test]
     async fn complete_empty_input() {
         let p = DummyProvider;
-        assert_eq!(p.complete("").await.unwrap(), "[echo] ");
+        assert_eq!(p.complete("").await.unwrap().text, "[echo] ");
+    }
+
+    #[tokio::test]
+    async fn complete_usage_is_none() {
+        let p = DummyProvider;
+        assert!(p.complete("test").await.unwrap().usage.is_none());
     }
 }
