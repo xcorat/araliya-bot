@@ -68,6 +68,30 @@ docker run --rm \
 
 ## Production (Single Machine)
 
+### Download prebuilt release binary
+
+Every `v*` tag publishes release assets on GitHub Releases.
+
+```bash
+# Example version
+VERSION=v0.1.0
+
+curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/araliya-bot-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/SHA256SUMS
+sha256sum -c SHA256SUMS
+tar -xzf araliya-bot-${VERSION}-x86_64-unknown-linux-gnu.tar.gz
+install -m 755 araliya-bot /usr/local/bin/araliya-bot
+```
+
+To create a release from this repository:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The GitHub Actions workflow publishes the assets automatically.
+
 Build a release binary:
 
 ```bash
