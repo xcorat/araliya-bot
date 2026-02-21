@@ -107,6 +107,8 @@ impl MemorySystem {
             config.transcript_cap,
         ));
         stores.insert(basic.store_type().to_string(), basic);
+        let tmp = Arc::new(stores::tmp::TmpStore::new());
+        stores.insert(tmp.store_type().to_string(), tmp);
 
         info!(
             memory_root = %memory_root.display(),

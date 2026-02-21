@@ -173,9 +173,7 @@ async fn handle_with_memory(
 
 #[cfg(feature = "subsystem-memory")]
 fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppError> {
-    let memory = state.memory.as_ref().ok_or_else(|| {
-        crate::error::AppError::Memory("memory system not available".into())
-    })?;
+    let memory = &state.memory;
 
     // Look up which stores this agent needs from config.
     let store_types = state
@@ -189,9 +187,7 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
 
 #[cfg(feature = "subsystem-memory")]
 fn load_session(state: &AgentsState, session_id: &str) -> Result<SessionHandle, crate::error::AppError> {
-    let memory = state.memory.as_ref().ok_or_else(|| {
-        crate::error::AppError::Memory("memory system not available".into())
-    })?;
+    let memory = &state.memory;
 
     memory.load_session(session_id, Some("chat"))
 }
