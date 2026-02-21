@@ -170,6 +170,21 @@ impl AppView {
         .detach();
     }
 
+    fn start_new_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.state.active_section = ActivitySection::Chat;
+        self.state.active_session_id = None;
+        self.state.is_loading_messages = false;
+        self.state.is_sending_message = false;
+        self.state.input_text.clear();
+        self.state.messages.clear();
+
+        self.input_state.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+
+        cx.notify();
+    }
+
     fn send_message(&mut self, cx: &mut Context<Self>) {
         let text = self.state.input_text.trim().to_string();
         if text.is_empty() || self.state.is_sending_message {
@@ -239,9 +254,11 @@ impl AppView {
             let is_active = state.active_session_id.as_ref() == Some(&session.session_id);
             let session_id = session.session_id.clone();
             let view = view.clone();
+            let short_id: String = session.session_id.chars().take(8).collect();
+            let label = format!("Session {}", short_id);
 
             sidebar_menu = sidebar_menu.child(
-                SidebarMenuItem::new(format!("Session {}", &session.session_id[..8]))
+                SidebarMenuItem::new(label)
                     .active(is_active)
                     .on_click(move |_, _, cx| {
                         view.update(cx, |this, cx| {
@@ -291,6 +308,20 @@ impl AppView {
                                 }),
                         ),
                 ),
+            )
+            .footer(
+                Button::new("new-session")
+                    .label("+ New Session")
+                    .w_full()
+                    .on_click({
+                        let view = view.clone();
+                        move |_, window, cx| {
+                            view.update(cx, |this, cx| {
+                                this.start_new_session(window, cx);
+                            })
+                            .ok();
+                        }
+                    }),
             )
             .child(SidebarGroup::new("History").child(sidebar_menu))
     }

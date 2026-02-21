@@ -45,8 +45,10 @@ pub struct HealthResponse {
 pub struct SessionInfo {
     pub session_id: String,
     pub created_at: String,
-    pub updated_at: String,
-    pub mode: String,
+    #[serde(default)]
+    pub store_types: Vec<String>,
+    #[serde(default)]
+    pub last_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
