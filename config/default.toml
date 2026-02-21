@@ -78,6 +78,13 @@ enabled = false
 # Options: "dummy", "openai"
 default = "openai"
 
+[tools.newsmail_aggregator]
+mailbox = "inbox"
+n_last = 10
+# Optional time window in seconds for recent-email filtering.
+# Example: 86400 = last 24 hours. Omit to disable time filtering.
+# tsec_last = 86400
+
 [ui.svui]
 # Svelte-based web UI backend — served by the HTTP channel.
 # When enabled, non-API HTTP requests are delegated to this backend.

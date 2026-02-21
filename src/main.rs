@@ -147,7 +147,9 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(feature = "subsystem-tools")]
     {
-        handlers.push(Box::new(ToolsSubsystem::new()));
+        handlers.push(Box::new(ToolsSubsystem::new(
+            config.tools.newsmail_aggregator.clone(),
+        )));
     }
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]

@@ -22,6 +22,7 @@ const DEFAULT_CALLBACK_PATH: &str = "/oauth2/callback";
 pub struct GmailSummary {
     pub id: String,
     pub thread_id: String,
+    pub internal_date_unix: Option<u64>,
     pub from: String,
     pub subject: String,
     pub date: String,
@@ -341,45 +342,22 @@ fn header_value(headers: &[Value], key: &str) -> String {
     String::new()
 }
 
-pub async fn read_latest(query: Option<&str>) -> Result<GmailSummary, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("failed building HTTP client: {e}"))?;
-
-    let access_token = ensure_access_token(&client).await?;
-    let query = query.unwrap_or("in:inbox");
-
-    let list = client
-        .get(format!("{GMAIL_BASE}/messages"))
-        .bearer_auth(&access_token)
-        .query(&[("maxResults", "1"), ("q", query)])
-        .send()
-        .await
-        .map_err(|e| format!("gmail list request failed: {e}"))?;
-
-    if !list.status().is_success() {
-        let body = list.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
-        return Err(format!("gmail list failed: {body}"));
-    }
-
-    let list_json: Value = list
-        .json()
-        .await
-        .map_err(|e| format!("gmail list parse failed: {e}"))?;
-
-    let msg_id = list_json
-        .get("messages")
-        .and_then(Value::as_array)
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.get("id"))
+fn parse_internal_date_unix(msg: &Value) -> Option<u64> {
+    let millis = msg
+        .get("internalDate")
         .and_then(Value::as_str)
-        .map(|s| s.to_string())
-        .ok_or_else(|| "no messages found".to_string())?;
+        .and_then(|v| v.parse::<u64>().ok())?;
+    Some(millis / 1000)
+}
 
+async fn fetch_message_summary(
+    client: &reqwest::Client,
+    access_token: &str,
+    msg_id: &str,
+) -> Result<GmailSummary, String> {
     let get = client
         .get(format!("{GMAIL_BASE}/messages/{msg_id}"))
-        .bearer_auth(&access_token)
+        .bearer_auth(access_token)
         .query(&[
             ("format", "metadata"),
             ("metadataHeaders", "Subject"),
@@ -410,9 +388,64 @@ pub async fn read_latest(query: Option<&str>) -> Result<GmailSummary, String> {
     Ok(GmailSummary {
         id: msg.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
         thread_id: msg.get("threadId").and_then(Value::as_str).unwrap_or("").to_string(),
+        internal_date_unix: parse_internal_date_unix(&msg),
         from: header_value(&payload_headers, "From"),
         subject: header_value(&payload_headers, "Subject"),
         date: header_value(&payload_headers, "Date"),
         snippet: msg.get("snippet").and_then(Value::as_str).unwrap_or("").to_string(),
     })
+}
+
+pub async fn read_many(query: Option<&str>, max_results: u32) -> Result<Vec<GmailSummary>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("failed building HTTP client: {e}"))?;
+
+    let access_token = ensure_access_token(&client).await?;
+    let query = query.unwrap_or("in:inbox");
+    let bounded_max = max_results.clamp(1, 100);
+
+    let list = client
+        .get(format!("{GMAIL_BASE}/messages"))
+        .bearer_auth(&access_token)
+        .query(&[("maxResults", bounded_max.to_string()), ("q", query.to_string())])
+        .send()
+        .await
+        .map_err(|e| format!("gmail list request failed: {e}"))?;
+
+    if !list.status().is_success() {
+        let body = list.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        return Err(format!("gmail list failed: {body}"));
+    }
+
+    let list_json: Value = list
+        .json()
+        .await
+        .map_err(|e| format!("gmail list parse failed: {e}"))?;
+
+    let ids: Vec<String> = list_json
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.get("id").and_then(Value::as_str).map(|s| s.to_string()))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    let mut items = Vec::with_capacity(ids.len());
+    for id in ids {
+        items.push(fetch_message_summary(&client, &access_token, &id).await?);
+    }
+
+    Ok(items)
+}
+
+pub async fn read_latest(query: Option<&str>) -> Result<GmailSummary, String> {
+    let mut items = read_many(query, 1).await?;
+    items
+        .drain(..)
+        .next()
+        .ok_or_else(|| "no messages found".to_string())
 }

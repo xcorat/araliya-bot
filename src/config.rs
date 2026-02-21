@@ -62,6 +62,20 @@ pub struct UiConfig {
     pub svui: SvuiConfig,
 }
 
+/// Specialized newsmail aggregator tool defaults.
+#[derive(Debug, Clone)]
+pub struct NewsmailAggregatorConfig {
+    pub mailbox: String,
+    pub n_last: usize,
+    pub tsec_last: Option<u64>,
+}
+
+/// Tools subsystem configuration.
+#[derive(Debug, Clone)]
+pub struct ToolsConfig {
+    pub newsmail_aggregator: NewsmailAggregatorConfig,
+}
+
 /// Comms subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct CommsConfig {
@@ -126,6 +140,7 @@ pub struct Config {
     pub agents: AgentsConfig,
     pub llm: LlmConfig,
     pub ui: UiConfig,
+    pub tools: ToolsConfig,
     /// API key from `LLM_API_KEY` env var — `None` for keyless local models.
     /// Never sourced from TOML.
     pub llm_api_key: Option<String>,
@@ -175,6 +190,8 @@ struct RawConfig {
     memory: RawMemory,
     #[serde(default)]
     ui: RawUi,
+    #[serde(default)]
+    tools: RawTools,
 }
 
 #[derive(Deserialize)]
@@ -317,6 +334,35 @@ struct RawUi {
     #[serde(default)]
     svui: RawSvui,
 }
+
+#[derive(Deserialize, Default)]
+struct RawTools {
+    #[serde(default)]
+    newsmail_aggregator: RawNewsmailAggregator,
+}
+
+#[derive(Deserialize)]
+struct RawNewsmailAggregator {
+    #[serde(default = "default_newsmail_mailbox")]
+    mailbox: String,
+    #[serde(default = "default_newsmail_n_last")]
+    n_last: usize,
+    #[serde(default)]
+    tsec_last: Option<u64>,
+}
+
+impl Default for RawNewsmailAggregator {
+    fn default() -> Self {
+        Self {
+            mailbox: default_newsmail_mailbox(),
+            n_last: default_newsmail_n_last(),
+            tsec_last: None,
+        }
+    }
+}
+
+fn default_newsmail_mailbox() -> String { "inbox".to_string() }
+fn default_newsmail_n_last() -> usize { 10 }
 
 #[derive(Deserialize)]
 struct RawSvui {
@@ -504,6 +550,13 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
             ui: UiConfig {
                 svui: SvuiConfig { enabled: false, static_dir: None },
             },
+            tools: ToolsConfig {
+                newsmail_aggregator: NewsmailAggregatorConfig {
+                    mailbox: default_newsmail_mailbox(),
+                    n_last: default_newsmail_n_last(),
+                    tsec_last: None,
+                },
+            },
             memory_kv_cap: Some(200),
             memory_transcript_cap: Some(500),
         })
@@ -591,6 +644,13 @@ pub fn load_from(
                 static_dir: parsed.ui.svui.static_dir,
             },
         },
+        tools: ToolsConfig {
+            newsmail_aggregator: NewsmailAggregatorConfig {
+                mailbox: parsed.tools.newsmail_aggregator.mailbox,
+                n_last: parsed.tools.newsmail_aggregator.n_last.max(1),
+                tsec_last: parsed.tools.newsmail_aggregator.tsec_last,
+            },
+        },
         memory_kv_cap: parsed.memory.basic_session.kv_cap,
         memory_transcript_cap: parsed.memory.basic_session.transcript_cap,
     })
@@ -658,6 +718,13 @@ impl Config {
                 svui: SvuiConfig {
                     enabled: false,
                     static_dir: None,
+                },
+            },
+            tools: ToolsConfig {
+                newsmail_aggregator: NewsmailAggregatorConfig {
+                    mailbox: default_newsmail_mailbox(),
+                    n_last: default_newsmail_n_last(),
+                    tsec_last: None,
                 },
             },
             memory_kv_cap: None,
