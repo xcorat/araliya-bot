@@ -30,7 +30,10 @@ bind = "127.0.0.1:8080"
 
 [agents]
 # Which agent handles unrouted messages.
-default = "chat"
+# By default the echo agent is used — it reflects messages back verbatim.
+# To enable LLM-backed chat, set this to "basic_chat" or "chat" and
+# set enabled = true in the corresponding section below.
+default = "echo"
 
 [agents.routing]
 # Optional channel_id -> agent_id overrides.
@@ -41,10 +44,18 @@ default = "chat"
 # Built-in echo agent. Reflects messages back verbatim.
 
 [agents.basic_chat]
-# Default conversational agent — routes messages to the active LLM provider.
+# Optional LLM pass-through plugin — routes messages directly to the LLM provider.
+# Enable this to give the bot basic conversational capability.
+# The `plugin-basic-chat` Cargo feature is compiled in by default; to activate
+# this plugin simply change `enabled = false` to `enabled = true`.
+enabled = false
 
 [agents.chat]
-# Session-aware chat agent — extends basic_chat with session management.
+# Optional session-aware chat plugin — extends basic_chat with transcript memory.
+# Enable this for multi-turn conversation with history context.
+# The `plugin-chat` Cargo feature is compiled in by default; to activate
+# this plugin simply change `enabled = false` to `enabled = true`.
+enabled = false
 memory = ["basic_session"]
 
 [agents.gmail]
