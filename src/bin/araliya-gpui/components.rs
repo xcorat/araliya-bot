@@ -7,7 +7,7 @@ use gpui_component::{
     scroll::ScrollableElement,
 };
 
-use crate::state::AppState;
+use crate::state::{ActivitySection, AppState};
 
 pub struct AppView {
     state: AppState,
@@ -51,6 +51,32 @@ impl AppView {
         view.fetch_sessions(cx);
 
         view
+    }
+
+    fn activity_sections() -> [ActivitySection; 6] {
+        [
+            ActivitySection::Chat,
+            ActivitySection::Memory,
+            ActivitySection::Tools,
+            ActivitySection::Status,
+            ActivitySection::Settings,
+            ActivitySection::Docs,
+        ]
+    }
+
+    fn set_active_section(&mut self, section: ActivitySection, cx: &mut Context<Self>) {
+        self.state.active_section = section;
+        cx.notify();
+    }
+
+    fn toggle_left_panel(&mut self, cx: &mut Context<Self>) {
+        self.state.layout.left_panel_open = !self.state.layout.left_panel_open;
+        cx.notify();
+    }
+
+    fn toggle_right_panel(&mut self, cx: &mut Context<Self>) {
+        self.state.layout.right_panel_open = !self.state.layout.right_panel_open;
+        cx.notify();
     }
 
     fn fetch_health(&mut self, cx: &mut Context<Self>) {
@@ -170,12 +196,9 @@ impl AppView {
         })
         .detach();
     }
-}
 
-impl Render for AppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_sessions_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = &self.state;
-        let theme = cx.theme();
         let view = cx.entity().downgrade();
 
         let mut sidebar_menu = SidebarMenu::new();
@@ -183,25 +206,46 @@ impl Render for AppView {
             let is_active = state.active_session_id.as_ref() == Some(&session.session_id);
             let session_id = session.session_id.clone();
             let view = view.clone();
-            
+
             sidebar_menu = sidebar_menu.child(
                 SidebarMenuItem::new(format!("Session {}", &session.session_id[..8]))
                     .active(is_active)
                     .on_click(move |_, _, cx| {
                         view.update(cx, |this, cx| {
                             this.select_session(session_id.clone(), cx);
-                        }).ok();
-                    })
+                        })
+                        .ok();
+                    }),
             );
         }
 
-        let health_text = match &state.health_status {
-            Some(h) => format!("Status: {} | Bot: {}", h.status, h.bot_id),
-            None => "Checking health...".to_string(),
-        };
+        Sidebar::new(gpui_component::Side::Left)
+            .w(px(260.))
+            .header(
+                SidebarHeader::new().child(
+                    v_flex()
+                        .gap_1()
+                        .child(div().text_sm().font_weight(FontWeight::BOLD).child("Sessions"))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(if state.is_loading_sessions {
+                                    "Loading..."
+                                } else {
+                                    "Active list"
+                                }),
+                        ),
+                ),
+            )
+            .child(SidebarGroup::new("History").child(sidebar_menu))
+    }
+
+    fn render_chat_messages(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = &self.state;
+        let theme = cx.theme();
 
         let mut messages_view = v_flex().flex_1().overflow_y_scrollbar().p_4().gap_4();
-        
         if state.is_loading_messages {
             messages_view = messages_view.child(div().child("Loading messages..."));
         } else if state.messages.is_empty() {
@@ -209,8 +253,14 @@ impl Render for AppView {
         } else {
             for msg in &state.messages {
                 let is_user = msg.role == "user";
-                let bg_color = if is_user { theme.primary } else { theme.secondary };
-                let text_color = if is_user { theme.primary_foreground } else { theme.secondary_foreground };
+                let is_error = msg.role == "error";
+                let (bg_color, text_color) = if is_error {
+                    (theme.accent, theme.accent_foreground)
+                } else if is_user {
+                    (theme.primary, theme.primary_foreground)
+                } else {
+                    (theme.secondary, theme.secondary_foreground)
+                };
 
                 let mut msg_container = v_flex().w_full();
                 if is_user {
@@ -219,72 +269,262 @@ impl Render for AppView {
                     msg_container = msg_container.items_start();
                 }
 
-                messages_view = messages_view.child(
-                    msg_container
-                        .child(
-                            div()
-                                .max_w(px(600.))
-                                .p_3()
-                                .rounded_lg()
-                                .bg(bg_color)
-                                .text_color(text_color)
-                                .child(msg.content.clone())
-                        )
-                );
+                messages_view = messages_view.child(msg_container.child(
+                    div()
+                        .max_w(px(680.))
+                        .p_3()
+                        .rounded_lg()
+                        .bg(bg_color)
+                        .text_color(text_color)
+                        .child(msg.content.clone()),
+                ));
             }
         }
 
+        messages_view
+    }
+
+    fn render_chat_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = &self.state;
+        v_flex()
+            .flex_1()
+            .child(self.render_chat_messages(cx))
+            .child(
+                h_flex()
+                    .p_4()
+                    .gap_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(div().flex_1().child(Input::new(&self.input_state)))
+                    .child(
+                        Button::new("send-btn")
+                            .label("Send")
+                            .primary()
+                            .disabled(
+                                state.is_sending_message || state.input_text.trim().is_empty(),
+                            )
+                            .on_click({
+                                let view = cx.entity().downgrade();
+                                let input_state = self.input_state.clone();
+                                move |_, window, cx| {
+                                    view.update(cx, |this, cx| {
+                                        this.send_message(cx);
+                                    })
+                                    .ok();
+                                    input_state.update(cx, |i, cx| {
+                                        i.set_value("", window, cx);
+                                    });
+                                }
+                            }),
+                    ),
+            )
+    }
+
+    fn render_status_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut content = v_flex().flex_1().p_4().gap_3();
+        if let Some(health) = &self.state.health_status {
+            content = content
+                .child(
+                    div()
+                        .p_3()
+                        .rounded_lg()
+                        .bg(cx.theme().secondary)
+                        .text_color(cx.theme().secondary_foreground)
+                        .child(format!("Supervisor: {}", health.status)),
+                )
+                .child(div().child(format!("Bot ID: {}", health.bot_id)))
+                .child(div().child(format!("Model: {}", health.llm_model)))
+                .child(div().child(format!("Provider: {}", health.llm_provider)))
+                .child(div().child(format!("Sessions: {}", health.session_count)));
+        } else {
+            content = content.child(div().child("Health check in progress..."));
+        }
+        content
+    }
+
+    fn render_placeholder_panel(&self, title: String, subtitle: String) -> impl IntoElement {
+        v_flex()
+            .flex_1()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
+            .child(div().text_sm().child(subtitle))
+    }
+
+    fn render_main_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut panel = v_flex().flex_1();
+        match self.state.active_section {
+            ActivitySection::Chat => panel = panel.child(self.render_chat_view(cx)),
+            ActivitySection::Status => panel = panel.child(self.render_status_view(cx)),
+            ActivitySection::Memory => {
+                panel = panel.child(self.render_placeholder_panel(
+                    "Memory Inspector".to_string(),
+                    "Read-only memory panel will appear here.".to_string(),
+                ))
+            }
+            ActivitySection::Tools => {
+                panel = panel.child(self.render_placeholder_panel(
+                    "Tool Trace".to_string(),
+                    "Session-wide tool timeline panel placeholder.".to_string(),
+                ))
+            }
+            ActivitySection::Settings => {
+                panel = panel.child(self.render_placeholder_panel(
+                    "Settings".to_string(),
+                    "Theme and API settings panel placeholder.".to_string(),
+                ))
+            }
+            ActivitySection::Docs => {
+                panel = panel.child(self.render_placeholder_panel(
+                    "Docs".to_string(),
+                    "Documentation viewer placeholder.".to_string(),
+                ))
+            }
+        }
+        panel
+    }
+
+    fn render_right_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut panel = v_flex().w(px(300.)).p_3().gap_2().border_l_1().border_color(cx.theme().border);
+        panel = panel.child(div().font_weight(FontWeight::BOLD).child("Context Panel"));
+
+        match self.state.active_section {
+            ActivitySection::Chat | ActivitySection::Tools => {
+                let mut tool_calls_count = 0usize;
+                for message in &self.state.messages {
+                    if let Some(calls) = &message.tool_calls {
+                        tool_calls_count += calls.len();
+                    }
+                }
+                panel = panel
+                    .child(div().text_sm().child(format!("Tool calls in transcript: {}", tool_calls_count)))
+                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Detailed tool trace view is the next step."));
+            }
+            ActivitySection::Status => {
+                panel = panel.child(div().text_sm().child("Subsystem status expansion can render here."));
+            }
+            _ => {
+                panel = panel.child(div().text_sm().child("Panel-specific controls will appear here."));
+            }
+        }
+
+        panel
+    }
+}
+
+impl Render for AppView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let background = cx.theme().background;
+        let foreground = cx.theme().foreground;
+        let border = cx.theme().border;
+        let muted_foreground = cx.theme().muted_foreground;
+        let health_text = match &self.state.health_status {
+            Some(h) => format!("{} · {}", h.status, h.llm_model),
+            None => "Checking health...".to_string(),
+        };
+
+        let mut activity_rail = v_flex().w(px(72.)).p_2().gap_2().border_r_1().border_color(border);
+        for (index, section) in Self::activity_sections().into_iter().enumerate() {
+            let section_label = section.label().to_string();
+            let is_active = self.state.active_section == section;
+            let view = cx.entity().downgrade();
+            let mut button = Button::new(("activity", index)).label(section_label.clone());
+            if is_active {
+                button = button.primary();
+            }
+
+            activity_rail = activity_rail.child(button.on_click(move |_, _, cx| {
+                view.update(cx, |this, cx| {
+                    this.set_active_section(section, cx);
+                })
+                .ok();
+            }));
+        }
+
+        let header = h_flex()
+            .w_full()
+            .p_3()
+            .gap_2()
+            .border_b_1()
+            .border_color(border)
+            .items_center()
+            .child(div().font_weight(FontWeight::BOLD).child("Araliya"))
+            .child(div().text_sm().text_color(muted_foreground).child(self.state.active_section.label()))
+            .child(div().flex_1())
+            .child(div().text_sm().text_color(muted_foreground).child(health_text))
+            .child(
+                Button::new("toggle-left")
+                    .label(if self.state.layout.left_panel_open { "Hide Left" } else { "Show Left" })
+                    .on_click({
+                        let view = cx.entity().downgrade();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.toggle_left_panel(cx);
+                            })
+                            .ok();
+                        }
+                    }),
+            )
+            .child(
+                Button::new("toggle-right")
+                    .label(if self.state.layout.right_panel_open { "Hide Right" } else { "Show Right" })
+                    .on_click({
+                        let view = cx.entity().downgrade();
+                        move |_, _, cx| {
+                            view.update(cx, |this, cx| {
+                                this.toggle_right_panel(cx);
+                            })
+                            .ok();
+                        }
+                    }),
+            );
+
+        let mut panel_row = h_flex().flex_1();
+        if self.state.layout.left_panel_open {
+            panel_row = panel_row.child(self.render_sessions_sidebar(cx));
+        }
+
+        panel_row = panel_row.child(v_flex().flex_1().child(self.render_main_panel(cx)));
+
+        if self.state.layout.right_panel_open {
+            panel_row = panel_row.child(self.render_right_panel(cx));
+        }
+
+        let bottom_bar = h_flex()
+            .w_full()
+            .p_2()
+            .gap_3()
+            .border_t_1()
+            .border_color(border)
+            .child(div().text_sm().text_color(muted_foreground).child(format!(
+                "Session: {}",
+                self.state
+                    .active_session_id
+                    .as_deref()
+                    .map(|id| &id[..8])
+                    .unwrap_or("none")
+            )))
+            .child(div().text_sm().text_color(muted_foreground).child(format!(
+                "Messages: {}",
+                self.state.messages.len()
+            )))
+            .child(div().text_sm().text_color(muted_foreground).child(format!(
+                "Mode: {}",
+                self.state.active_section.label()
+            )));
+
         h_flex()
             .size_full()
-            .bg(theme.background)
-            .text_color(theme.foreground)
-            .child(
-                Sidebar::new(gpui_component::Side::Left)
-                    .w(px(250.))
-                    .header(
-                        SidebarHeader::new().child(
-                            v_flex()
-                                .gap_2()
-                                .child(div().text_xl().font_weight(FontWeight::BOLD).child("Araliya Bot"))
-                                .child(div().text_sm().text_color(theme.muted_foreground).child(health_text))
-                        )
-                    )
-                    .child(
-                        SidebarGroup::new("Sessions").child(sidebar_menu)
-                    )
-            )
+            .bg(background)
+            .text_color(foreground)
+            .child(activity_rail)
             .child(
                 v_flex()
                     .flex_1()
-                    .child(messages_view)
-                    .child(
-                        h_flex()
-                            .p_4()
-                            .gap_2()
-                            .border_t_1()
-                            .border_color(theme.border)
-                            .child(
-                                div().flex_1().child(Input::new(&self.input_state))
-                            )
-                            .child(
-                                Button::new("send-btn")
-                                    .label("Send")
-                                    .primary()
-                                    .disabled(state.is_sending_message || state.input_text.trim().is_empty())
-                                    .on_click({
-                                        let view = cx.entity().downgrade();
-                                        let input_state = self.input_state.clone();
-                                        move |_, window, cx| {
-                                            view.update(cx, |this, cx| {
-                                                this.send_message(cx);
-                                            }).ok();
-                                            input_state.update(cx, |i, cx| {
-                                                i.set_value("", window, cx);
-                                            });
-                                        }
-                                    })
-                            )
-                    )
+                    .child(header)
+                    .child(panel_row)
+                    .child(bottom_bar)
             )
     }
 }
