@@ -12,6 +12,7 @@
 //! is never blocked: sync agents resolve immediately, async ones spawn tasks.
 
 use std::collections::{HashMap, HashSet};
+//TODO: check if we should be using more fine-grained locks.
 use std::sync::Arc;
 
 use tokio::sync::oneshot;

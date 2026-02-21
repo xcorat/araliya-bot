@@ -1,3 +1,4 @@
+// TODO: refactor. Move the setup related code to a seperate file, move gmail to a folder.
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
