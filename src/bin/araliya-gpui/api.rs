@@ -10,9 +10,9 @@ pub struct ToolStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageInfo {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
     pub estimated_cost_usd: f64,
 }
 
@@ -82,6 +82,7 @@ pub struct SessionToolCallFunction {
 pub struct SessionDetailResponse {
     pub session_id: String,
     pub transcript: Vec<SessionTranscriptMessage>,
+    pub session_usage_totals: Option<UsageInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

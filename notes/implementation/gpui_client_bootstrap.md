@@ -39,6 +39,16 @@ Date: 2026-02-21
   - `~/.config/araliya-bot/gpui-layout.json`
 - Metadata field `updated_at` is written in ISO-8601 format.
 
+## Session totals in context panel
+- Added session spend read path in memory handle (`read_spend`) to expose persisted `spend.json` totals safely.
+- Extended `agents/sessions/detail` JSON response with `session_usage_totals`:
+  - `prompt_tokens`
+  - `completion_tokens`
+  - `total_tokens`
+  - `estimated_cost_usd`
+- Updated GPUI API/state to store `session_usage_totals` and render values in right context panel.
+- Added fallback refresh path after send: if message response lacks totals, client re-reads session detail and updates totals.
+
 ## Paths
 - `src/bin/araliya-gpui/main.rs`
 - `src/bin/araliya-gpui/components.rs`

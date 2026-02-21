@@ -107,6 +107,36 @@ impl AppView {
         }
     }
 
+    fn format_token_count(value: u64) -> String {
+        let chars: Vec<char> = value.to_string().chars().rev().collect();
+        let mut out = String::new();
+        for (index, ch) in chars.iter().enumerate() {
+            if index > 0 && index % 3 == 0 {
+                out.push(',');
+            }
+            out.push(*ch);
+        }
+        out.chars().rev().collect()
+    }
+
+    fn refresh_session_usage_totals(&mut self, session_id: String, cx: &mut Context<Self>) {
+        let client = self.state.api_client.clone();
+        cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
+            let mut cx = cx.clone();
+            async move {
+                let result = client.get_session_by_id(&session_id);
+                view.update(&mut cx, |this, cx| {
+                    if let Ok(res) = result {
+                        this.state.session_usage_totals = res.session_usage_totals;
+                    }
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
     fn fetch_health(&mut self, cx: &mut Context<Self>) {
         let client = self.state.api_client.clone();
         cx.spawn(move |view: WeakEntity<AppView>, cx: &mut AsyncApp| {
@@ -150,6 +180,7 @@ impl AppView {
         self.state.active_session_id = Some(session_id.clone());
         self.state.is_loading_messages = true;
         self.state.messages.clear();
+        self.state.session_usage_totals = None;
         cx.notify();
 
         let client = self.state.api_client.clone();
@@ -161,6 +192,7 @@ impl AppView {
                     this.state.is_loading_messages = false;
                     if let Ok(res) = result {
                         this.state.messages = res.transcript;
+                        this.state.session_usage_totals = res.session_usage_totals;
                     }
                     cx.notify();
                 })
@@ -177,6 +209,7 @@ impl AppView {
         self.state.is_sending_message = false;
         self.state.input_text.clear();
         self.state.messages.clear();
+        self.state.session_usage_totals = None;
 
         self.input_state.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -216,6 +249,7 @@ impl AppView {
                             this.state.active_session_id = Some(res.session_id.clone());
                             this.fetch_sessions(cx);
                         }
+                        this.state.session_usage_totals = res.session_usage_totals;
                         this.state.messages.push(crate::api::SessionTranscriptMessage {
                             role: "assistant".to_string(),
                             content: res.reply,
@@ -223,6 +257,10 @@ impl AppView {
                             tool_call_id: None,
                             tool_calls: None,
                         });
+
+                        if this.state.session_usage_totals.is_none() {
+                            this.refresh_session_usage_totals(res.session_id, cx);
+                        }
                     } else {
                         this.state.messages.push(crate::api::SessionTranscriptMessage {
                             role: "error".to_string(),
@@ -519,6 +557,17 @@ impl AppView {
                 }
                 panel = panel
                     .child(div().text_sm().child(format!("Tool calls in transcript: {}", tool_calls_count)))
+                    .child(div().text_sm().child(match self.state.session_usage_totals.as_ref() {
+                        Some(usage) => format!(
+                            "Session total tokens: {}",
+                            Self::format_token_count(usage.total_tokens)
+                        ),
+                        None => "Session total tokens: Unavailable".to_string(),
+                    }))
+                    .child(div().text_sm().child(match self.state.session_usage_totals.as_ref() {
+                        Some(usage) => format!("Session total spend (USD): ${:.4}", usage.estimated_cost_usd),
+                        None => "Session total spend (USD): Unavailable".to_string(),
+                    }))
                     .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Detailed tool trace view is the next step."));
             }
             ActivitySection::Status => {

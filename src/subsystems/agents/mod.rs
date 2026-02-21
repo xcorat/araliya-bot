@@ -353,9 +353,22 @@ impl AgentsSubsystem {
                 }
             };
 
+            let session_usage_totals = match handle.read_spend().await {
+                Ok(spend) => spend.map(|spend| {
+                    serde_json::json!({
+                        "prompt_tokens": spend.total_input_tokens + spend.total_cached_tokens,
+                        "completion_tokens": spend.total_output_tokens,
+                        "total_tokens": spend.total_input_tokens + spend.total_cached_tokens + spend.total_output_tokens,
+                        "estimated_cost_usd": spend.total_cost_usd,
+                    })
+                }),
+                Err(_) => None,
+            };
+
             let body = serde_json::json!({
                 "session_id": session_id,
                 "transcript": transcript,
+                "session_usage_totals": session_usage_totals,
             });
 
             let _ = reply_tx.send(Ok(BusPayload::JsonResponse {

@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::{ApiClient, SessionInfo, SessionTranscriptMessage, HealthResponse};
+use crate::api::{ApiClient, SessionInfo, SessionTranscriptMessage, HealthResponse, UsageInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivitySection {
@@ -117,6 +117,7 @@ pub struct AppState {
     pub sessions: Vec<SessionInfo>,
     pub active_session_id: Option<String>,
     pub messages: Vec<SessionTranscriptMessage>,
+    pub session_usage_totals: Option<UsageInfo>,
     pub is_loading_sessions: bool,
     pub is_loading_messages: bool,
     pub is_sending_message: bool,
@@ -133,6 +134,7 @@ impl AppState {
             sessions: Vec::new(),
             active_session_id: None,
             messages: Vec::new(),
+            session_usage_totals: None,
             is_loading_sessions: false,
             is_loading_messages: false,
             is_sending_message: false,

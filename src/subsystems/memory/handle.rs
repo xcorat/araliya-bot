@@ -106,6 +106,16 @@ impl SessionHandle {
         .await
         .map_err(|e| AppError::Memory(format!("spend spawn_blocking: {e}")))?
     }
+
+    /// Read aggregate spend totals from `spend.json` for this session.
+    ///
+    /// Returns `Ok(None)` when the file has not been created yet.
+    pub async fn read_spend(&self) -> Result<Option<SessionSpend>, AppError> {
+        let session_dir = self.rw.session_dir().to_path_buf();
+        tokio::task::spawn_blocking(move || read_spend_blocking(&session_dir))
+            .await
+            .map_err(|e| AppError::Memory(format!("read_spend spawn_blocking: {e}")))?
+    }
 }
 
 // ── Spend helpers ─────────────────────────────────────────────────────────────
@@ -146,6 +156,19 @@ fn accumulate_spend_blocking(
         .map_err(|e| AppError::Memory(format!("write spend.json: {e}")))?;
 
     Ok(spend)
+}
+
+fn read_spend_blocking(session_dir: &std::path::Path) -> Result<Option<SessionSpend>, AppError> {
+    let spend_path = session_dir.join("spend.json");
+    if !spend_path.exists() {
+        return Ok(None);
+    }
+
+    let raw = std::fs::read_to_string(&spend_path)
+        .map_err(|e| AppError::Memory(format!("read spend.json: {e}")))?;
+    let spend = serde_json::from_str(&raw)
+        .map_err(|e| AppError::Memory(format!("parse spend.json: {e}")))?;
+    Ok(Some(spend))
 }
 
 /// Convert Unix epoch seconds to (year, month, day, hour, min, sec).
