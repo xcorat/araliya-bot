@@ -132,7 +132,7 @@ Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
 | Method | Description |
 |--------|-------------|
 | `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
-| `memory` (field) | `Option<Arc<MemorySystem>>` — create/load sessions. Only present when `subsystem-memory` feature is enabled. |
+| `memory` (field) | `Arc<MemorySystem>` — create/load sessions. In builds that include `subsystem-agents`, memory is available to agents directly. |
 | `agent_memory` (field) | `HashMap<String, Vec<String>>` — per-agent memory store requirements from config. |
 
 The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
@@ -149,15 +149,21 @@ The agents subsystem intercepts session query bus methods before agent routing:
 | `agents/sessions/memory` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, content }`, where `content` is current working memory |
 | `agents/sessions/files` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, files[] }` with `name`, `size_bytes`, `modified` |
 
-These are handled directly by `AgentsSubsystem` (not routed to individual agents). When the `subsystem-memory` feature is disabled, sessions returns `[]` and detail/memory/files return an error.
+These are handled directly by `AgentsSubsystem` (not routed to individual agents).
 
 ## Initialisation
 
-`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle, memory: Option<Arc<MemorySystem>>)` — the `BusHandle`
-is injected at init and wrapped inside `AgentsState`. The optional `MemorySystem` is passed through when the `subsystem-memory` feature is enabled. Built-in agents
+`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle, memory: Arc<MemorySystem>)` — the `BusHandle`
+is injected at init and wrapped inside `AgentsState`. Built-in agents
 (`EchoAgent`, `BasicChatPlugin`, `SessionChatPlugin`) are registered behind
 Cargo feature gates; the `enabled` list controls which ones are reachable via
 routing.
+
+## Next phases
+
+- Primary agents will have a stable identity value derived from key material and identity payload, modeled as `hash(prv:pub, id.md|{json})`.
+- A single primary agent identity can own multiple sessions concurrently.
+- A subagent is a delegated worker without its own unique persistent identity; it executes under a parent agent context.
 
 ---
 

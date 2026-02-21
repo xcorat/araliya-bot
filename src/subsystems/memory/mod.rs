@@ -18,6 +18,7 @@
 
 pub mod collections;
 pub mod handle;
+pub mod rw;
 pub mod store;
 pub mod stores;
 pub mod types;

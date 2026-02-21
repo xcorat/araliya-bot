@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.4.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · memory always on (no feature gate).
+**Status:** v0.4.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors.
 
 ---
 
@@ -14,7 +14,7 @@ The Memory subsystem owns all session data for the bot instance.  It provides:
 - A **`BasicSessionStore`** — disk-backed JSON + Markdown transcript store for durable sessions.
 - A **`SessionHandle`** — async-safe handle agents use to read and write session state, with direct typed accessors for `TmpStore` sessions.
 
-Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages.  Memory is **always compiled** with no Cargo feature gate.
+Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages. `subsystem-memory` remains a Cargo feature at product level; when agents are enabled, memory is available directly in agent code.
 
 ---
 
@@ -40,7 +40,8 @@ MemorySystem (owns session index + store factory)
 | `MemorySystem` | `memory/mod.rs` | Session lifecycle: create, load, list. Maintains `sessions.json` index. |
 | `SessionStore` | `memory/store.rs` | Trait for pluggable session backends. |
 | `Store` | `memory/store.rs` | In-process `RwLock<HashMap<String, Collection>>` — the core collection map. |
-| `SessionHandle` | `memory/handle.rs` | Async-safe wrapper for `SessionStore` I/O + typed `tmp_doc`/`tmp_block` accessors. |
+| `SessionRw` | `memory/rw.rs` | Shared session read/write orchestration layer (kv, transcript, file listing, tmp collections). |
+| `SessionHandle` | `memory/handle.rs` | Thin facade that delegates all data I/O to `SessionRw`. |
 | `BasicSessionStore` | `memory/stores/basic_session.rs` | Capped JSON k-v + capped Markdown transcript, disk-backed. |
 | `TmpStore` | `memory/stores/tmp.rs` | Ephemeral in-process store wrapping a `Store`. Implements `SessionStore`. |
 | `Doc` | `memory/collections.rs` | String-keyed map of `PrimaryValue` scalars. |
@@ -165,6 +166,13 @@ Sessions are **bot-scoped** — any agent with the session ID can access it.
 4. **Tmp sessions** can be reloaded within the same process run (data is in-process); they do not survive restart.
 
 Session IDs are UUIDv7 (time-ordered).  The `sessions.json` index tracks all sessions including tmp ones.
+
+## Next phases
+
+- Introduce `AgentHandle` for agent-scoped memory roots (`memory/agents/{agent_id}/`) while keeping session handles for conversation-scoped state.
+- Agent identity model for primary agents: `hash(prv:pub, id.md|{json})`.
+- Allow multiple sessions per primary agent identity.
+- Treat subagents as delegated workers without a unique persistent identity.
 
 ---
 

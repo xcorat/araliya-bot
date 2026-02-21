@@ -33,7 +33,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 // ── PrimaryValue ─────────────────────────────────────────────────────────────
-
+// TODO: this is not necessary. rust should know what are the primitive types.
+// We can just use them directly. Remove/Update later.
 /// A scalar value suitable for indexing, hashing, and equality comparison.
 ///
 /// Used as the element type for [`Doc`](super::collections::Doc) entries and
@@ -172,7 +173,8 @@ impl From<String> for TextFile { fn from(s: String) -> Self { Self::new(s) } }
 impl From<&str>   for TextFile { fn from(s: &str)   -> Self { Self::new(s.to_string()) } }
 
 // ── Value ─────────────────────────────────────────────────────────────────────
-
+// TODO: This is not necessaryly either. We can just use the underlying types directly, with some interface?
+// Remove/Update later.
 /// A value stored in a [`Block`](super::collections::Block) entry.
 ///
 /// - `Primary` — cheap scalar (bool / int / float / str); comparable and hashable.

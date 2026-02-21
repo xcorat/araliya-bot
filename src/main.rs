@@ -27,8 +27,7 @@ use tracing::info;
 use supervisor::bus::SupervisorBus;
 use supervisor::control::SupervisorControl;
 use supervisor::dispatch::BusHandler;
-
-#[cfg(feature = "subsystem-agents")]
+#[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
 use subsystems::agents::AgentsSubsystem;
 
 #[cfg(feature = "subsystem-llm")]
@@ -40,6 +39,7 @@ use subsystems::tools::ToolsSubsystem;
 #[cfg(feature = "subsystem-cron")]
 use subsystems::cron::CronSubsystem;
 
+#[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
 use subsystems::management::ManagementSubsystem;
@@ -86,7 +86,8 @@ async fn run() -> Result<(), error::AppError> {
     info!(bot_id = %identity.bot_id, "identity ready — starting subsystems");
 
     // TODO: focus on the order, memory should be init after the sup bus for example.
-    // Memory is always available — TmpStore makes this zero-cost even without disk config.
+    // Optionally build the memory system.
+    #[cfg(feature = "subsystem-memory")]
     let memory = {
         let mem_config = MemoryConfig {
             kv_cap: config.memory_kv_cap,
@@ -146,7 +147,7 @@ async fn run() -> Result<(), error::AppError> {
         handlers.push(Box::new(ToolsSubsystem::new()));
     }
 
-    #[cfg(feature = "subsystem-agents")]
+    #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone());
         handlers.push(Box::new(agents));

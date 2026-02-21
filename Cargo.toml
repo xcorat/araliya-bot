@@ -29,6 +29,7 @@ axum = { version = "0.8", optional = true, default-features = false, features = 
 [features]
 default = [
     "subsystem-agents",
+    "subsystem-memory",
     "subsystem-llm",
     "subsystem-comms",
     "subsystem-ui",
@@ -46,7 +47,8 @@ minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-cha
 
 
 # Subsystems
-subsystem-agents = []
+subsystem-agents = ["subsystem-memory"]
+subsystem-memory = []
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = []
@@ -56,7 +58,7 @@ subsystem-cron = []
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
-plugin-chat = ["subsystem-agents", "subsystem-llm"]
+plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 
