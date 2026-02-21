@@ -140,9 +140,9 @@ async fn run() -> Result<(), error::AppError> {
     #[cfg(feature = "subsystem-agents")]
     {
         #[cfg(feature = "subsystem-memory")]
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), Some(memory.clone()));
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone());
         #[cfg(not(feature = "subsystem-memory"))]
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), None);
+        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone());
         handlers.push(Box::new(agents));
     }
 

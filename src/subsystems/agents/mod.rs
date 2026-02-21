@@ -39,9 +39,10 @@ mod gmail;
 pub struct AgentsState {
     /// Supervisor bus — private to this module.
     bus: BusHandle,
-    /// Memory system — agents can create/load sessions through this.
+    /// Memory system — always present when the subsystem-memory feature is
+    /// enabled.  Agents create or load sessions via this handle.
     #[cfg(feature = "subsystem-memory")]
-    pub memory: Option<Arc<MemorySystem>>,
+    pub memory: Arc<MemorySystem>,
     /// Per-agent memory store requirements from config.
     pub agent_memory: HashMap<String, Vec<String>>,
 }
@@ -49,7 +50,7 @@ pub struct AgentsState {
 impl AgentsState {
     fn new(
         bus: BusHandle,
-        #[cfg(feature = "subsystem-memory")] memory: Option<Arc<MemorySystem>>,
+        #[cfg(feature = "subsystem-memory")] memory: Arc<MemorySystem>,
         agent_memory: HashMap<String, Vec<String>>,
     ) -> Self {
         Self {
@@ -170,7 +171,7 @@ impl AgentsSubsystem {
     pub fn new(
         config: AgentsConfig,
         bus: BusHandle,
-        #[cfg(feature = "subsystem-memory")] memory: Option<Arc<MemorySystem>>,
+        #[cfg(feature = "subsystem-memory")] memory: Arc<MemorySystem>,
     ) -> Self {
         // Default falls back to "echo" if config omits the default entirely.
         let default_agent = if config.default_agent.is_empty() {
@@ -251,16 +252,7 @@ impl AgentsSubsystem {
     fn handle_session_list(&self, reply_tx: oneshot::Sender<BusResult>) {
         #[cfg(feature = "subsystem-memory")]
         {
-            let memory = match self.state.memory.as_ref() {
-                Some(m) => m.clone(),
-                None => {
-                    let body = serde_json::json!({ "sessions": [] });
-                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
-                        data: body.to_string(),
-                    }));
-                    return;
-                }
-            };
+            let memory = self.state.memory.clone();
 
             let sessions = match memory.list_sessions() {
                 Ok(s) => s,
@@ -308,16 +300,7 @@ impl AgentsSubsystem {
 
         #[cfg(feature = "subsystem-memory")]
         {
-            let memory = match self.state.memory.as_ref() {
-                Some(m) => m.clone(),
-                None => {
-                    let _ = reply_tx.send(Err(BusError::new(
-                        -32000,
-                        "memory system not available",
-                    )));
-                    return;
-                }
-            };
+            let memory = self.state.memory.clone();
 
             let handle = match memory.load_session(&session_id, None) {
                 Ok(h) => h,
@@ -384,16 +367,7 @@ impl AgentsSubsystem {
 
         #[cfg(feature = "subsystem-memory")]
         {
-            let memory = match self.state.memory.as_ref() {
-                Some(m) => m.clone(),
-                None => {
-                    let _ = reply_tx.send(Err(BusError::new(
-                        -32000,
-                        "memory system not available",
-                    )));
-                    return;
-                }
-            };
+            let memory = self.state.memory.clone();
 
             let handle = match memory.load_session(&session_id, None) {
                 Ok(h) => h,
@@ -450,16 +424,7 @@ impl AgentsSubsystem {
 
         #[cfg(feature = "subsystem-memory")]
         {
-            let memory = match self.state.memory.as_ref() {
-                Some(m) => m.clone(),
-                None => {
-                    let _ = reply_tx.send(Err(BusError::new(
-                        -32000,
-                        "memory system not available",
-                    )));
-                    return;
-                }
-            };
+            let memory = self.state.memory.clone();
 
             let handle = match memory.load_session(&session_id, None) {
                 Ok(h) => h,
@@ -602,9 +567,20 @@ mod tests {
         (bus, handle)
     }
 
+    /// Create a throwaway `MemorySystem` backed by a temporary directory.
+    /// The returned `TempDir` must be kept alive for the duration of the test.
+    #[cfg(feature = "subsystem-memory")]
+    fn test_memory() -> (tempfile::TempDir, Arc<MemorySystem>) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mem = MemorySystem::new(dir.path(), crate::subsystems::memory::MemoryConfig::default()).unwrap();
+        (dir, Arc::new(mem))
+    }
+
     #[tokio::test]
     async fn routes_to_default_agent_when_unmapped() {
         let (_bus, handle) = echo_bus();
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
             enabled: HashSet::from(["echo".to_string()]),
@@ -615,7 +591,7 @@ mod tests {
             cfg,
             handle,
             #[cfg(feature = "subsystem-memory")]
-            None,
+            memory,
         );
 
         let (tx, rx) = oneshot::channel();
@@ -634,6 +610,8 @@ mod tests {
     #[tokio::test]
     async fn routes_by_channel_mapping() {
         let (_bus, handle) = echo_bus();
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
         let mut channel_map = HashMap::new();
         channel_map.insert("pty0".to_string(), "echo".to_string());
 
@@ -647,7 +625,7 @@ mod tests {
             cfg,
             handle,
             #[cfg(feature = "subsystem-memory")]
-            None,
+            memory,
         );
 
         let (tx, rx) = oneshot::channel();
@@ -666,6 +644,8 @@ mod tests {
     #[tokio::test]
     async fn explicit_unknown_agent_errors() {
         let (_bus, handle) = echo_bus();
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
             enabled: HashSet::from(["echo".to_string()]),
@@ -676,7 +656,7 @@ mod tests {
             cfg,
             handle,
             #[cfg(feature = "subsystem-memory")]
-            None,
+            memory,
         );
 
         let (tx, rx) = oneshot::channel();
@@ -692,6 +672,8 @@ mod tests {
     #[tokio::test]
     async fn empty_enabled_falls_back_to_echo() {
         let (_bus, handle) = echo_bus();
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
         let cfg = AgentsConfig {
             default_agent: "echo".to_string(),
             enabled: HashSet::new(),
@@ -702,7 +684,7 @@ mod tests {
             cfg,
             handle,
             #[cfg(feature = "subsystem-memory")]
-            None,
+            memory,
         );
 
         let (tx, rx) = oneshot::channel();
@@ -725,6 +707,8 @@ mod tests {
         let bus = SupervisorBus::new(16);
         let handle = bus.handle.clone();
         let mut rx = bus.rx;
+        #[cfg(feature = "subsystem-memory")]
+        let (_dir, memory) = test_memory();
 
         // Spawn a fake LLM responder that echoes with a marker prefix.
         tokio::spawn(async move {
@@ -749,7 +733,7 @@ mod tests {
             cfg,
             handle,
             #[cfg(feature = "subsystem-memory")]
-            None,
+            memory,
         );
 
         let (tx, rx_reply) = oneshot::channel();
