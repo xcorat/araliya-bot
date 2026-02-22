@@ -228,9 +228,6 @@ impl AgentsSubsystem {
                 if let Some(label) = q.label {
                     map.insert("label".to_string(), serde_json::Value::String(label));
                 }
-                if let Some(mailbox) = q.mailbox {
-                    map.insert("mailbox".to_string(), serde_json::Value::String(mailbox));
-                }
                 if let Some(n_last) = q.n_last {
                     map.insert("n_last".to_string(), serde_json::json!(n_last));
                 }

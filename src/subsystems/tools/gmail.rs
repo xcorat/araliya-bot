@@ -396,47 +396,6 @@ async fn fetch_message_summary(
     })
 }
 
-// ── label resolution ──────────────────────────────────────────────────────────
-
-async fn resolve_label_id_with(
-    client: &reqwest::Client,
-    access_token: &str,
-    name: &str,
-) -> Result<Option<String>, String> {
-    let resp = client
-        .get(format!("{GMAIL_BASE}/labels"))
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|e| format!("gmail labels list request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
-        return Err(format!("gmail labels list failed: {body}"));
-    }
-
-    let json: Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("gmail labels list parse failed: {e}"))?;
-
-    let id = json
-        .get("labels")
-        .and_then(Value::as_array)
-        .and_then(|arr| {
-            arr.iter().find_map(|entry| {
-                let entry_name = entry.get("name").and_then(Value::as_str)?;
-                if entry_name.eq_ignore_ascii_case(name) {
-                    entry.get("id").and_then(Value::as_str).map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-        });
-
-    Ok(id)
-}
-
 // ── list messages (internal) ──────────────────────────────────────────────────
 
 async fn list_messages_with(
@@ -457,11 +416,15 @@ async fn list_messages_with(
         }
     }
 
-    let list = client
+    let request = client
         .get(format!("{GMAIL_BASE}/messages"))
         .bearer_auth(access_token)
         .query(&params)
-        .send()
+        .build()
+        .map_err(|e| format!("gmail list request build failed: {e}"))?;
+    tracing::debug!(url = %request.url(), "gmail: exact query sent to Google");
+    let list = client
+        .execute(request)
         .await
         .map_err(|e| format!("gmail list request failed: {e}"))?;
 
@@ -512,47 +475,7 @@ pub struct GmailFilter {
     pub q: Option<String>,
 }
 
-/// Resolve a label display name (e.g. "News") to its API ID ("Label_6135459501644760604").
-/// Returns `None` if no matching label exists.
-pub async fn resolve_label_id(name: &str) -> Result<Option<String>, String> {
-    let client = build_http_client()?;
-    let access_token = ensure_access_token(&client).await?;
-    resolve_label_id_with(&client, &access_token, name).await
-}
-
-/// Primary entry point for the newsmail aggregator.
-/// Resolves `label_name` to its ID if provided — all with a single HTTP client
-/// and one token fetch — then fetches messages via `labelIds[]` + optional `q`.
-pub async fn fetch_messages(
-    label_ids: &[String],
-    label_name: Option<&str>,
-    q: Option<&str>,
-    max_results: u32,
-) -> Result<Vec<GmailSummary>, String> {
-    let client = build_http_client()?;
-    let access_token = ensure_access_token(&client).await?;
-
-    let mut ids: Vec<String> = label_ids.to_vec();
-    if let Some(name) = label_name {
-        match resolve_label_id_with(&client, &access_token, name).await? {
-            Some(id) => {
-                tracing::debug!(label_name = %name, label_id = %id, "gmail: resolved label name");
-                ids.push(id);
-            }
-            None => return Err(format!("gmail label not found: {name}")),
-        }
-    }
-
-    let filter = GmailFilter {
-        label_ids: ids,
-        q: q.filter(|s| !s.is_empty()).map(|s| s.to_string()),
-    };
-    tracing::debug!(label_ids = ?filter.label_ids, q = ?filter.q, "gmail: fetching messages");
-
-    list_messages_with(&client, &access_token, &filter, max_results).await
-}
-
-/// Lower-level fetch when label IDs are already known.
+/// Fetch messages matching `filter`, up to `max_results` (clamped to 100).
 pub async fn read_many(filter: GmailFilter, max_results: u32) -> Result<Vec<GmailSummary>, String> {
     let client = build_http_client()?;
     let access_token = ensure_access_token(&client).await?;

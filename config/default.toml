@@ -109,7 +109,7 @@ cached_input_per_million_usd = 0.005
 ## ------------------------- Tools Subsystem ---------------------------------
 
 [tools.newsmail_aggregator]
-mailbox = "inbox"
+label_ids = ["INBOX"]
 n_last = 10
 # Optional time window in seconds for recent-email filtering.
 # Example: 86400 = last 24 hours. Omit to disable time filtering.

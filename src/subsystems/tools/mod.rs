@@ -23,7 +23,7 @@ impl ToolsSubsystem {
 impl Default for ToolsSubsystem {
     fn default() -> Self {
         Self::new(NewsmailAggregatorConfig {
-            mailbox: "inbox".to_string(),
+            label_ids: vec!["INBOX".to_string()],
             n_last: 10,
             tsec_last: None,
             q: None,

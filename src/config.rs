@@ -65,10 +65,11 @@ pub struct UiConfig {
 /// Specialized newsmail aggregator tool defaults.
 #[derive(Debug, Clone)]
 pub struct NewsmailAggregatorConfig {
-    pub mailbox: String,
+    /// Label IDs to filter by (e.g. ["INBOX"] or ["Label_xxx"]).
+    pub label_ids: Vec<String>,
     pub n_last: usize,
     pub tsec_last: Option<u64>,
-    /// Extra Gmail search terms appended to the built query (e.g. "is:unread").
+    /// Free-form Gmail search terms (e.g. "is:unread").
     pub q: Option<String>,
 }
 
@@ -135,7 +136,6 @@ pub struct AgentsConfig {
 #[derive(Debug, Clone)]
 pub struct NewsAgentQueryConfig {
     pub label: Option<String>,
-    pub mailbox: Option<String>,
     pub n_last: Option<usize>,
     pub t_interval: Option<String>,
     pub tsec_last: Option<u64>,
@@ -338,8 +338,6 @@ struct RawNewsAgentQuery {
     #[serde(default)]
     label: Option<String>,
     #[serde(default)]
-    mailbox: Option<String>,
-    #[serde(default)]
     n_last: Option<usize>,
     #[serde(default)]
     t_interval: Option<String>,
@@ -377,8 +375,8 @@ struct RawTools {
 
 #[derive(Deserialize)]
 struct RawNewsmailAggregator {
-    #[serde(default = "default_newsmail_mailbox")]
-    mailbox: String,
+    #[serde(default = "default_newsmail_label_ids")]
+    label_ids: Vec<String>,
     #[serde(default = "default_newsmail_n_last")]
     n_last: usize,
     #[serde(default)]
@@ -390,7 +388,7 @@ struct RawNewsmailAggregator {
 impl Default for RawNewsmailAggregator {
     fn default() -> Self {
         Self {
-            mailbox: default_newsmail_mailbox(),
+            label_ids: default_newsmail_label_ids(),
             n_last: default_newsmail_n_last(),
             tsec_last: None,
             q: None,
@@ -398,7 +396,7 @@ impl Default for RawNewsmailAggregator {
     }
 }
 
-fn default_newsmail_mailbox() -> String { "inbox".to_string() }
+fn default_newsmail_label_ids() -> Vec<String> { vec!["INBOX".to_string()] }
 fn default_newsmail_n_last() -> usize { 10 }
 
 #[derive(Deserialize)]
@@ -590,7 +588,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
             },
             tools: ToolsConfig {
                 newsmail_aggregator: NewsmailAggregatorConfig {
-                    mailbox: default_newsmail_mailbox(),
+                    label_ids: default_newsmail_label_ids(),
                     n_last: default_newsmail_n_last(),
                     tsec_last: None,
                     q: None,
@@ -634,7 +632,6 @@ pub fn load_from(
         .and_then(|entry| entry.query.as_ref())
         .map(|q| NewsAgentQueryConfig {
             label: q.label.clone(),
-            mailbox: q.mailbox.clone(),
             n_last: q.n_last,
             t_interval: q.t_interval.clone(),
             tsec_last: q.tsec_last,
@@ -698,7 +695,7 @@ pub fn load_from(
         },
         tools: ToolsConfig {
             newsmail_aggregator: NewsmailAggregatorConfig {
-                mailbox: parsed.tools.newsmail_aggregator.mailbox,
+                label_ids: parsed.tools.newsmail_aggregator.label_ids,
                 n_last: parsed.tools.newsmail_aggregator.n_last.max(1),
                 tsec_last: parsed.tools.newsmail_aggregator.tsec_last,
                 q: parsed.tools.newsmail_aggregator.q,
@@ -776,7 +773,7 @@ impl Config {
             },
             tools: ToolsConfig {
                 newsmail_aggregator: NewsmailAggregatorConfig {
-                    mailbox: default_newsmail_mailbox(),
+                    label_ids: default_newsmail_label_ids(),
                     n_last: default_newsmail_n_last(),
                     tsec_last: None,
                     q: None,

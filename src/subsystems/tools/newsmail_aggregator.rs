@@ -8,10 +8,27 @@ use crate::config::NewsmailAggregatorConfig;
 
 use super::gmail::{self, GmailFilter, GmailSummary};
 
+/// Accepts either a single label ID string or an array of label ID strings.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum LabelArg {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl LabelArg {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            LabelArg::One(s) => vec![s],
+            LabelArg::Many(v) => v,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct NewsmailArgs {
-    label: Option<String>,
-    mailbox: Option<String>,
+    /// One label ID string or an array of label ID strings.
+    label: Option<LabelArg>,
     n_last: Option<usize>,
     t_interval: Option<String>,
     tsec_last: Option<u64>,
@@ -20,8 +37,8 @@ struct NewsmailArgs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedNewsmailConfig {
-    label: Option<String>,
-    mailbox: String,
+    /// Label IDs to filter by.
+    labels: Vec<String>,
     n_last: usize,
     tsec_last: Option<u64>,
     q: Option<String>,
@@ -78,22 +95,16 @@ fn parse_interval_to_secs(input: &str) -> Option<u64> {
 fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> ResolvedNewsmailConfig {
     let args = serde_json::from_str::<NewsmailArgs>(args_json).unwrap_or_default();
 
-    let label = args
+    let labels = args
         .label
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
-
-    let mailbox = args
-        .mailbox
-        .unwrap_or(defaults.mailbox)
-        .trim()
-        .to_string();
-
-    let mailbox = if mailbox.is_empty() {
-        "inbox".to_string()
-    } else {
-        mailbox
-    };
+        .map(|v| {
+            v.into_vec()
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| defaults.label_ids.clone());
 
     let n_last = args
         .n_last
@@ -115,27 +126,10 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
         .or_else(|| defaults.q.filter(|v| !v.is_empty()));
 
     ResolvedNewsmailConfig {
-        label,
-        mailbox,
+        labels,
         n_last,
         tsec_last,
         q,
-    }
-}
-
-/// Normalize a human-readable mailbox name to a Gmail system label ID.
-/// Unknown names are upper-cased and passed through (supports "Label_xxx" IDs directly).
-fn mailbox_to_label_id(mailbox: &str) -> String {
-    match mailbox.trim().to_ascii_lowercase().as_str() {
-        "inbox"              => "INBOX".to_string(),
-        "sent" | "sent mail" => "SENT".to_string(),
-        "trash"              => "TRASH".to_string(),
-        "spam" | "junk"      => "SPAM".to_string(),
-        "draft" | "drafts"   => "DRAFT".to_string(),
-        "starred"            => "STARRED".to_string(),
-        "important"          => "IMPORTANT".to_string(),
-        "chat"               => "CHAT".to_string(),
-        other                => other.to_ascii_uppercase(),
     }
 }
 
@@ -143,23 +137,20 @@ pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<
     debug!(args_json = %args_json, "newsmail: raw args JSON");
     let resolved = resolve_config(defaults, args_json);
     debug!(
-        mailbox = %resolved.mailbox,
-        label = ?resolved.label,
+        labels = ?resolved.labels,
         n_last = resolved.n_last,
         tsec_last = ?resolved.tsec_last,
         q = ?resolved.q,
         "newsmail: resolved config"
     );
 
-    let mailbox_id = mailbox_to_label_id(&resolved.mailbox);
-    debug!(mailbox_id = %mailbox_id, label_name = ?resolved.label, q = ?resolved.q, "newsmail: fetching");
+    debug!(label_ids = ?resolved.labels, q = ?resolved.q, "newsmail: fetching");
 
-    let mut items = gmail::fetch_messages(
-        &[mailbox_id],
-        resolved.label.as_deref(),
-        resolved.q.as_deref(),
-        resolved.n_last as u32,
-    ).await?;
+    let filter = GmailFilter {
+        label_ids: resolved.labels.clone(),
+        q: resolved.q.clone(),
+    };
+    let mut items = gmail::read_many(filter, resolved.n_last as u32).await?;
 
     if let Some(window_secs) = resolved.tsec_last {
         let cutoff = now_unix().saturating_sub(window_secs);
@@ -170,12 +161,11 @@ pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<
 }
 
 pub async fn healthcheck(defaults: NewsmailAggregatorConfig) -> Result<HealthcheckResult, String> {
-    let mailbox_id = mailbox_to_label_id(&defaults.mailbox);
     let filter = GmailFilter {
-        label_ids: vec![mailbox_id.clone()],
+        label_ids: defaults.label_ids.clone(),
         q: Some("newsletter".to_string()),
     };
-    let filter_desc = format!("labelIds={mailbox_id} q=newsletter");
+    let filter_desc = format!("labelIds={:?} q=newsletter", defaults.label_ids);
     let mut items = gmail::read_many(filter, 1).await?;
     let sample = items.drain(..).next();
 
@@ -192,7 +182,7 @@ mod tests {
 
     fn defaults() -> NewsmailAggregatorConfig {
         NewsmailAggregatorConfig {
-            mailbox: "inbox".to_string(),
+            label_ids: vec!["INBOX".to_string()],
             n_last: 10,
             tsec_last: Some(600),
             q: None,
@@ -219,10 +209,24 @@ mod tests {
     }
 
     #[test]
+    fn resolve_falls_back_to_default_label_ids_when_no_label_arg() {
+        let resolved = resolve_config(defaults(), "{}");
+        assert_eq!(resolved.labels, vec!["INBOX".to_string()]);
+    }
+
+    #[test]
+    fn resolve_uses_label_array() {
+        let resolved = resolve_config(
+            defaults(),
+            r#"{"label": ["Label_111", "Label_222"]}"#,
+        );
+        assert_eq!(resolved.labels, vec!["Label_111".to_string(), "Label_222".to_string()]);
+    }
+
+    #[test]
     fn resolve_falls_back_to_defaults_on_invalid_json() {
         let resolved = resolve_config(defaults(), "not-json");
-        assert_eq!(resolved.label, None);
-        assert_eq!(resolved.mailbox, "inbox");
+        assert_eq!(resolved.labels, vec!["INBOX".to_string()]);
         assert_eq!(resolved.n_last, 10);
         assert_eq!(resolved.tsec_last, Some(600));
     }
@@ -230,24 +234,7 @@ mod tests {
     #[test]
     fn resolve_uses_label_key() {
         let resolved = resolve_config(defaults(), r#"{"label": "n/News"}"#);
-        assert_eq!(resolved.label.as_deref(), Some("n/News"));
-    }
-
-    #[test]
-    fn mailbox_to_label_id_system_names() {
-        assert_eq!(mailbox_to_label_id("inbox"),   "INBOX");
-        assert_eq!(mailbox_to_label_id("Inbox"),   "INBOX");
-        assert_eq!(mailbox_to_label_id("sent"),    "SENT");
-        assert_eq!(mailbox_to_label_id("trash"),   "TRASH");
-        assert_eq!(mailbox_to_label_id("spam"),    "SPAM");
-        assert_eq!(mailbox_to_label_id("junk"),    "SPAM");
-        assert_eq!(mailbox_to_label_id("drafts"),  "DRAFT");
-        assert_eq!(mailbox_to_label_id("starred"), "STARRED");
-    }
-
-    #[test]
-    fn mailbox_to_label_id_passthrough() {
-        assert_eq!(mailbox_to_label_id("Label_12345"), "LABEL_12345");
+        assert_eq!(resolved.labels, vec!["n/News".to_string()]);
     }
 
     #[test]

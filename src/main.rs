@@ -429,8 +429,8 @@ fn print_startup_summary(
         println!(
             "║   {}║",
             fit(format!(
-                "defaults: newsmail_aggregator(mailbox={}, n_last={})",
-                config.tools.newsmail_aggregator.mailbox, config.tools.newsmail_aggregator.n_last
+                "defaults: newsmail_aggregator(label_ids={:?}, n_last={})",
+                config.tools.newsmail_aggregator.label_ids, config.tools.newsmail_aggregator.n_last
             ))
         );
     }

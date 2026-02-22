@@ -5,7 +5,7 @@ base = "full.toml"
 default = "news"
 
 # Future command style examples (not parsed yet):
-# /chat news --mailbox inbox --n_last 5
+# /chat news --n_last 5
 # /chat news --t_interval 1d
 
 [agents.news]
@@ -13,9 +13,8 @@ enabled = true
 
 [agents.news.query]
 label = "Label_6135459501644760604"
-mailbox = "inbox"
-n_last = 2
-# t_interval = "1d"  # also supports: 1mon, 1min, 1h, 1w
+n_last = 50
+t_interval = "7d"  # also supports: 1mon, 1min, 1h, 1w
 # q = "is:unread"    # extra Gmail search terms appended to the built query
 
 [comms.telegram]
