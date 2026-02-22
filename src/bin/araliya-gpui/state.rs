@@ -145,7 +145,7 @@ impl AppState {
         Self {
             api_client,
             active_section: ActivitySection::Chat,
-            surface_mode: SurfaceMode::Canvas,
+            surface_mode: SurfaceMode::Shell,
             layout: LayoutState::default(),
             health_status: None,
             sessions: Vec::new(),

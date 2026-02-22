@@ -6,7 +6,7 @@ use tracing::debug;
 
 use crate::config::NewsmailAggregatorConfig;
 
-use super::gmail::{self, GmailSummary};
+use super::gmail::{self, GmailFilter, GmailSummary};
 
 #[derive(Debug, Deserialize, Default)]
 struct NewsmailArgs {
@@ -123,16 +123,20 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
     }
 }
 
-fn build_query(mailbox: &str, label: Option<&str>, q: Option<&str>) -> String {
-    let mut parts = match label {
-        Some(lbl) => format!("in:{mailbox} label:\"{lbl}\""),
-        None => format!("in:{mailbox}"),
-    };
-    if let Some(term) = q.filter(|s| !s.is_empty()) {
-        parts.push(' ');
-        parts.push_str(term);
+/// Normalize a human-readable mailbox name to a Gmail system label ID.
+/// Unknown names are upper-cased and passed through (supports "Label_xxx" IDs directly).
+fn mailbox_to_label_id(mailbox: &str) -> String {
+    match mailbox.trim().to_ascii_lowercase().as_str() {
+        "inbox"              => "INBOX".to_string(),
+        "sent" | "sent mail" => "SENT".to_string(),
+        "trash"              => "TRASH".to_string(),
+        "spam" | "junk"      => "SPAM".to_string(),
+        "draft" | "drafts"   => "DRAFT".to_string(),
+        "starred"            => "STARRED".to_string(),
+        "important"          => "IMPORTANT".to_string(),
+        "chat"               => "CHAT".to_string(),
+        other                => other.to_ascii_uppercase(),
     }
-    parts
 }
 
 pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<Vec<GmailSummary>, String> {
@@ -146,10 +150,16 @@ pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<
         q = ?resolved.q,
         "newsmail: resolved config"
     );
-    let query = build_query(&resolved.mailbox, resolved.label.as_deref(), resolved.q.as_deref());
-    debug!(query = %query, "newsmail: built Gmail query");
 
-    let mut items = gmail::read_many(Some(&query), resolved.n_last as u32).await?;
+    let mailbox_id = mailbox_to_label_id(&resolved.mailbox);
+    debug!(mailbox_id = %mailbox_id, label_name = ?resolved.label, q = ?resolved.q, "newsmail: fetching");
+
+    let mut items = gmail::fetch_messages(
+        &[mailbox_id],
+        resolved.label.as_deref(),
+        resolved.q.as_deref(),
+        resolved.n_last as u32,
+    ).await?;
 
     if let Some(window_secs) = resolved.tsec_last {
         let cutoff = now_unix().saturating_sub(window_secs);
@@ -159,18 +169,19 @@ pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<
     Ok(items)
 }
 
-fn healthcheck_query(mailbox: &str) -> String {
-    format!("in:{mailbox} newsletter")
-}
-
 pub async fn healthcheck(defaults: NewsmailAggregatorConfig) -> Result<HealthcheckResult, String> {
-    let query = healthcheck_query(&defaults.mailbox);
-    let mut items = gmail::read_many(Some(&query), 1).await?;
+    let mailbox_id = mailbox_to_label_id(&defaults.mailbox);
+    let filter = GmailFilter {
+        label_ids: vec![mailbox_id.clone()],
+        q: Some("newsletter".to_string()),
+    };
+    let filter_desc = format!("labelIds={mailbox_id} q=newsletter");
+    let mut items = gmail::read_many(filter, 1).await?;
     let sample = items.drain(..).next();
 
     Ok(HealthcheckResult {
         ok: sample.is_some(),
-        filter: query,
+        filter: filter_desc,
         sample,
     })
 }
@@ -223,13 +234,20 @@ mod tests {
     }
 
     #[test]
-    fn build_query_with_label() {
-        assert_eq!(build_query("inbox", Some("n/News"), None), "in:inbox label:\"n/News\"");
+    fn mailbox_to_label_id_system_names() {
+        assert_eq!(mailbox_to_label_id("inbox"),   "INBOX");
+        assert_eq!(mailbox_to_label_id("Inbox"),   "INBOX");
+        assert_eq!(mailbox_to_label_id("sent"),    "SENT");
+        assert_eq!(mailbox_to_label_id("trash"),   "TRASH");
+        assert_eq!(mailbox_to_label_id("spam"),    "SPAM");
+        assert_eq!(mailbox_to_label_id("junk"),    "SPAM");
+        assert_eq!(mailbox_to_label_id("drafts"),  "DRAFT");
+        assert_eq!(mailbox_to_label_id("starred"), "STARRED");
     }
 
     #[test]
-    fn build_query_with_extra_q() {
-        assert_eq!(build_query("inbox", Some("n/News"), Some("is:unread")), "in:inbox label:\"n/News\" is:unread");
+    fn mailbox_to_label_id_passthrough() {
+        assert_eq!(mailbox_to_label_id("Label_12345"), "LABEL_12345");
     }
 
     #[test]
@@ -251,10 +269,5 @@ mod tests {
         assert_eq!(parse_interval_to_secs("1min"), Some(60));
         assert_eq!(parse_interval_to_secs("1d"), Some(86_400));
         assert_eq!(parse_interval_to_secs("1mon"), Some(2_592_000));
-    }
-
-    #[test]
-    fn healthcheck_query_uses_newsletter_filter() {
-        assert_eq!(healthcheck_query("inbox"), "in:inbox newsletter");
     }
 }

@@ -59,7 +59,6 @@ struct BeaconApp {
     mouse_pressed: bool,
     is_dragging: bool,
     press_pos: Option<(f64, f64)>,
-    drag_start_win_pos: Option<(i32, i32)>,
     // Tracked araliya-gpui child process (singleton)
     gpui_child: Option<std::process::Child>,
     // Tokio runtime for async IPC calls
@@ -83,7 +82,6 @@ impl BeaconApp {
             mouse_pressed: false,
             is_dragging: false,
             press_pos: None,
-            drag_start_win_pos: None,
             gpui_child: None,
             rt,
         }
@@ -378,23 +376,19 @@ impl ApplicationHandler<UiMessage> for BeaconApp {
 
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
-                // Manual drag: move window by the delta from press position.
-                if self.mouse_pressed {
-                    if let (Some((px, py)), Some((wx, wy))) =
-                        (self.press_pos, self.drag_start_win_pos)
-                    {
+                // Lazy drag: call drag_window() on the first CursorMoved that
+                // exceeds the threshold while the button is held. Once we hand
+                // off to the compositor the Released event won't come back, but
+                // we already know it's a drag so that's fine.
+                if self.mouse_pressed && !self.is_dragging {
+                    if let Some((px, py)) = self.press_pos {
                         let dx = position.x - px;
                         let dy = position.y - py;
-                        if dx.abs() > 3.0 || dy.abs() > 3.0 {
-                            if !self.is_dragging {
-                                eprintln!("[beacon] drag started");
-                                self.is_dragging = true;
-                            }
+                        if dx * dx + dy * dy > 25.0 {
+                            eprintln!("[beacon] drag threshold crossed, handing off to compositor");
+                            self.is_dragging = true;
                             if let Some(w) = &self.window {
-                                w.set_outer_position(winit::dpi::PhysicalPosition::new(
-                                    wx + dx as i32,
-                                    wy + dy as i32,
-                                ));
+                                let _ = w.drag_window();
                             }
                         }
                     }
@@ -415,11 +409,7 @@ impl ApplicationHandler<UiMessage> for BeaconApp {
                     self.mouse_pressed = true;
                     self.is_dragging = false;
                     self.press_pos = Some(self.cursor);
-                    self.drag_start_win_pos = self.window
-                        .as_ref()
-                        .and_then(|w| w.outer_position().ok())
-                        .map(|p| (p.x, p.y));
-                    eprintln!("[beacon] press recorded, win_pos={:?}", self.drag_start_win_pos);
+                    eprintln!("[beacon] press recorded");
                 }
             }
 
@@ -440,7 +430,6 @@ impl ApplicationHandler<UiMessage> for BeaconApp {
                 self.mouse_pressed = false;
                 self.is_dragging = false;
                 self.press_pos = None;
-                self.drag_start_win_pos = None;
             }
 
             WindowEvent::Resized(new_size) => {
