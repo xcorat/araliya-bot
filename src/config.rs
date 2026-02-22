@@ -130,6 +130,8 @@ pub struct AgentsConfig {
     pub agent_memory: HashMap<String, Vec<String>>,
     /// Optional default query args for the `news` agent -> `newsmail_aggregator/get`.
     pub news_query: Option<NewsAgentQueryConfig>,
+    /// Optional configuration for the `docs` agent.
+    pub docs: Option<DocsAgentConfig>,
 }
 
 /// Optional query defaults for the `news` agent.
@@ -141,6 +143,15 @@ pub struct NewsAgentQueryConfig {
     pub tsec_last: Option<u64>,
     pub q: Option<String>,
 }
+
+/// Configuration for the lightweight `docs` agent.
+#[derive(Debug, Clone)]
+pub struct DocsAgentConfig {
+    /// Path to the markdown file the agent should read.
+    /// If `None` the agent will fall back to "docs/quick-intro.md".
+    pub path: Option<String>,
+}
+
 
 /// Fully-resolved supervisor configuration.
 #[derive(Debug, Clone)]
@@ -331,6 +342,9 @@ struct RawAgentEntry {
     /// Optional per-agent query defaults (used by `agents.news.query`).
     #[serde(default)]
     query: Option<RawNewsAgentQuery>,
+    /// For the `docs` agent this may specify the path to read.
+    #[serde(default)]
+    docs_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -569,6 +583,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 enabled: HashSet::from(["basic_chat".to_string()]),
                 agent_memory: HashMap::new(),
                 news_query: None,
+                docs: None,
             },
             llm: LlmConfig {
                 provider: "dummy".to_string(),
@@ -638,6 +653,11 @@ pub fn load_from(
             q: q.q.clone(),
         });
 
+    let docs_cfg = parsed.agents.entries
+        .get("docs")
+        .and_then(|entry| entry.docs_path.clone())
+        .map(|p| DocsAgentConfig { path: Some(p) });
+
     Ok(Config {
         bot_name: s.bot_name,
         work_dir,
@@ -673,6 +693,7 @@ pub fn load_from(
                 .map(|(id, e)| (id, e.memory))
                 .collect(),
             news_query,
+            docs: docs_cfg,
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,
@@ -751,6 +772,7 @@ impl Config {
                 channel_map: HashMap::new(),
                 agent_memory: HashMap::new(),
                 news_query: None,
+                docs: None,
             },
             llm: LlmConfig {
                 provider: "dummy".into(),
@@ -818,6 +840,45 @@ log_level = "info"
         let expanded = expand_home("~/.araliya");
         assert!(expanded.starts_with(&home));
         assert!(expanded.ends_with(".araliya"));
+    }
+
+    #[test]
+    fn parse_docs_agent_path() {
+        let toml = r#"
+[supervisor]
+bot_name = "foo"
+work_dir = "/tmp"
+log_level = "info"
+
+[agents.docs]
+enabled = true
+path = "docs/special.md"
+"#;
+        let f = write_toml(toml);
+        let cfg = load_from(f.path(), None, None).unwrap();
+        assert_eq!(cfg.agents.docs.as_ref().unwrap().path.as_deref(), Some("docs/special.md"));
+    }
+
+    #[test]
+    fn parse_docs_agent_config() {
+        let toml = r#"
+[supervisor]
+bot_name = "test"
+work_dir = "~/work"
+log_level = "debug"
+
+[agents]
+default = "docs"
+
+[agents.docs]
+enabled = true
+path = "docs/guide.md"
+"#;
+        let f = write_toml(toml);
+        let cfg = load_from(f.path(), None, None).unwrap();
+        assert_eq!(cfg.agents.default_agent, "docs");
+        assert!(cfg.agents.docs.is_some());
+        assert_eq!(cfg.agents.docs.unwrap().path.unwrap(), "docs/guide.md");
     }
 
     #[test]

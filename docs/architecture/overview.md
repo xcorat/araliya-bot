@@ -59,6 +59,7 @@ Building on the ZeroClaw standard, Araliya supports swappable subsystems and plu
 | `plugin-echo` | Agent | Echo agent for the Agents subsystem. |
 | `plugin-basic-chat` | Agent | Basic chat agent — minimal LLM pass-through (requires `subsystem-llm`). |
 | `plugin-chat` | Agent | Session-aware chat agent — extends `ChatCore` with memory integration (requires `subsystem-llm`, `subsystem-memory`). |
+| `plugin-docs` | Agent | Filesystem-backed docs agent (reads a Markdown file, performs simple LLM query). |
 | `channel-pty` | Channel | Local console PTY channel. |
 | `channel-http` | Channel | HTTP channel — API routes under `/api/`, optional UI serving. |
 | `channel-telegram` | Channel | Telegram bot channel via teloxide (requires `TELEGRAM_BOT_TOKEN`). |
@@ -168,7 +169,7 @@ See [identity.md](identity.md) for full details.
 - [subsystems/comms.md](subsystems/comms.md) — PTY, HTTP, channel plugins
 - [subsystems/agents.md](subsystems/agents.md) — agent routing, LLM wiring, method grammar
 - [subsystems/llm.md](subsystems/llm.md) — LLM provider abstraction, dummy provider, adding real providers
-- [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned)
+- [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned), 
 - [subsystems/cron.md](subsystems/cron.md) — timer-based event scheduling, schedule/cancel/list API
 - [subsystems/tools.md](subsystems/tools.md) — tool execution, Gmail MVP
 - [standards/index.md](standards/index.md) — bus protocol, component runtime, plugin interfaces, capabilities model

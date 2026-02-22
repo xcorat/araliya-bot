@@ -45,6 +45,7 @@ default = [
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
+    "plugin-docs",
     "channel-pty",
     "channel-axum",
     "ui-svui",
@@ -68,6 +69,7 @@ subsystem-cron = []
 
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
+plugin-docs = ["subsystem-agents"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]

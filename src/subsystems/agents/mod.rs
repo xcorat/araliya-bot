@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::config::AgentsConfig;
+use crate::config::{AgentsConfig, DocsAgentConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -33,6 +33,8 @@ mod chat;
 mod gmail;
 #[cfg(feature = "plugin-news-agent")]
 mod news;
+#[cfg(feature = "plugin-docs")]
+mod docs;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -53,6 +55,8 @@ pub struct AgentsState {
     pub llm_rates: ModelRates,
     /// Default args JSON forwarded by the `news` agent to `newsmail_aggregator/get`.
     pub news_query_args_json: String,
+    /// Optional path for the docs agent to read.
+    pub docs_path: Option<String>,
 }
 
 impl AgentsState {
@@ -62,6 +66,7 @@ impl AgentsState {
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
         news_query_args_json: String,
+        docs_path: Option<String>,
     ) -> Self {
         Self {
             bus,
@@ -70,6 +75,7 @@ impl AgentsState {
             agent_identities,
             llm_rates: ModelRates::default(),
             news_query_args_json,
+            docs_path,
         }
     }
 
@@ -245,10 +251,18 @@ impl AgentsSubsystem {
             None => "{}".to_string(),
         };
 
+        let docs_path = config.docs.clone().and_then(|d| d.path.clone());
+
         // Register all known built-in agents.
         // Uses agent.id() as the HashMap key so the trait method is the
         // single source of truth for each agent's identity.
         let mut agents: HashMap<String, Box<dyn Agent>> = HashMap::new();
+
+        #[cfg(feature = "plugin-docs")]
+        {
+            let agent: Box<dyn Agent> = Box::new(docs::DocsAgentPlugin);
+            agents.insert(agent.id().to_string(), agent);
+        }
 
         #[cfg(feature = "plugin-echo")]
         {
@@ -280,6 +294,12 @@ impl AgentsSubsystem {
             agents.insert(agent.id().to_string(), agent);
         }
 
+        #[cfg(feature = "plugin-docs")]
+        {
+            let agent: Box<dyn Agent> = Box::new(docs::DocsAgentPlugin);
+            agents.insert(agent.id().to_string(), agent);
+        }
+
         // Initialize cryptographic identities for all registered agents.
         let mut agent_identities = HashMap::new();
         let agent_memory_root = memory.memory_root().join("agent");
@@ -295,6 +315,7 @@ impl AgentsSubsystem {
                 agent_memory,
                 agent_identities,
                 news_query_args_json,
+                docs_path,
             )),
             agents,
             default_agent,
@@ -651,6 +672,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -680,6 +702,7 @@ mod tests {
             channel_map,
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -706,6 +729,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -729,6 +753,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -759,6 +784,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -801,6 +827,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -929,6 +956,115 @@ mod tests {
         }
     }
 
+    /// Basic health check for docs agent.
+    #[cfg(feature = "plugin-docs")]
+    #[tokio::test]
+    async fn docs_agent_health() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "docs".to_string(),
+            enabled: HashSet::from(["docs".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            docs: None,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx) = oneshot::channel();
+        agents.handle_request(
+            "agents/docs/health",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
+            tx,
+        );
+        match rx.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => {
+                assert!(content.contains("docs component"));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// Asking the docs agent reads the specified file and forwards prompt to LLM.
+    #[cfg(feature = "plugin-docs")]
+    #[tokio::test]
+    async fn docs_agent_reads_file_and_queries_llm() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        // prepare a temporary file with known content
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "the quick brown fox").unwrap();
+        let doc_path = tmp.path().to_str().unwrap().to_string();
+
+        // fake LLM responder that checks prompt
+        tokio::spawn(async move {
+            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+                assert_eq!(method, "llm/complete");
+                if let BusPayload::LlmRequest { content, channel_id } = payload {
+                    assert!(content.contains("the quick brown fox"));
+                    assert!(content.contains("what color"));
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: "brown".to_string(),
+                        session_id: None,
+                        usage: None,
+                    }));
+                }
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "docs".to_string(),
+            enabled: HashSet::from(["docs".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            docs: Some(DocsAgentConfig { path: Some(doc_path.clone()) }),
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx) = oneshot::channel();
+        agents.handle_request(
+            "agents/docs/ask",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "what color".to_string(), session_id: None, usage: None },
+            tx,
+        );
+
+        match rx.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => assert_eq!(content, "brown"),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// Asking docs agent with missing file returns error.
+    #[cfg(feature = "plugin-docs")]
+    #[tokio::test]
+    async fn docs_agent_missing_file_errors() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "docs".to_string(),
+            enabled: HashSet::from(["docs".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            docs: Some(DocsAgentConfig { path: Some("nonexistent.md".to_string()) }),
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx) = oneshot::channel();
+        agents.handle_request(
+            "agents/docs/ask",
+            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
+            tx,
+        );
+        assert!(rx.await.unwrap().is_err());
+    }
+
     #[tokio::test]
     async fn test_get_or_create_subagent() {
         let (_bus, handle) = echo_bus();
@@ -939,6 +1075,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

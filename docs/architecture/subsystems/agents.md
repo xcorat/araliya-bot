@@ -17,6 +17,7 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 | `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
 | `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
 | `news` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
+| `docs` | Reads a markdown file and forwards its contents (plus the question) to the LLM. Useful for simple RAG-style lookups. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -193,4 +194,4 @@ memory = ["basic_session"]
 | `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
-| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
+| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). || `agents.docs.path` | string | *none* | Path to markdown file read by the `docs` agent (relative to working dir). Defaults to `docs/quick-intro.md`. |

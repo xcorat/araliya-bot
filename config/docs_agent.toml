@@ -1,0 +1,18 @@
+[supervisor]
+bot_name = "docs-bot"
+work_dir = "~/araliya"
+log_level = "info"
+
+[comms.pty]
+enabled = true
+
+[comms.axum_channel]
+enabled = true
+bind = "127.0.0.1:8080"
+
+[agents]
+default = "docs"
+
+[agents.docs]
+enabled = true
+path = "docs/quick-intro.md"
