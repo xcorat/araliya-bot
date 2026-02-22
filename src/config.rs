@@ -68,6 +68,8 @@ pub struct NewsmailAggregatorConfig {
     pub mailbox: String,
     pub n_last: usize,
     pub tsec_last: Option<u64>,
+    /// Extra Gmail search terms appended to the built query (e.g. "is:unread").
+    pub q: Option<String>,
 }
 
 /// Tools subsystem configuration.
@@ -137,6 +139,7 @@ pub struct NewsAgentQueryConfig {
     pub n_last: Option<usize>,
     pub t_interval: Option<String>,
     pub tsec_last: Option<u64>,
+    pub q: Option<String>,
 }
 
 /// Fully-resolved supervisor configuration.
@@ -342,6 +345,8 @@ struct RawNewsAgentQuery {
     t_interval: Option<String>,
     #[serde(default)]
     tsec_last: Option<u64>,
+    #[serde(default)]
+    q: Option<String>,
 }
 
 fn default_agent_name() -> String { "basic_chat".to_string() }
@@ -378,6 +383,8 @@ struct RawNewsmailAggregator {
     n_last: usize,
     #[serde(default)]
     tsec_last: Option<u64>,
+    #[serde(default)]
+    q: Option<String>,
 }
 
 impl Default for RawNewsmailAggregator {
@@ -386,6 +393,7 @@ impl Default for RawNewsmailAggregator {
             mailbox: default_newsmail_mailbox(),
             n_last: default_newsmail_n_last(),
             tsec_last: None,
+            q: None,
         }
     }
 }
@@ -585,6 +593,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     mailbox: default_newsmail_mailbox(),
                     n_last: default_newsmail_n_last(),
                     tsec_last: None,
+                    q: None,
                 },
             },
             memory_kv_cap: Some(200),
@@ -629,6 +638,7 @@ pub fn load_from(
             n_last: q.n_last,
             t_interval: q.t_interval.clone(),
             tsec_last: q.tsec_last,
+            q: q.q.clone(),
         });
 
     Ok(Config {
@@ -691,6 +701,7 @@ pub fn load_from(
                 mailbox: parsed.tools.newsmail_aggregator.mailbox,
                 n_last: parsed.tools.newsmail_aggregator.n_last.max(1),
                 tsec_last: parsed.tools.newsmail_aggregator.tsec_last,
+                q: parsed.tools.newsmail_aggregator.q,
             },
         },
         memory_kv_cap: parsed.memory.basic_session.kv_cap,
@@ -768,6 +779,7 @@ impl Config {
                     mailbox: default_newsmail_mailbox(),
                     n_last: default_newsmail_n_last(),
                     tsec_last: None,
+                    q: None,
                 },
             },
             memory_kv_cap: None,

@@ -234,6 +234,25 @@ def read_one_email(access_token: str, query: str = "in:inbox") -> None:
     print("snippet:", msg.get("snippet", ""))
 
 
+def list_labels(access_token: str) -> None:
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(f"{GMAIL_BASE}/labels", headers=headers, timeout=30)
+    resp.raise_for_status()
+    labels = resp.json().get("labels", [])
+
+    # Split into user-created vs system labels
+    user = sorted([l for l in labels if l.get("type") == "user"], key=lambda l: l["name"])
+    system = sorted([l for l in labels if l.get("type") == "system"], key=lambda l: l["name"])
+
+    print(f"\n=== Gmail Labels ({len(labels)} total) ===")
+    print(f"\n--- User labels ({len(user)}) ---")
+    for l in user:
+        print(f"  id={l['id']!r:30s}  name={l['name']!r}")
+    print(f"\n--- System labels ({len(system)}) ---")
+    for l in system:
+        print(f"  id={l['id']!r:30s}  name={l['name']!r}")
+
+
 def _self_test() -> None:
     verifier, challenge = _make_pkce()
     assert 43 <= len(verifier) <= 128
@@ -245,6 +264,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Minimal Gmail OAuth read-one tester")
     parser.add_argument("--force-auth", action="store_true", help="Ignore cached token and run OAuth again")
     parser.add_argument("--query", default="in:inbox", help="Gmail search query for selecting one message")
+    parser.add_argument("--labels", action="store_true", help="List all Gmail labels and exit")
     parser.add_argument("--self-test", action="store_true", help="Run local non-network self tests and exit")
     args = parser.parse_args()
 
@@ -260,7 +280,10 @@ def main() -> int:
 
     try:
         access_token = _ensure_access_token(client_id, client_secret, args.force_auth)
-        read_one_email(access_token, query=args.query)
+        if args.labels:
+            list_labels(access_token)
+        else:
+            read_one_email(access_token, query=args.query)
         print("\nDone.")
         return 0
     except requests.HTTPError as e:

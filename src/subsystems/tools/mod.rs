@@ -26,6 +26,7 @@ impl Default for ToolsSubsystem {
             mailbox: "inbox".to_string(),
             n_last: 10,
             tsec_last: None,
+            q: None,
         })
     }
 }

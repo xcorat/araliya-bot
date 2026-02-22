@@ -2,6 +2,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::debug;
 
 use crate::config::NewsmailAggregatorConfig;
 
@@ -14,6 +15,7 @@ struct NewsmailArgs {
     n_last: Option<usize>,
     t_interval: Option<String>,
     tsec_last: Option<u64>,
+    q: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +24,7 @@ struct ResolvedNewsmailConfig {
     mailbox: String,
     n_last: usize,
     tsec_last: Option<u64>,
+    q: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,24 +108,46 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
         .or(defaults.tsec_last)
         .filter(|v| *v > 0);
 
+    let q = args
+        .q
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .or_else(|| defaults.q.filter(|v| !v.is_empty()));
+
     ResolvedNewsmailConfig {
         label,
         mailbox,
         n_last,
         tsec_last,
+        q,
     }
 }
 
-fn build_query(mailbox: &str, label: Option<&str>) -> String {
-    match label {
+fn build_query(mailbox: &str, label: Option<&str>, q: Option<&str>) -> String {
+    let mut parts = match label {
         Some(lbl) => format!("in:{mailbox} label:\"{lbl}\""),
         None => format!("in:{mailbox}"),
+    };
+    if let Some(term) = q.filter(|s| !s.is_empty()) {
+        parts.push(' ');
+        parts.push_str(term);
     }
+    parts
 }
 
 pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<Vec<GmailSummary>, String> {
+    debug!(args_json = %args_json, "newsmail: raw args JSON");
     let resolved = resolve_config(defaults, args_json);
-    let query = build_query(&resolved.mailbox, resolved.label.as_deref());
+    debug!(
+        mailbox = %resolved.mailbox,
+        label = ?resolved.label,
+        n_last = resolved.n_last,
+        tsec_last = ?resolved.tsec_last,
+        q = ?resolved.q,
+        "newsmail: resolved config"
+    );
+    let query = build_query(&resolved.mailbox, resolved.label.as_deref(), resolved.q.as_deref());
+    debug!(query = %query, "newsmail: built Gmail query");
 
     let mut items = gmail::read_many(Some(&query), resolved.n_last as u32).await?;
 
@@ -159,6 +184,7 @@ mod tests {
             mailbox: "inbox".to_string(),
             n_last: 10,
             tsec_last: Some(600),
+            q: None,
         }
     }
 
@@ -198,7 +224,26 @@ mod tests {
 
     #[test]
     fn build_query_with_label() {
-        assert_eq!(build_query("inbox", Some("n/News")), "in:inbox label:\"n/News\"");
+        assert_eq!(build_query("inbox", Some("n/News"), None), "in:inbox label:\"n/News\"");
+    }
+
+    #[test]
+    fn build_query_with_extra_q() {
+        assert_eq!(build_query("inbox", Some("n/News"), Some("is:unread")), "in:inbox label:\"n/News\" is:unread");
+    }
+
+    #[test]
+    fn resolve_uses_q_from_args() {
+        let resolved = resolve_config(defaults(), r#"{"q": "is:unread"}"#);
+        assert_eq!(resolved.q.as_deref(), Some("is:unread"));
+    }
+
+    #[test]
+    fn resolve_uses_q_from_defaults() {
+        let mut d = defaults();
+        d.q = Some("is:unread".to_string());
+        let resolved = resolve_config(d, "{}");
+        assert_eq!(resolved.q.as_deref(), Some("is:unread"));
     }
 
     #[test]

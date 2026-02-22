@@ -240,6 +240,9 @@ impl AgentsSubsystem {
                 if let Some(tsec_last) = q.tsec_last {
                     map.insert("tsec_last".to_string(), serde_json::json!(tsec_last));
                 }
+                if let Some(extra_q) = q.q {
+                    map.insert("q".to_string(), serde_json::Value::String(extra_q));
+                }
                 serde_json::Value::Object(map).to_string()
             }
             None => "{}".to_string(),
