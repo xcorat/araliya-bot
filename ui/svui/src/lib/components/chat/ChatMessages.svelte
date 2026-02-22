@@ -34,7 +34,7 @@
 		{/each}
 
 		{#if getIsLoading()}
-			<div class="flex justify-start gap-3">
+			<div class="message-enter flex justify-start gap-3">
 				<div
 					class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary"
 				>
@@ -42,15 +42,10 @@
 				</div>
 				<div class="rounded-2xl rounded-bl-md bg-muted px-4 py-3">
 					<div class="flex items-center gap-1.5">
-						<span
-							class="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]"
-						></span>
-						<span
-							class="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]"
-						></span>
-						<span
-							class="size-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]"
-						></span>
+						<span class="dot-bounce size-2 rounded-full bg-primary/60"></span>
+						<span class="dot-bounce size-2 rounded-full bg-primary/60"></span>
+						<span class="dot-bounce size-2 rounded-full bg-primary/60"></span>
+						<span class="ml-1 text-[11px] text-muted-foreground/60">Thinking…</span>
 					</div>
 				</div>
 			</div>

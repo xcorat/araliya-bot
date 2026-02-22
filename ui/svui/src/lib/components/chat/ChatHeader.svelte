@@ -11,6 +11,7 @@
 		getLastUsage,
 		getSessionUsageTotals,
 		getWorkingMemoryUpdated,
+		getIsLoading,
 		doCheckHealth,
 		resetSession
 	} from '$lib/state.svelte';
@@ -20,6 +21,7 @@
 	const sid = $derived(getSessionId());
 	const totals = $derived(getSessionUsageTotals());
 	const wmUpdated = $derived(getWorkingMemoryUpdated());
+	const loading = $derived(getIsLoading());
 
 	const basePath = $derived(base || '');
 	const chatPath = $derived(basePath ? `${basePath}/` : '/');
@@ -38,6 +40,7 @@
 					? 'bg-yellow-500 animate-pulse'
 					: 'bg-muted-foreground/40'
 	);
+	const healthPing = $derived(health === 'ok');
 
 	function shortSession(id: string) {
 		return id ? id.slice(0, 8) + '...' : 'none';
@@ -67,7 +70,7 @@
 </script>
 
 <header
-	class="flex items-center justify-between gap-3 border-b bg-background/80 px-4 py-2.5 backdrop-blur-sm"
+	class="relative flex items-center justify-between gap-3 border-b bg-background/80 px-4 py-2.5 backdrop-blur-sm"
 >
 	<div class="flex items-center gap-2.5">
 		<Flower2 class="size-5 text-primary" />
@@ -78,7 +81,10 @@
 			title="Check health"
 		>
 			<span class="relative flex size-2">
-				<span class={`absolute inline-flex size-full rounded-full ${healthColor}`}></span>
+				{#if healthPing}
+					<span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+				{/if}
+				<span class={`relative inline-flex size-full rounded-full ${healthColor}`}></span>
 			</span>
 			{health}
 		</button>
@@ -134,4 +140,7 @@
 		</Button>
 		<ThemeToggle />
 	</div>
+	{#if loading}
+		<div class="loading-bar" aria-hidden="true"></div>
+	{/if}
 </header>

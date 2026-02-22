@@ -26,7 +26,7 @@
 	});
 </script>
 
-<div class={cn('flex w-full gap-3', isUser ? 'justify-end' : 'justify-start')}>
+<div class={cn('flex w-full gap-3 message-enter', isUser ? 'justify-end' : 'justify-start')}>
 	{#if !isUser}
 		<div
 			class={cn(

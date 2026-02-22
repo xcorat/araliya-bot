@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { getIsLoading, doSendMessage } from '$lib/state.svelte';
-	import { SendHorizontal } from '@lucide/svelte';
+	import { SendHorizontal, Loader2 } from '@lucide/svelte';
 
 	let inputText = $state('');
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
@@ -45,10 +45,14 @@
 			placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
 			disabled={loading}
 			rows={1}
-			class="flex-1 resize-none rounded-xl border bg-muted/50 px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring disabled:opacity-50"
+			class="flex-1 resize-none rounded-xl border bg-muted/50 px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring disabled:opacity-50 {loading ? 'opacity-60' : ''}"
 		></textarea>
-		<Button size="icon" disabled={!canSend} onclick={handleSend} class="shrink-0 rounded-xl">
-			<SendHorizontal class="size-4" />
+		<Button size="icon" disabled={!canSend} onclick={handleSend} class="shrink-0 rounded-xl transition-opacity">
+			{#if loading}
+				<Loader2 class="size-4 spin" />
+			{:else}
+				<SendHorizontal class="size-4" />
+			{/if}
 		</Button>
 	</div>
 </div>
