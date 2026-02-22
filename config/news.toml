@@ -13,7 +13,7 @@ enabled = true
 
 [agents.news.query]
 label = "Label_6135459501644760604"
-n_last = 50
+n_last = 25
 t_interval = "7d"  # also supports: 1mon, 1min, 1h, 1w
 # q = "is:unread"    # extra Gmail search terms appended to the built query
 

@@ -209,7 +209,8 @@ fn build_summary_prompt(items: &[TextItem]) -> String {
     let mut lines = String::from(
         "You are a news digest assistant. \
          Summarize the following email news items briefly and clearly in markdown text. \
-         Group related topics if possible. Do not use JSON. Ignore anything too spectacal-like\n\n",
+         Group related topics if possible. Do not use JSON. Ignore anything too spectacal-like  . \
+         **Lightly** use *italics*, **bold**, and unicode icons/flags to enhance readability\n\n",
     );
     for (i, item) in items.iter().enumerate() {
         let subject = item.metadata.get("subject").map(|s| s.as_str()).unwrap_or("(no subject)");

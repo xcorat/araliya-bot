@@ -39,8 +39,9 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 - Actions: `get`, `healthcheck`
 - Transport: `tools/execute` (same as all tools)
 - Uses Gmail core integration from `src/subsystems/tools/gmail.rs` (no duplicated OAuth/API stack)
-- Optional inputs: `label`, `mailbox`, `n_last`, `t_interval` (preferred), `tsec_last` (legacy)
-- `healthcheck` performs a minimal fetch (`maxResults=1`) with filter `in:{mailbox} newsletter`
+- Optional LLM inputs: `label` (string or array of Gmail label IDs), `n_last`, `t_interval` (preferred), `tsec_last` (legacy), `q` (extra Gmail search terms)
+- Config default: `label_ids = ["INBOX"]` — used when the LLM provides no label override
+- `healthcheck` performs a minimal fetch (`maxResults=1`) with `labelIds={defaults}` and `q=newsletter`
 
 ---
 
