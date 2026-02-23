@@ -1,6 +1,7 @@
 import type {
 	ChatMessage,
 	SessionInfo,
+	AgentInfo,
 	SessionTranscriptMessage,
 	ToolStep,
 	UsageInfo
@@ -22,6 +23,7 @@ function now(): string {
 let messages = $state<ChatMessage[]>([]);
 let sessionId = $state<string>('');
 let sessions = $state<SessionInfo[]>([]);
+let agents = $state<AgentInfo[]>([]);
 let baseUrl = $state<string>('');
 let healthStatus = $state<'unknown' | 'checking' | 'ok' | 'error'>('unknown');
 let healthMessage = $state<string>('');
@@ -57,6 +59,10 @@ export function getSessionId(): string {
 
 export function getSessions(): SessionInfo[] {
 	return sessions;
+}
+
+export function getAgents(): AgentInfo[] {
+	return agents;
 }
 
 export function getBaseUrl(): string {
@@ -198,6 +204,16 @@ export async function refreshSessions(options: { force?: boolean } = {}) {
 	})();
 
 	return sessionsRequest;
+}
+
+export async function refreshAgents() {
+	if (!baseUrl) return;
+	try {
+		const res = await api.listAgents(baseUrl);
+		agents = res.agents;
+	} catch {
+		// silently ignore — agents panel degrades gracefully
+	}
 }
 
 export async function loadSessionHistory(targetSessionId: string) {

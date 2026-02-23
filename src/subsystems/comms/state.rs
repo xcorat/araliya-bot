@@ -110,6 +110,19 @@ impl CommsState {
         }
     }
 
+    /// Request a list of all registered agents from the agents subsystem.
+    pub async fn request_agents(&self) -> Result<String, AppError> {
+        match self.bus.request("agents/list", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
     /// Request detail (metadata + transcript) for a specific session.
     pub async fn request_session_detail(&self, session_id: &str) -> Result<String, AppError> {
         match self

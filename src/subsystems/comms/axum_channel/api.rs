@@ -117,6 +117,27 @@ pub(super) async fn sessions(State(state): State<AxumState>) -> Response {
     }
 }
 
+/// GET /api/agents
+pub(super) async fn agents(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(Duration::from_secs(10), state.comms.request_agents()).await {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "agents request failed: {e}");
+            (StatusCode::BAD_GATEWAY, json_error("internal", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "agents request timed out"),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/session/{session_id}
 pub(super) async fn session_detail(
     State(state): State<AxumState>,

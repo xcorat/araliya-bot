@@ -9,8 +9,10 @@
 		doCheckHealth,
 		getSessionId,
 		getSessions,
+		getAgents,
 		getIsLoadingSessions,
 		refreshSessions,
+		refreshAgents,
 		loadSessionHistory,
 		resetSession
 	} from '$lib/state.svelte';
@@ -19,10 +21,12 @@
 		initBaseUrl();
 		doCheckHealth();
 		void refreshSessions({ force: true });
+		void refreshAgents();
 	});
 
 	const sessionId = $derived(getSessionId());
 	const sessions = $derived(getSessions());
+	const agents = $derived(getAgents());
 	const loadingSessions = $derived(getIsLoadingSessions());
 
 	function onSelectSession(targetSessionId: string) {
@@ -41,6 +45,7 @@
 <Sidebar.SidebarProvider>
 	<SessionSidebar
 		{sessions}
+		{agents}
 		activeSessionId={sessionId}
 		isLoading={loadingSessions}
 		{onSelectSession}

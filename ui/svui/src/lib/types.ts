@@ -70,12 +70,23 @@ export interface SubsystemStatus {
 export interface SessionInfo {
 	session_id: string;
 	created_at: string;
-	updated_at: string;
+	updated_at: string | null;
 	mode: SessionMode;
 }
 
 export interface SessionsResponse {
 	sessions: SessionInfo[];
+}
+
+export interface AgentInfo {
+	agent_id: string;
+	name: string;
+	last_fetched: string | null;
+	session_count: number;
+}
+
+export interface AgentsResponse {
+	agents: AgentInfo[];
 }
 
 export interface SessionTranscriptMessage {

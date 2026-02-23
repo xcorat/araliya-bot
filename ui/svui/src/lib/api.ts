@@ -2,6 +2,7 @@ import type {
 	HealthResponse,
 	MessageResponse,
 	SessionsResponse,
+	AgentsResponse,
 	SessionDetailResponse,
 	SessionMemoryResponse,
 	SessionFilesResponse,
@@ -60,6 +61,12 @@ export async function listSessions(baseUrl: string): Promise<SessionsResponse> {
 	const response = await fetch(`${baseUrl}/api/sessions`);
 	if (!response.ok) return handleError(response);
 	return readResponse<SessionsResponse>(response);
+}
+
+export async function listAgents(baseUrl: string): Promise<AgentsResponse> {
+	const response = await fetch(`${baseUrl}/api/agents`);
+	if (!response.ok) return handleError(response);
+	return readResponse<AgentsResponse>(response);
 }
 
 export async function getSessionById(
