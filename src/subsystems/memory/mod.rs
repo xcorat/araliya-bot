@@ -22,6 +22,8 @@ pub mod rw;
 pub mod store;
 pub mod stores;
 pub mod types;
+#[cfg(feature = "idocstore")]
+mod docstore_manager;
 
 // Re-export the core type vocabulary so callers can write
 // `memory::PrimaryValue` etc. without spelling out the sub-module.
@@ -111,6 +113,11 @@ pub struct MemorySystem {
     /// Typed reference to the shared `TmpStore` instance, used to populate
     /// [`SessionHandle::tmp_store`] for sessions created with store type `"tmp"`.
     tmp_store: Arc<stores::tmp::TmpStore>,
+    /// Background maintenance task for all agent-scoped document stores.
+    /// Present only when the `idocstore` feature is enabled and
+    /// [`MemorySystem::start_docstore_manager`] has been called.
+    #[cfg(feature = "idocstore")]
+    docstore_manager: Option<docstore_manager::DocstoreManager>,
 }
 
 impl MemorySystem {
@@ -153,6 +160,8 @@ impl MemorySystem {
             sessions_dir,
             stores,
             tmp_store: tmp,
+            #[cfg(feature = "idocstore")]
+            docstore_manager: None,
         })
     }
 
@@ -163,6 +172,30 @@ impl MemorySystem {
     /// Return the root directory under which bot-scoped sessions are stored.
     pub fn sessions_root(&self) -> &Path {
         &self.sessions_dir
+    }
+
+    /// Spawn the background docstore manager.
+    ///
+    /// Scans `{memory_root}/agent/` every 5 minutes and automatically
+    /// indexes unindexed documents and removes orphan content files.
+    /// Stops when `shutdown` is cancelled.
+    ///
+    /// Call this once, before wrapping `MemorySystem` in an `Arc`.
+    #[cfg(feature = "idocstore")]
+    pub fn start_docstore_manager(&mut self, shutdown: tokio_util::sync::CancellationToken) {
+        let agent_dirs = self.memory_root.join("agent");
+        self.docstore_manager = Some(docstore_manager::DocstoreManager::spawn(agent_dirs, shutdown));
+        info!("docstore manager initialised");
+    }
+
+    /// Request immediate index+cleanup for one agent's docstore.
+    ///
+    /// No-op when the manager has not been started or the feature is disabled.
+    #[cfg(feature = "idocstore")]
+    pub fn schedule_docstore_index(&self, agent_identity_dir: PathBuf) {
+        if let Some(mgr) = &self.docstore_manager {
+            mgr.schedule_index(agent_identity_dir);
+        }
     }
 
     /// Create a new session with the given store types.

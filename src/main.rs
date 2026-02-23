@@ -88,7 +88,10 @@ async fn run() -> Result<(), error::AppError> {
 
     info!(public_id = %identity.public_id, "identity ready — starting subsystems");
 
-    // TODO: focus on the order, memory should be init after the sup bus for example.
+    // Shared shutdown token — Ctrl-C cancels it, all tasks watch it.
+    // Created before the memory system so the docstore manager can receive it.
+    let shutdown = CancellationToken::new();
+
     // Optionally build the memory system.
     #[cfg(feature = "subsystem-memory")]
     let memory = {
@@ -96,13 +99,12 @@ async fn run() -> Result<(), error::AppError> {
             kv_cap: config.memory_kv_cap,
             transcript_cap: config.memory_transcript_cap,
         };
-        let mem = MemorySystem::new(&identity.identity_dir, mem_config)
+        let mut mem = MemorySystem::new(&identity.identity_dir, mem_config)
             .map_err(|e| error::AppError::Memory(e.to_string()))?;
+        #[cfg(feature = "idocstore")]
+        mem.start_docstore_manager(shutdown.clone());
         std::sync::Arc::new(mem)
     };
-
-    // Shared shutdown token — Ctrl-C cancels it, all tasks watch it.
-    let shutdown = CancellationToken::new();
 
     // Build the supervisor bus (buffer = 64 messages).
     let bus = SupervisorBus::new(64);
