@@ -6,7 +6,7 @@ base = "full.toml"
 # /chat news --t_interval 1d
 
 [agents]
-default = "docs"
+default = "news"
 
 [agents.docs]
 enabled = true
