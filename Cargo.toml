@@ -101,6 +101,10 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[lib]
+name = "araliya_bot"
+path = "src/lib.rs"
+
 [[bin]]
 name = "araliya-bot"
 path = "src/main.rs"
@@ -124,3 +128,8 @@ required-features = ["ui-gpui"]
 name = "araliya-beacon"
 path = "src/bin/araliya-beacon/main.rs"
 required-features = ["ui-beacon"]
+
+[[test]]
+name = "test_docstore"
+path = "tests/test_docstore.rs"
+required-features = ["idocstore", "subsystem-memory"]

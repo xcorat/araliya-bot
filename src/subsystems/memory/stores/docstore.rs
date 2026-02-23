@@ -129,7 +129,7 @@ impl IDocStore {
     }
 
     pub fn get_document(&self, doc_id: &str) -> Result<Document, AppError> {
-        let mut conn = self.open_conn()?;
+        let conn = self.open_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT title, source, content_hash, created_at, metadata FROM doc_metadata WHERE doc_id = ?1",
@@ -167,7 +167,7 @@ impl IDocStore {
     }
 
     pub fn list_documents(&self) -> Result<Vec<DocMetadata>, AppError> {
-        let mut conn = self.open_conn()?;
+        let conn = self.open_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT doc_id, title, source, content_hash, created_at, updated_at, metadata FROM doc_metadata ORDER BY created_at DESC",
