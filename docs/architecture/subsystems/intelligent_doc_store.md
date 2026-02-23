@@ -318,7 +318,7 @@ A private background task (`pub(super)`) spawned by `MemorySystem::start_docstor
 
 ### Responsibilities
 
-- **Auto-index:** Every 5 minutes (and on demand), scans `{memory_root}/agent/*/docstore/` for documents that have no FTS5 chunk entries and indexes them automatically at 2 KB chunk size.
+- **Auto-index:** Every 24 hours (and on demand), scans `{memory_root}/agent/*/docstore/` for documents that have no FTS5 chunk entries and indexes them automatically at 2 KB chunk size.
 - **Orphan cleanup:** Removes `docstore/docs/*.txt` files that have no matching row in `doc_metadata`.
 
 ### Startup

@@ -176,7 +176,7 @@ impl MemorySystem {
 
     /// Spawn the background docstore manager.
     ///
-    /// Scans `{memory_root}/agent/` every 5 minutes and automatically
+    /// Scans `{memory_root}/agent/` every 24 hours and automatically
     /// indexes unindexed documents and removes orphan content files.
     /// Stops when `shutdown` is cancelled.
     ///

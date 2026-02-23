@@ -12,7 +12,7 @@
 //! - **Cleanup orphan files** — any `.txt` file under `docstore/docs/` that
 //!   has no matching `doc_metadata` entry is removed.
 //!
-//! The scan interval is 5 minutes. A single-shot `IndexNow` command is also
+//! The scan interval is 24 hours. A single-shot `IndexNow` command is also
 //! accepted so callers can request immediate maintenance after ingesting a
 //! document.
 
@@ -29,7 +29,7 @@ use crate::error::AppError;
 
 use super::stores::docstore::IDocStore;
 
-const SCAN_INTERVAL_SECS: u64 = 300;
+const SCAN_INTERVAL_SECS: u64 = 86_400; // 24 hours
 const DEFAULT_CHUNK_SIZE: usize = 2048;
 
 // ── Command channel ───────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ impl ManagerService {
         info!(
             root = %self.agent_dirs_root.display(),
             interval_secs = SCAN_INTERVAL_SECS,
-            "docstore manager started"
+            "docstore manager started (daily scan)"
         );
 
         let mut interval = tokio::time::interval(Duration::from_secs(SCAN_INTERVAL_SECS));
