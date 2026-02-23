@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`**.
+**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval**.
 
 ---
 
@@ -14,7 +14,9 @@ The Memory subsystem owns all session data for the bot instance.  It provides:
 - A **`BasicSessionStore`** — disk-backed JSON + Markdown transcript store for durable sessions.
 - A **`SessionHandle`** — async-safe handle agents use to read and write session state, with direct typed accessors for `TmpStore` sessions.
 
-Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages. `subsystem-memory` remains a Cargo feature at product level; when agents are enabled, memory is available directly in agent code.
+Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages.
+
+`IDocStore` is currently **agent-scoped storage infrastructure** in the memory subsystem; active agent prompt augmentation is a follow-up phase.
 
 ---
 
@@ -35,23 +37,18 @@ MemorySystem (owns session index + store factory)
 
 ### Key types
 
-| Type | Location | Role |
-|------|----------|------|
-| `MemorySystem` | `memory/mod.rs` | Session lifecycle: create, load, list. Maintains `sessions.json` index. |
-| `SessionStore` | `memory/store.rs` | Trait for pluggable session backends. |
-| `Store` | `memory/store.rs` | In-process `RwLock<HashMap<String, Collection>>` — the core collection map. |
-| `SessionRw` | `memory/rw.rs` | Shared session read/write orchestration layer (kv, transcript, file listing, tmp collections). |
-| `SessionHandle` | `memory/handle.rs` | Thin facade that delegates all data I/O to `SessionRw`; also owns spend accumulation. |
-| `SessionInfo` | `memory/mod.rs` | Session metadata persisted in `sessions.json`; includes an optional `spend` summary. |
-| `SessionSpend` | `memory/mod.rs` | Aggregate token counts and cumulative cost; persisted as `spend.json`. |
-| `BasicSessionStore` | `memory/stores/basic_session.rs` | Capped JSON k-v + capped Markdown transcript, disk-backed. |
-| `TmpStore` | `memory/stores/tmp.rs` | Ephemeral in-process store wrapping a `Store`. Implements `SessionStore`. |
-| `Doc` | `memory/collections.rs` | String-keyed map of `PrimaryValue` scalars. |
-| `Block` | `memory/collections.rs` | String-keyed map of `Value` (scalars + binary `Obj`). |
-| `Collection` | `memory/collections.rs` | Enum: `Doc`, `Block`, and stubs for future variants. |
-| `PrimaryValue` | `memory/types.rs` | `Bool` · `Int` · `Float` · `Str` — hashable, equatable. |
-| `Value` | `memory/types.rs` | `Primary(PrimaryValue)` or `Obj(Obj)`. |
-| `Obj` | `memory/types.rs` | Binary payload with `HashMap<String, String>` metadata sidecar. |
+| Type | Role |
+|------|------|
+| `MemorySystem` | Session lifecycle: create, load, list. Maintains `sessions.json` index. |
+| `SessionStore` | Trait for pluggable session backends. |
+| `Store` | In-process `RwLock<HashMap<String, Collection>>` — the core collection map. |
+| `SessionRw` | Shared session read/write orchestration layer. |
+| `SessionHandle` | Thin facade that delegates all data I/O to `SessionRw`; also owns spend accumulation. |
+| `BasicSessionStore` | Capped JSON k-v + capped Markdown transcript, disk-backed. |
+| `TmpStore` | Ephemeral in-process store wrapping a `Store`. Implements `SessionStore`. |
+| `Doc` | String-keyed map of `PrimaryValue` scalars. |
+| `Block` | String-keyed map of `Value` (scalars + binary `Obj`). |
+| `Collection` | Enum: `Doc`, `Block`, and stubs for future variants. |
 
 ---
 
@@ -64,8 +61,6 @@ Scalar values suitable for indexing, hashing, and equality:
 ```rust
 enum PrimaryValue { Bool(bool), Int(i64), Float(f64), Str(String) }
 ```
-
-`Float` equality and hashing use bit patterns (`f64::to_bits()`).  `From` impls for all primitive types.
 
 ### `Obj`
 
@@ -89,17 +84,6 @@ enum Value { Primary(PrimaryValue), Obj(Obj) }
 |--|-------|---------|
 | Entry type | `PrimaryValue` | `Value` |
 | Use for | Config, extracted facts, session metadata | Blobs, embeddings, intermediate results |
-| Methods | `get`, `set`, `delete`, `keys`, `len`, `is_empty` | same |
-
-### `Collection`
-
-Enum wrapping all collection types.  `Doc` and `Block` are fully implemented.  `Set`, `List`, `Vec`, `Tuple`, `Tensor` are **stubs** that compile but `unimplemented!()` on access — reserved namespace, not silently wrong.
-
-```rust
-enum Collection { Doc(Doc), Block(Block), Set(()), List(()), Vec(()), Tuple(()), Tensor(()) }
-```
-
-Use `as_doc()` / `as_doc_mut()` / `into_doc()` / `as_block()` / ... to downcast.
 
 ---
 
@@ -107,31 +91,11 @@ Use `as_doc()` / `as_doc_mut()` / `into_doc()` / `as_block()` / ... to downcast.
 
 ### `SessionStore` trait
 
-Pluggable backend for session-scoped I/O.  All methods are default-no-op (return `AppError::Memory("unsupported")`); implementations override only what they support.
-
-```rust
-pub trait SessionStore: Send + Sync {
-    fn store_type(&self) -> &str;
-    fn init(&self, session_dir: &Path) -> Result<(), AppError>;
-    fn kv_get(&self, session_dir: &Path, key: &str)   -> Result<Option<String>, AppError>;
-    fn kv_set(&self, session_dir: &Path, key: &str, value: &str) -> Result<(), AppError>;
-    fn kv_delete(&self, session_dir: &Path, key: &str) -> Result<bool, AppError>;
-    fn transcript_append(&self, ...)  -> Result<(), AppError>;
-    fn transcript_read_last(&self, ...) -> Result<Vec<TranscriptEntry>, AppError>;
-}
-```
+Pluggable backend for session-scoped I/O.  All methods are default-no-op; implementations override only what they support.
 
 ### `Store` struct
 
-An in-process labeled collection map, safe for concurrent reads:
-
-```rust
-let store = Store::new();
-store.insert_collection("meta".into(), Collection::Doc(Doc::default()))?;
-let col = store.get_collection("meta")?.unwrap(); // returns a clone
-```
-
-Operations: `get_collection`, `insert_collection`, `remove_collection`, `labels`, `len`, `is_empty`.
+An in-process labeled collection map, safe for concurrent reads.
 
 ---
 
@@ -141,20 +105,11 @@ Operations: `get_collection`, `insert_collection`, `remove_collection`, `labels`
 
 ### Standalone (agent scratch pad)
 
-```rust
-let ts: Arc<TmpStore> = memory.create_tmp_store();
-let mut doc = ts.doc()?;
-doc.set("status".into(), PrimaryValue::from("active"));
-ts.set_doc(doc)?;
-```
-
 `create_tmp_store()` always returns a fresh, independent store not tracked in the session index.
 
 ### Session-backed
 
-When a session is created with `store_type = "tmp"`, `TmpStore` implements `SessionStore` using per-session namespaced collection labels (`"{session_dir}:doc"`, `"{session_dir}:block"`).  `kv_get`/`kv_set`/`kv_delete` delegate to the `"doc"` collection, serialising values as `PrimaryValue::Str`.
-
-`init()` is a no-op — no files are written to disk.
+When a session is created with `store_type = "tmp"`, `TmpStore` implements `SessionStore` using per-session namespaced collection labels.
 
 ---
 
@@ -190,6 +145,20 @@ Session IDs are UUIDv7 (time-ordered).  The `sessions.json` index tracks all ses
             ├── transcript.md      capped Markdown transcript
             └── spend.json         aggregate token and cost totals (created on first LLM turn)
 ```
+
+## Data Layout (agent-scoped docstore, optional)
+
+When built with feature `idocstore`, agents can host an indexed document store under their identity root:
+
+```
+{agent_identity_dir}/
+└── docstore/
+    ├── chunks.db                  SQLite + FTS5 (`doc_metadata`, `chunks`)
+    └── docs/
+        └── {doc_id}.txt           raw document payload
+```
+
+Phase 1 APIs include document add/list/get/delete, fixed-size chunking, indexing, hash-based deduplication (`SHA-256`), and BM25 text search.
 
 ### `spend.json` shape
 
@@ -283,7 +252,7 @@ memory = ["basic_session"]  # store types this agent uses
 | `memory.basic_session.transcript_cap` | usize | 500 | Maximum transcript entries before FIFO eviction. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Store types (`"basic_session"` or `"tmp"`). |
 
-Memory is always compiled — there is no Cargo feature gate.
+Core memory is always compiled. `IDocStore` is behind the Cargo feature gate `idocstore`.
 
 ---
 

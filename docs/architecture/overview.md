@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** v0.5.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`)** · **UI subsystem (`svui` backend)** · **Cron subsystem (timer-based event scheduling)** · **Tools subsystem (Gmail MVP)** · **LLM token usage tracking + per-session cost accumulation (`spend.json`)**.
+**Status:** v0.5.0 — generic subsystem runtime · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · **Compile-time modularity via Cargo Features** · **Chat-family agent composition (`ChatCore`)** · **Memory subsystem with pluggable stores (`basic_session`, optional `idocstore`)** · **UI subsystem (`svui` backend)** · **Cron subsystem (timer-based event scheduling)** · **Tools subsystem (Gmail MVP)** · **LLM token usage tracking + per-session cost accumulation (`spend.json`)**.
 
 ---
 

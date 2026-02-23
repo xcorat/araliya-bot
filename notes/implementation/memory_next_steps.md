@@ -2,6 +2,14 @@
 
 ## Completed
 
+### IDocStore Phase 1 (2026-02-22)
+
+- Added feature-gated document store module `subsystems/memory/stores/docstore.rs` behind Cargo feature `idocstore`.
+- Added SQLite (`rusqlite`) schema bootstrap with `PRAGMA user_version` and FTS5 `chunks` virtual table.
+- Implemented Phase 1 APIs: add/get/list/delete documents, fixed-size chunking, chunk indexing, BM25 text search.
+- Added SHA-256 content-hash deduplication at ingestion; duplicate inserts return existing `doc_id`.
+- Added unit tests for dedup, chunk/index/search flow, and delete cleanup.
+
 ### BasicSessionStore migration to collection model (v0.4.1)
 
 - **`kv.json` format changed** from v1 `{ "cap": N, "entries": [{key,value,ts},…] }` to v2
