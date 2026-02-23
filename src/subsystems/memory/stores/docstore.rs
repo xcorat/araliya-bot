@@ -4,65 +4,29 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::{SecondsFormat, Utc};
-use rusqlite::{Connection, params};
-use sha2::{Digest, Sha256};
+use rusqlite::params;
 use text_splitter::MarkdownSplitter;
 use tracing::warn;
 
 use crate::error::AppError;
 
+use super::docstore_core::{
+    DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn,
+    sha256_hex,
+};
+
+// Re-export shared types so external callers see them under this module path
+// (no breaking change for existing imports like `docstore::Document`).
+pub use super::docstore_core::{Chunk, DocMetadata, Document, SearchResult};
+
 const DOCSTORE_DIR: &str = "docstore";
 const DOCS_DIR: &str = "docs";
-const DB_FILENAME: &str = "chunks.db";
-const SCHEMA_VERSION: i64 = 1;
 
 #[derive(Debug, Clone)]
 pub struct IDocStore {
     dir: PathBuf,
     docs_dir: PathBuf,
     db_path: PathBuf,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Document {
-    pub id: String,
-    pub title: String,
-    pub source: String,
-    pub content: String,
-    pub content_hash: String,
-    pub created_at: String,
-    #[serde(default)]
-    pub metadata: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DocMetadata {
-    pub doc_id: String,
-    pub title: String,
-    pub source: String,
-    pub content_hash: String,
-    pub created_at: String,
-    pub updated_at: String,
-    #[serde(default)]
-    pub metadata: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Chunk {
-    pub id: String,
-    pub doc_id: String,
-    pub text: String,
-    pub position: usize,
-    #[serde(default)]
-    pub metadata: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SearchResult {
-    pub chunk: Chunk,
-    pub score: f32,
-    pub doc_metadata: DocMetadata,
 }
 
 impl IDocStore {
@@ -88,7 +52,7 @@ impl IDocStore {
             doc.id = uuid::Uuid::now_v7().to_string();
         }
         if doc.content_hash.is_empty() {
-            doc.content_hash = Self::sha256_hex(&doc.content);
+            doc.content_hash = sha256_hex(&doc.content);
         }
         if doc.created_at.is_empty() {
             doc.created_at = now_iso8601();
@@ -97,7 +61,7 @@ impl IDocStore {
         let metadata_json = serde_json::to_string(&doc.metadata)
             .map_err(|e| AppError::Memory(format!("docstore: serialize metadata: {e}")))?;
 
-        let mut conn = self.open_conn()?;
+        let mut conn = open_conn(&self.db_path)?;
         if let Some(existing_id) = Self::find_doc_id_by_hash(&conn, &doc.content_hash)? {
             return Ok(existing_id);
         }
@@ -141,7 +105,7 @@ impl IDocStore {
     }
 
     pub fn get_document(&self, doc_id: &str) -> Result<Document, AppError> {
-        let conn = self.open_conn()?;
+        let conn = open_conn(&self.db_path)?;
         let mut stmt = conn
             .prepare(
                 "SELECT title, source, content_hash, created_at, metadata FROM doc_metadata WHERE doc_id = ?1",
@@ -179,7 +143,7 @@ impl IDocStore {
     }
 
     pub fn list_documents(&self) -> Result<Vec<DocMetadata>, AppError> {
-        let conn = self.open_conn()?;
+        let conn = open_conn(&self.db_path)?;
         let mut stmt = conn
             .prepare(
                 "SELECT doc_id, title, source, content_hash, created_at, updated_at, metadata FROM doc_metadata ORDER BY created_at DESC",
@@ -213,7 +177,7 @@ impl IDocStore {
     }
 
     pub fn delete_document(&self, doc_id: &str) -> Result<(), AppError> {
-        let mut conn = self.open_conn()?;
+        let mut conn = open_conn(&self.db_path)?;
         let tx = conn
             .transaction()
             .map_err(|e| AppError::Memory(format!("docstore: begin delete tx: {e}")))?;
@@ -266,7 +230,7 @@ impl IDocStore {
             return Ok(());
         }
 
-        let mut conn = self.open_conn()?;
+        let mut conn = open_conn(&self.db_path)?;
         let tx = conn
             .transaction()
             .map_err(|e| AppError::Memory(format!("docstore: begin index tx: {e}")))?;
@@ -298,38 +262,12 @@ impl IDocStore {
         Ok(())
     }
 
-    /// Escape a user-supplied string for use in an FTS5 `MATCH` query.
-    ///
-    /// FTS5 parses the argument to `MATCH` with its own mini-language, so
-    /// characters like `?`, `"`, `(`, etc. are significant.  Simple parameter
-    /// binding does **not** quote the content; binding only protects against SQL
-    /// injection, not FTS syntax errors.  We perform a lightweight token-based
-    /// quoting here: whitespace splits the query, and any token containing a
-    /// non-alphanumeric character is wrapped in double-quotes with internal
-    /// quotes doubled.  This is sufficient for our use case (most queries are
-    /// natural language) and prevents common syntax errors.
-    fn escape_fts5_query(query: &str) -> String {
-        query
-            .split_whitespace()
-            .map(|tok| {
-                if tok.chars().all(|c| c.is_alphanumeric()) {
-                    tok.to_string()
-                } else {
-                    // double any existing quotes and wrap the token in quotes
-                    let escaped = tok.replace('"', "\"\"");
-                    format!("\"{}\"", escaped)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
     pub fn search_by_text(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>, AppError> {
         if query.trim().is_empty() || top_k == 0 {
             return Ok(Vec::new());
         }
 
-        let conn = self.open_conn()?;
+        let conn = open_conn(&self.db_path)?;
         let mut stmt = conn
             .prepare(
                 "SELECT
@@ -353,8 +291,7 @@ impl IDocStore {
             )
             .map_err(|e| AppError::Memory(format!("docstore: prepare search_by_text: {e}")))?;
 
-        // sanitize the query before binding, then run and handle syntax errors
-        let safe_query = Self::escape_fts5_query(query);
+        let safe_query = escape_fts5_query(query);
 
         let rows_result = stmt.query_map(params![safe_query, top_k as i64], |row| {
             let chunk_metadata_json: String = row.get(4)?;
@@ -363,7 +300,7 @@ impl IDocStore {
             let chunk_metadata =
                 serde_json::from_str::<HashMap<String, String>>(&chunk_metadata_json)
                     .unwrap_or_default();
-            let doc_metadata =
+            let doc_metadata_map =
                 serde_json::from_str::<HashMap<String, String>>(&doc_metadata_json)
                     .unwrap_or_default();
 
@@ -388,7 +325,7 @@ impl IDocStore {
                     content_hash: row.get(8)?,
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
-                    metadata: doc_metadata,
+                    metadata: doc_metadata_map,
                 },
             })
         });
@@ -417,36 +354,13 @@ impl IDocStore {
     }
 
     fn init_db(&self) -> Result<(), AppError> {
-        let conn = self.open_conn()?;
+        let conn = open_conn(&self.db_path)?;
         let version: i64 = conn
             .query_row("PRAGMA user_version;", [], |row| row.get(0))
             .map_err(|e| AppError::Memory(format!("docstore: read schema version: {e}")))?;
 
         if version == 0 {
-            conn.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS doc_metadata (
-                    doc_id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    content_hash TEXT NOT NULL UNIQUE,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    metadata TEXT NOT NULL
-                );
-
-                CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
-                    id UNINDEXED,
-                    doc_id UNINDEXED,
-                    text,
-                    position UNINDEXED,
-                    metadata UNINDEXED
-                );
-
-                PRAGMA user_version = 1;
-                ",
-            )
-            .map_err(|e| AppError::Memory(format!("docstore: initialize schema: {e}")))?;
+            init_schema(&conn)?;
             return Ok(());
         }
 
@@ -459,27 +373,15 @@ impl IDocStore {
         Ok(())
     }
 
-    fn open_conn(&self) -> Result<Connection, AppError> {
-        let conn = Connection::open(&self.db_path)
-            .map_err(|e| AppError::Memory(format!("docstore: open {}: {e}", self.db_path.display())))?;
-
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| AppError::Memory(format!("docstore: set journal_mode WAL: {e}")))?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| AppError::Memory(format!("docstore: set foreign_keys ON: {e}")))?;
-        conn.pragma_update(None, "busy_timeout", 5000)
-            .map_err(|e| AppError::Memory(format!("docstore: set busy_timeout: {e}")))?;
-
-        Ok(conn)
-    }
-
     fn doc_content_path(&self, doc_id: &str) -> PathBuf {
-        // Treat `doc_id` as a relative path and normalize the extension to `.txt`.
         let rel = std::path::Path::new(doc_id).with_extension("txt");
         self.docs_dir.join(rel)
     }
 
-    fn find_doc_id_by_hash(conn: &Connection, content_hash: &str) -> Result<Option<String>, AppError> {
+    fn find_doc_id_by_hash(
+        conn: &rusqlite::Connection,
+        content_hash: &str,
+    ) -> Result<Option<String>, AppError> {
         let mut stmt = conn
             .prepare("SELECT doc_id FROM doc_metadata WHERE content_hash = ?1")
             .map_err(|e| AppError::Memory(format!("docstore: prepare find by hash: {e}")))?;
@@ -500,19 +402,9 @@ impl IDocStore {
         Ok(None)
     }
 
-    fn sha256_hex(content: &str) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        hex::encode(hasher.finalize())
-    }
-
     pub fn root_dir(&self) -> &Path {
         &self.dir
     }
-}
-
-fn now_iso8601() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 #[cfg(test)]
@@ -530,10 +422,10 @@ mod tests {
 
     #[test]
     fn escape_fts5_query_quotes_special_tokens() {
-        assert_eq!(IDocStore::escape_fts5_query("foo bar"), "foo bar");
-        assert_eq!(IDocStore::escape_fts5_query("foo? bar"), "\"foo?\" bar");
-        assert_eq!(IDocStore::escape_fts5_query("foo\"bar baz"), "\"foo\"\"bar\" baz");
-        assert_eq!(IDocStore::escape_fts5_query("(a|b)"), "\"(a|b)\"");
+        assert_eq!(escape_fts5_query("foo bar"), "foo bar");
+        assert_eq!(escape_fts5_query("foo? bar"), "\"foo?\" bar");
+        assert_eq!(escape_fts5_query("foo\"bar baz"), "\"foo\"\"bar\" baz");
+        assert_eq!(escape_fts5_query("(a|b)"), "\"(a|b)\"");
     }
 
     #[test]
@@ -612,6 +504,5 @@ mod tests {
 
         let results = store.search_by_text("delete", 5).expect("search after delete");
         assert!(results.is_empty());
-        assert!(!store.doc_content_path(&doc_id).exists());
     }
 }

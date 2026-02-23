@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgentsConfig, DocsAgentConfig};
+use crate::config::{AgentsConfig, DocsAgentConfig, DocsKgConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -35,6 +35,8 @@ mod gmail;
 mod news;
 #[cfg(feature = "plugin-docs")]
 mod docs;
+#[cfg(feature = "plugin-docs")]
+mod docs_import;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -55,8 +57,13 @@ pub struct AgentsState {
     pub llm_rates: ModelRates,
     /// Default args JSON forwarded by the `news` agent to `newsmail_aggregator/get`.
     pub news_query_args_json: String,
-    /// Optional path for the docs agent to read.
-    pub docs_path: Option<String>,
+    /// Index document ID (relative path) that the docs agent falls back to
+    /// when no RAG search result is returned for a query.
+    pub docs_index_name: Option<String>,
+    /// Enable the KG-RAG pipeline in the docs agent.
+    pub docs_use_kg: bool,
+    /// KG tuning parameters forwarded to IKGDocStore.
+    pub docs_kg_config: DocsKgConfig,
 }
 
 impl AgentsState {
@@ -66,7 +73,9 @@ impl AgentsState {
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
         news_query_args_json: String,
-        docs_path: Option<String>,
+        docs_index_name: Option<String>,
+        docs_use_kg: bool,
+        docs_kg_config: DocsKgConfig,
     ) -> Self {
         Self {
             bus,
@@ -75,7 +84,9 @@ impl AgentsState {
             agent_identities,
             llm_rates: ModelRates::default(),
             news_query_args_json,
-            docs_path,
+            docs_index_name,
+            docs_use_kg,
+            docs_kg_config,
         }
     }
 
@@ -212,6 +223,9 @@ pub struct AgentsSubsystem {
     default_agent: String,
     channel_map: HashMap<String, String>,
     enabled_agents: HashSet<String>,
+    /// Source directory for docs import (populated from config).
+    #[cfg(feature = "plugin-docs")]
+    docs_source_dir: Option<std::path::PathBuf>,
 }
 
 impl AgentsSubsystem {
@@ -251,7 +265,23 @@ impl AgentsSubsystem {
             None => "{}".to_string(),
         };
 
-        let docs_path = config.docs.clone().and_then(|d| d.path.clone());
+        #[cfg(feature = "plugin-docs")]
+        let docs_source_dir: Option<std::path::PathBuf> = config
+            .docs
+            .as_ref()
+            .and_then(|d| d.docsdir.as_deref())
+            .map(std::path::PathBuf::from);
+        let docs_index_name: Option<String> = config
+            .docs
+            .as_ref()
+            .filter(|d| d.docsdir.is_some())
+            .map(|d| d.index.clone().unwrap_or_else(|| "index.md".to_string()));
+        let docs_use_kg = config.docs.as_ref().map(|d| d.use_kg).unwrap_or(false);
+        let docs_kg_config = config
+            .docs
+            .as_ref()
+            .map(|d| d.kg.clone())
+            .unwrap_or_default();
 
         // Register all known built-in agents.
         // Uses agent.id() as the HashMap key so the trait method is the
@@ -309,13 +339,51 @@ impl AgentsSubsystem {
                 agent_memory,
                 agent_identities,
                 news_query_args_json,
-                docs_path,
+                docs_index_name,
+                docs_use_kg,
+                docs_kg_config,
             )),
             agents,
             default_agent,
             channel_map: config.channel_map,
             enabled_agents,
+            #[cfg(feature = "plugin-docs")]
+            docs_source_dir,
         })
+    }
+
+    /// Initialise the docs agent docstore by importing content from the configured
+    /// source directory.  Should be called once after construction, before the
+    /// subsystem receives any requests.  Safe to call from an async context.
+    ///
+    /// If no `docsdir` is configured this is a no-op.
+    #[cfg(feature = "plugin-docs")]
+    pub async fn init_docs(&self) -> Result<(), AppError> {
+        let source_dir = match &self.docs_source_dir {
+            Some(d) => d.clone(),
+            None => return Ok(()),
+        };
+
+        let identity = match self.state.agent_identities.get("docs") {
+            Some(id) => id.clone(),
+            None => {
+                tracing::warn!("init_docs: 'docs' agent identity not found; skipping import");
+                return Ok(());
+            }
+        };
+
+        let index_name = self
+            .state
+            .docs_index_name
+            .clone()
+            .unwrap_or_else(|| "index.md".to_string());
+        let identity_dir = identity.identity_dir.clone();
+
+        tokio::task::spawn_blocking(move || {
+            docs_import::populate_docstore_from_source(&identity_dir, &source_dir, &index_name)
+        })
+        .await
+        .map_err(|e| AppError::Memory(format!("init_docs: spawn_blocking panicked: {e}")))?
     }
 
     /// Set the LLM pricing rates on the shared state.
@@ -1056,12 +1124,12 @@ mod tests {
         let mut rx = bus.rx;
         let (_dir, memory) = test_memory();
 
-        // prepare a temporary file with known content
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(tmp.path(), "the quick brown fox").unwrap();
-        let doc_path = tmp.path().to_str().unwrap().to_string();
+        // Prepare a temp docs directory with an index.md containing known content.
+        let docs_tmp = tempfile::TempDir::new().unwrap();
+        std::fs::write(docs_tmp.path().join("index.md"), "the quick brown fox").unwrap();
+        let docsdir = docs_tmp.path().to_str().unwrap().to_string();
 
-        // fake LLM responder that checks prompt
+        // Fake LLM responder that checks the prompt includes the docs content.
         tokio::spawn(async move {
             if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
                 assert_eq!(method, "llm/complete");
@@ -1084,9 +1152,11 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
-            docs: Some(DocsAgentConfig { path: Some(doc_path.clone()) }),
+            docs: Some(DocsAgentConfig { docsdir: Some(docsdir), index: Some("index.md".to_string()) }),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        // Populate the docs docstore before handling any queries.
+        agents.init_docs().await.unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
@@ -1101,7 +1171,7 @@ mod tests {
         }
     }
 
-    /// Asking docs agent with missing file returns error.
+    /// Asking the docs agent when the docstore is empty returns an error.
     #[cfg(feature = "plugin-docs")]
     #[tokio::test]
     async fn docs_agent_missing_file_errors() {
@@ -1113,9 +1183,11 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
-            docs: Some(DocsAgentConfig { path: Some("nonexistent.md".to_string()) }),
+            // No docsdir configured — docstore will remain empty.
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        // Do NOT call init_docs — docstore stays empty.
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(

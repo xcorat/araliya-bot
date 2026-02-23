@@ -22,4 +22,5 @@ default = "docs"
 
 [agents.docs]
 enabled = true
-path = "combined_docs.md"
+docsdir = "docs/"
+index = "index.md"

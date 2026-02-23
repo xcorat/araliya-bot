@@ -73,9 +73,22 @@ enabled = false
 [agents.docs]
 # Docs agent — reads a Markdown file and answers questions by forwarding
 # to the configured LLM.
-# Path is relative to the working directory; defaults to "docs/quick-intro.md".
+# By definition has a docstore (idocstore) and a session store; no separate memory config.
 enabled = false
-path = "docs/quick-intro.md"
+docsdir = "docs/"
+index = "index.md"
+# Set use_kg = true to enable the KG-RAG pipeline (requires ikgdocstore feature
+# and at least one call to rebuild_kg after indexing documents).
+use_kg = false
+
+[agents.docs.kg]
+# KG pipeline tuning (only used when use_kg = true).
+min_entity_mentions = 2    # drop entities seen fewer than N times
+bfs_max_depth = 2          # BFS hops from seed entities
+edge_weight_threshold = 0.15  # minimum normalised edge weight to follow
+max_chunks = 8             # total chunk budget in context
+fts_share = 0.5            # fraction of budget filled by FTS results
+max_seeds = 5              # cap on seed entities per query
 
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
@@ -120,6 +133,7 @@ api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
 model = "qwen2.5-instruct"
 temperature = 0.2
 timeout_seconds = 60
+max_tokens = 8192
 # Token pricing (USD per 1 million tokens). Defaults to 0.0 when not set.
 input_per_million_usd = 0.0
 output_per_million_usd = 0.0

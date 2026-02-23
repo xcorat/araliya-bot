@@ -64,6 +64,7 @@ gmail-app = []
 subsystem-agents = ["subsystem-memory"]
 subsystem-memory = []
 idocstore = ["dep:rusqlite", "dep:text-splitter"]
+ikgdocstore = ["dep:rusqlite", "dep:text-splitter"]
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = []
@@ -73,6 +74,7 @@ subsystem-cron = []
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
 plugin-docs = ["subsystem-agents", "idocstore"]
+plugin-docs-kg = ["subsystem-agents", "ikgdocstore"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
@@ -134,3 +136,8 @@ required-features = ["ui-beacon"]
 name = "test_docstore"
 path = "tests/test_docstore.rs"
 required-features = ["idocstore", "subsystem-memory"]
+
+[[test]]
+name = "test_kg_docstore"
+path = "tests/test_kg_docstore.rs"
+required-features = ["ikgdocstore", "subsystem-memory"]

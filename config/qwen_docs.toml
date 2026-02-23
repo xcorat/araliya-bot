@@ -1,0 +1,59 @@
+# Local test overlay for Qwen + News agent + HTTP (axum).
+# Usage: cargo run -- -f config/qwen_docs.toml
+
+[meta]
+base = "default.toml"
+
+[supervisor]
+log_level = "debug"
+
+[comms.pty]
+enabled = true
+
+[comms.http]
+# Keep legacy HTTP adapter off; use axum channel below.
+enabled = false
+
+[comms.axum_channel]
+enabled = true
+bind = "127.0.0.1:8080"
+
+[comms.telegram]
+# Local testing overlay avoids external Telegram dependencies.
+enabled = true
+
+[agents]
+# Route unrouted prompts to the news agent for newsletter workflow testing.
+default = "docs"
+
+[agents.echo]
+enabled = false
+
+[agents.basic_chat]
+enabled = false
+
+[agents.chat]
+enabled = true
+
+[agents.docs]
+# Optional docs agent for side-by-side LLM sanity checks.
+enabled = true
+docsdir = "docs/"
+index = "index.md"
+
+[llm]
+default = "qwen"
+
+[llm.qwen]
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 180
+max_tokens = 8192
+input_per_million_usd = 0.0
+output_per_million_usd = 0.0
+cached_input_per_million_usd = 0.0
+
+[ui.svui]
+enabled = true
+static_dir = "ui/build"

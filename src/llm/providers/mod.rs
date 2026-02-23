@@ -30,6 +30,17 @@ pub fn build(config: &LlmConfig, api_key: Option<String>) -> Result<LlmProvider,
         }
         "qwen" => {
             let q = &config.qwen;
+            // #region agent log
+            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                let line = format!("{{\"location\":\"providers/mod.rs:build\",\"message\":\"llm provider built\",\"data\":{{\"provider\":\"qwen\",\"api_base_url\":\"{}\",\"model\":\"{}\",\"timeout_seconds\":{}}},\"timestamp\":{},\"hypothesisId\":\"H4\"}}\n",
+                    q.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
+                    q.model.replace('\\', "\\\\").replace('"', "\\\""),
+                    q.timeout_seconds, ts);
+                let _ = f.write_all(line.as_bytes());
+            }
+            // #endregion
             let p = qwen::QwenProvider::new(
                 q.api_base_url.clone(),
                 q.model.clone(),

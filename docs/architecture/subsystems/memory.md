@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval**.
+**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval** · **optional `IKGDocStore` (`ikgdocstore` Cargo feature) for KG-augmented RAG retrieval**.
 
 ---
 
@@ -160,6 +160,24 @@ When built with feature `idocstore`, agents can host an indexed document store u
 
 Phase 1 APIs include document add/list/get/delete, smart Markdown-aware chunking (`text-splitter`), indexing, hash-based deduplication (`SHA-256`), and BM25 text search.
 
+## Data Layout (agent-scoped KG docstore, optional)
+
+When built with feature `ikgdocstore`, agents can additionally host a knowledge-graph augmented store.  Both stores can coexist in the same identity directory without conflict — they write to separate sub-directories.
+
+```
+{agent_identity_dir}/
+└── kgdocstore/
+    ├── chunks.db                  SQLite + FTS5 (same schema as IDocStore)
+    ├── docs/
+    │   └── {doc_id}.txt           raw document payload
+    └── kg/
+        ├── entities.json          extracted entities (id, name, kind, mention_count)
+        ├── relations.json         extracted relations (from, to, label, weight)
+        └── graph.json             combined graph — fast-load file for query time
+```
+
+The KG is built offline via `rebuild_kg()` after documents are indexed, and consulted at query time by `search_with_kg()`.  Falls back to pure FTS when the graph is absent or no seed entities match the query.
+
 ### `spend.json` shape
 
 ```json
@@ -252,13 +270,14 @@ memory = ["basic_session"]  # store types this agent uses
 | `memory.basic_session.transcript_cap` | usize | 500 | Maximum transcript entries before FIFO eviction. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Store types (`"basic_session"` or `"tmp"`). |
 
-Core memory is always compiled. `IDocStore` is behind the Cargo feature gate `idocstore`.
+Core memory is always compiled. `IDocStore` is behind the Cargo feature gate `idocstore`; `IKGDocStore` is behind `ikgdocstore`.
 
 ---
 
 ## Related Documentation
 
 - [intelligent_doc_store.md](intelligent_doc_store.md) — IDocStore API, schema, integration patterns
+- [kg_docstore.md](kg_docstore.md) — IKGDocStore API, KG build/query pipeline, configuration
 - [../../identity.md](../../identity.md) — agent identity provisioning and directory layout
 - [../../standards/index.md](../../standards/index.md) — bus protocol and subsystem patterns
 

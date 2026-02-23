@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
@@ -111,7 +113,7 @@ impl Agent for NewsAgentPlugin {
                             warn!(error = %e, "news: failed to persist texts");
                         }
                         let cached = store.kv_get(&cache_key_clone).unwrap_or(None);
-                        let session = store.get_or_create_session(&memory).map_err(|e| {
+                        let session = store.get_or_create_session(&memory, "news").map_err(|e| {
                             warn!(error = %e, "news: failed to open agent session");
                             e
                         }).ok();
@@ -222,19 +224,19 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
 
 /// Format [`TextItem`]s into an LLM summarisation prompt.
 fn build_summary_prompt(items: &[TextItem]) -> String {
-    let mut lines = String::from(
-        "You are a news digest assistant. \
-         Summarize the following email news items briefly and clearly in markdown text. \
-         Group related topics if possible. Do not use JSON. Ignore anything too spectacal-like  . \
-         **Lightly** use *italics*, **bold**, and unicode icons/flags to enhance readability\n\n",
-    );
+    let prompt_path = Path::new("config/prompts/news_summary.txt");
+    let template = fs::read_to_string(prompt_path).unwrap_or_else(|_| {
+        // fallback to a minimal prompt if file missing
+        "Summarize the following news items:\n\n{{items}}".to_string()
+    });
+    let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let subject = item.metadata.get("subject").map(|s| s.as_str()).unwrap_or("(no subject)");
         let from    = item.metadata.get("from").map(|s| s.as_str()).unwrap_or("");
         let date    = item.metadata.get("date").map(|s| s.as_str()).unwrap_or("");
-        lines.push_str(&format!("[{}] {}\n    From: {}  Date: {}\n", i + 1, subject, from, date));
+        items_str.push_str(&format!("[{}] {}\n    From: {}  Date: {}\n", i + 1, subject, from, date));
     }
-    lines
+    template.replace("{{items}}", &items_str)
 }
 
 /// Parse a JSON array from the tool response into [`TextItem`]s.

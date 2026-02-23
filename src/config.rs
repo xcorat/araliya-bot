@@ -118,6 +118,8 @@ pub struct QwenConfig {
     pub temperature: f32,
     /// Per-request HTTP timeout in seconds.
     pub timeout_seconds: u64,
+    /// Maximum output tokens (limits prompt length to stay within context window).
+    pub max_tokens: usize,
     /// Token pricing rates (USD per 1 million tokens).
     pub input_per_million_usd: f64,
     pub output_per_million_usd: f64,
@@ -164,12 +166,48 @@ pub struct NewsAgentQueryConfig {
     pub q: Option<String>,
 }
 
-/// Configuration for the lightweight `docs` agent.
+/// Configuration for the docs agent.
 #[derive(Debug, Clone)]
 pub struct DocsAgentConfig {
-    /// Path to the markdown file the agent should read.
-    /// If `None` the agent will fall back to "docs/quick-intro.md".
-    pub path: Option<String>,
+    /// Directory containing the documentation tree to import into memory.
+    /// All `.md` and `.txt` files under this directory (except any `images`
+    /// sub-directory) are copied into the agent docstore on first run.
+    pub docsdir: Option<String>,
+    /// Relative path of the index document inside `docsdir`.
+    /// Defaults to `"index.md"` when absent.
+    pub index: Option<String>,
+    /// Enable the KG-RAG pipeline. Requires `ikgdocstore` Cargo feature and
+    /// `rebuild_kg` to have been run at least once. Defaults to `false`.
+    pub use_kg: bool,
+    /// Tuning parameters for the KG pipeline.  Defaults are applied when absent.
+    pub kg: DocsKgConfig,
+}
+
+/// Tuning parameters for the docs-agent KG pipeline.
+///
+/// These map to `[agents.docs.kg]` in TOML and correspond to
+/// `kg_docstore::KgConfig` at runtime.
+#[derive(Debug, Clone)]
+pub struct DocsKgConfig {
+    pub min_entity_mentions: usize,
+    pub bfs_max_depth: usize,
+    pub edge_weight_threshold: f32,
+    pub max_chunks: usize,
+    pub fts_share: f32,
+    pub max_seeds: usize,
+}
+
+impl Default for DocsKgConfig {
+    fn default() -> Self {
+        Self {
+            min_entity_mentions: 2,
+            bfs_max_depth: 2,
+            edge_weight_threshold: 0.15,
+            max_chunks: 8,
+            fts_share: 0.5,
+            max_seeds: 5,
+        }
+    }
 }
 
 
@@ -348,6 +386,8 @@ struct RawQwenConfig {
     temperature: f32,
     #[serde(default = "default_qwen_timeout_seconds")]
     timeout_seconds: u64,
+    #[serde(default = "default_qwen_max_tokens")]
+    max_tokens: usize,
     #[serde(default)]
     input_per_million_usd: f64,
     #[serde(default)]
@@ -363,6 +403,7 @@ impl Default for RawQwenConfig {
             model: default_qwen_model(),
             temperature: default_qwen_temperature(),
             timeout_seconds: default_qwen_timeout_seconds(),
+            max_tokens: default_qwen_max_tokens(),
             input_per_million_usd: 0.0,
             output_per_million_usd: 0.0,
             cached_input_per_million_usd: 0.0,
@@ -379,6 +420,7 @@ fn default_qwen_api_base_url() -> String { "http://127.0.0.1:8081/v1/chat/comple
 fn default_qwen_model() -> String { "qwen2.5-instruct".to_string() }
 fn default_qwen_temperature() -> f32 { 0.2 }
 fn default_qwen_timeout_seconds() -> u64 { 60 }
+fn default_qwen_max_tokens() -> usize { 8192 }
 
 #[derive(Deserialize, Default)]
 struct RawAgents {
@@ -404,9 +446,34 @@ struct RawAgentEntry {
     /// Optional per-agent query defaults (used by `agents.news.query`).
     #[serde(default)]
     query: Option<RawNewsAgentQuery>,
-    /// For the `docs` agent this may specify the path to read.
-    #[serde(default, rename = "path")]
-    docs_path: Option<String>,
+    /// For the `docs` agent — directory containing the documentation tree.
+    #[serde(default)]
+    docsdir: Option<String>,
+    /// For the `docs` agent — index document within `docsdir`.
+    #[serde(default)]
+    index: Option<String>,
+    /// For the `docs` agent — enable KG-RAG pipeline.
+    #[serde(default)]
+    use_kg: bool,
+    /// For the `docs` agent — KG tuning parameters.
+    #[serde(default)]
+    kg: RawKgConfig,
+}
+
+#[derive(Deserialize, Default)]
+struct RawKgConfig {
+    #[serde(default)]
+    min_entity_mentions: Option<usize>,
+    #[serde(default)]
+    bfs_max_depth: Option<usize>,
+    #[serde(default)]
+    edge_weight_threshold: Option<f32>,
+    #[serde(default)]
+    max_chunks: Option<usize>,
+    #[serde(default)]
+    fts_share: Option<f32>,
+    #[serde(default)]
+    max_seeds: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -663,6 +730,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     model: "qwen2.5-instruct".to_string(),
                     temperature: 0.2,
                     timeout_seconds: 60,
+                    max_tokens: 8192,
                     input_per_million_usd: 0.0,
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
@@ -726,8 +794,24 @@ pub fn load_from(
 
     let docs_cfg = parsed.agents.entries
         .get("docs")
-        .and_then(|entry| entry.docs_path.clone())
-        .map(|p| DocsAgentConfig { path: Some(p) });
+        .map(|entry| {
+            let defaults = DocsKgConfig::default();
+            let kg = DocsKgConfig {
+                min_entity_mentions: entry.kg.min_entity_mentions.unwrap_or(defaults.min_entity_mentions),
+                bfs_max_depth: entry.kg.bfs_max_depth.unwrap_or(defaults.bfs_max_depth),
+                edge_weight_threshold: entry.kg.edge_weight_threshold.unwrap_or(defaults.edge_weight_threshold),
+                max_chunks: entry.kg.max_chunks.unwrap_or(defaults.max_chunks),
+                fts_share: entry.kg.fts_share.unwrap_or(defaults.fts_share),
+                max_seeds: entry.kg.max_seeds.unwrap_or(defaults.max_seeds),
+            };
+            DocsAgentConfig {
+                docsdir: entry.docsdir.clone(),
+                index: entry.index.clone(),
+                use_kg: entry.use_kg,
+                kg,
+            }
+        })
+        .filter(|d| d.docsdir.is_some());
 
     Ok(Config {
         bot_name: s.bot_name,
@@ -782,6 +866,7 @@ pub fn load_from(
                 model: parsed.llm.qwen.model,
                 temperature: parsed.llm.qwen.temperature,
                 timeout_seconds: parsed.llm.qwen.timeout_seconds,
+                max_tokens: parsed.llm.qwen.max_tokens,
                 input_per_million_usd: parsed.llm.qwen.input_per_million_usd,
                 output_per_million_usd: parsed.llm.qwen.output_per_million_usd,
                 cached_input_per_million_usd: parsed.llm.qwen.cached_input_per_million_usd,
@@ -870,6 +955,7 @@ impl Config {
                     model: "qwen2.5-instruct".into(),
                     temperature: 0.2,
                     timeout_seconds: 60,
+                    max_tokens: 8192,
                     input_per_million_usd: 0.0,
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
@@ -941,11 +1027,14 @@ log_level = "info"
 
 [agents.docs]
 enabled = true
-path = "docs/special.md"
+docsdir = "docs/"
+index = "index.md"
 "#;
         let f = write_toml(toml);
         let cfg = load_from(f.path(), None, None).unwrap();
-        assert_eq!(cfg.agents.docs.as_ref().unwrap().path.as_deref(), Some("docs/special.md"));
+        let docs = cfg.agents.docs.as_ref().unwrap();
+        assert_eq!(docs.docsdir.as_deref(), Some("docs/"));
+        assert_eq!(docs.index.as_deref(), Some("index.md"));
     }
 
     #[test]
@@ -961,13 +1050,15 @@ default = "docs"
 
 [agents.docs]
 enabled = true
-path = "docs/guide.md"
+docsdir = "docs/guide/"
+index = "index.md"
 "#;
         let f = write_toml(toml);
         let cfg = load_from(f.path(), None, None).unwrap();
         assert_eq!(cfg.agents.default_agent, "docs");
-        assert!(cfg.agents.docs.is_some());
-        assert_eq!(cfg.agents.docs.unwrap().path.unwrap(), "docs/guide.md");
+        let docs = cfg.agents.docs.as_ref().unwrap();
+        assert_eq!(docs.docsdir.as_deref(), Some("docs/guide/"));
+        assert_eq!(docs.index.as_deref(), Some("index.md"));
     }
 
     #[test]

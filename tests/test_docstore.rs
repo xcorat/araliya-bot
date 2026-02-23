@@ -116,15 +116,13 @@ fn docstore_chunk_and_search_bm25() {
     assert!(!results.is_empty());
     assert_eq!(results[0].chunk.doc_id, id);
     assert!(results[0].score >= 0.0, "BM25 score should be non-negative (sign-flipped)");
-}
 
-#[test]
-fn docstore_search_empty_query_returns_empty() {
-    let (_tmp, id_dir) = identity_dir();
-    let store = IDocStore::open(&id_dir).unwrap();
-    store.add_document(doc("Doc", "some content")).unwrap();
-    let results = store.search_by_text("", 5).unwrap();
-    assert!(results.is_empty());
+    // queries containing FTS5 special characters should not error and
+    // simply return no hits when nothing matches.
+    let r1 = store.search_by_text("?", 5).unwrap();
+    assert!(r1.is_empty(), "punctuation-only query should round-trip safely");
+    let r2 = store.search_by_text("\"", 5).unwrap();
+    assert!(r2.is_empty(), "quote-only query should round-trip safely");
 }
 
 #[test]

@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.4.1 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`).
+**Status:** v0.5.0 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`) · **`DocsAgentPlugin` with optional KG-RAG path (`IKGDocStore`) and externalised prompt templates**.
 
 ---
 
@@ -17,7 +17,7 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 | `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
 | `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
 | `news` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
-| `docs` | Reads a markdown file and forwards its contents (plus the question) to the LLM. Useful for simple RAG-style lookups. |
+| `docs` | Retrieves context from the agent's document store and answers questions with the LLM.  Uses `IKGDocStore` (KG+FTS) when `use_kg = true` is set in config and the `ikgdocstore` feature is compiled; falls back to plain `IDocStore` (FTS only) otherwise. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -176,7 +176,24 @@ routing.
 
 ---
 
-## Config
+
+## Prompt Configuration
+
+Agent prompts are now externalized as plain text files in `config/prompts/`. Each agent loads its default prompt template from a corresponding file (e.g., `news_summary.txt`, `docs_qa.txt`, `chat_context.txt`).
+
+This approach improves maintainability and security (see [identity.md](../identity.md)), and allows prompt updates without code changes. Templates support variable interpolation using `{{variable}}` syntax (e.g., `{{items}}`, `{{docs}}`, `{{question}}`, `{{history}}`, `{{user_input}}`).
+
+Example directory structure:
+
+```
+config/
+  prompts/
+    news_summary.txt
+    docs_qa.txt
+    chat_context.txt
+```
+
+Agents will fallback to a minimal built-in prompt if the file is missing.
 
 ```toml
 [agents]
@@ -189,33 +206,49 @@ default = "chat"
 memory = ["basic_session"]
 ```
 
-## Future: RAG and Vector Store 🎯
+## Docs Agent — RAG & KG-RAG
 
-The lightweight `docs` agent introduced in v0.0.5 is the first step toward a full
-retrieval‑augmented generation workflow. Its initial behaviour is simple: read a
-single Markdown file and forward both the document and user query to the LLM.
+The `docs` agent supports two retrieval paths, selected at runtime by the `use_kg` config flag:
 
-Planned enhancements include:
+### Path 1 — FTS only (`use_kg = false`, default)
 
-1. **Embeddings & Vector Store** – add a `Vector` collection type within the
-   memory subsystem (`src/subsystems/memory/vector.rs`), backed by a cosine
-   similarity index stored alongside sessions or as a global store. The agent
-   will iterate over `docs/` directory files, embed each paragraph, and insert
-   vectors into the new store.
-2. **Search-api** – expose `MemoryRequest::VectorQuery` on the supervisor bus;
-   implement a `MemoryResponse::VectorResult(Vec<(score, doc_id)>)` response.
-3. **Prompt construction** – during `docs/ask` the agent will query the vector
-   store, fetch the top‑K text snippets, and include only those in the LLM
-   prompt (true RAG). This reduces token usage and improves relevance.
-4. **Caching & updates** – monitor `docs/` for changes and re-index modified
-   files; optionally maintain a timestamped `last_indexed` field in agent store.
+Uses `IDocStore` (feature `idocstore`).  BM25 full-text search over indexed chunks returns the top-K passages which are injected into the LLM prompt.
 
-The vector store design is intentionally self‑contained, allowing other agents
-(such as future analytics or Q&A helpers) to reuse it.
+### Path 2 — KG+FTS (`use_kg = true`, requires feature `ikgdocstore`)
 
-> With the groundwork in place, enabling full RAG is mostly a matter of
-> implementing the vector store and extending `DocsAgentPlugin` to handle
-> retrieval prior to the LLM call.
+Uses `IKGDocStore` (feature `ikgdocstore`).  At query time:
+
+1. Load `kg/graph.json` built by the last `rebuild_kg` call.
+2. Match entity names from the query against the graph.
+3. BFS-traverse from matched seeds up to `bfs_max_depth` hops.
+4. Collect chunk IDs from visited entities and relations.
+5. Also run FTS for `ceil(max_chunks × fts_share)` passages.
+6. Merge, rank (KG bonus + FTS bonus), trim to `max_chunks`.
+7. Prepend a `## Knowledge Graph Context` summary (seed entities + their top neighbours).
+8. Falls back to pure FTS if the graph is absent or no seeds match.
+
+### Docs agent config
+
+```toml
+[agents.docs]
+use_kg = true          # enable KG path (default: false)
+
+[agents.docs.kg]
+min_entity_mentions   = 2
+bfs_max_depth         = 2
+edge_weight_threshold = 0.15
+max_chunks            = 8
+fts_share             = 0.50
+max_seeds             = 5
+```
+
+See [kg_docstore.md](kg_docstore.md) for full parameter reference.
+
+### Future
+
+- **Embeddings / vector store** — semantic search alongside BM25 and KG for a three-signal ranking.
+- **Incremental KG update** — re-extract only changed/new chunks instead of full rebuild.
+- **Cross-agent queries** — shared KG across agents of the same identity group.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -223,4 +256,11 @@ The vector store design is intentionally self‑contained, allowing other agents
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
-| `agents.docs.path` | string | *none* | Path to markdown file read by the `docs` agent (relative to working dir). Defaults to `docs/quick-intro.md`. |
+| `agents.docs.path` | string | `docs/quick-intro.md` | Fallback Markdown file when KG is disabled. |
+| `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path via `IKGDocStore`. Requires feature `ikgdocstore`. |
+| `agents.docs.kg.min_entity_mentions` | usize | `2` | Minimum mentions for an entity to survive the KG filter. |
+| `agents.docs.kg.bfs_max_depth` | usize | `2` | BFS hop limit from seed entities. |
+| `agents.docs.kg.edge_weight_threshold` | f32 | `0.15` | Minimum edge weight to follow during BFS. |
+| `agents.docs.kg.max_chunks` | usize | `8` | Total chunk budget in the assembled context. |
+| `agents.docs.kg.fts_share` | f32 | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
+| `agents.docs.kg.max_seeds` | usize | `5` | Maximum seed entities used for BFS. |

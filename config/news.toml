@@ -10,7 +10,8 @@ default = "news"
 
 [agents.docs]
 enabled = true
-path = "docs/quick-intro.md"
+docsdir = "docs/"
+index = "index.md"
 
 [agents.news]
 enabled = true

@@ -127,12 +127,14 @@ async fn handle_with_memory(
         }
     };
 
-    // Build the full prompt with context.
-    let prompt = if context.is_empty() {
-        content.to_string()
-    } else {
-        format!("Previous conversation:\n{context}\nuser: {content}")
-    };
+    // Build the full prompt with context using external template.
+    let prompt_template = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
+        // fallback minimal prompt
+        "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
+    });
+    let prompt = prompt_template
+        .replace("{{history}}", &context)
+        .replace("{{user_input}}", content);
 
     // Get LLM completion.
     let result = ChatCore::basic_complete(state, channel_id, &prompt).await;

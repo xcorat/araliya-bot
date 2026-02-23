@@ -280,9 +280,12 @@ impl AgentStore {
     /// The session ID is persisted in the agent KV store under
     /// `active_session_id` so the same rolling transcript is reused across
     /// restarts.  The session lives at `{identity_dir}/sessions/{uuid}/`.
+    ///
+    /// `agent_id` is written as `last_agent` in the session index (e.g. `"docs"`, `"news"`).
     pub fn get_or_create_session(
         &self,
         memory: &MemorySystem,
+        agent_id: &str,
     ) -> Result<SessionHandle, AppError> {
         let sessions_root = self.agent_sessions_dir();
         let index_path = self.agent_sessions_index();
@@ -291,7 +294,7 @@ impl AgentStore {
             .map_err(|e| AppError::Memory(format!("agent: cannot create sessions dir: {e}")))?;
 
         if let Some(sid) = self.kv_get("active_session_id")? {
-            match memory.load_session_in(&sessions_root, &index_path, &sid, Some("agent")) {
+            match memory.load_session_in(&sessions_root, &index_path, &sid, Some(agent_id)) {
                 Ok(handle) => return Ok(handle),
                 Err(_) => {
                     // Session missing from index or dir — create a fresh one.
@@ -304,7 +307,7 @@ impl AgentStore {
             &sessions_root,
             &index_path,
             &["basic_session"],
-            Some("agent"),
+            Some(agent_id),
         )?;
         self.kv_set("active_session_id", &handle.session_id)?;
         Ok(handle)

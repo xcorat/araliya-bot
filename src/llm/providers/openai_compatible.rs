@@ -24,6 +24,7 @@ pub struct OpenAiCompatibleProvider {
     api_base_url: String,
     model: String,
     temperature: f32,
+    timeout_seconds: u64,
     api_key: Option<String>,
 }
 
@@ -44,7 +45,7 @@ impl OpenAiCompatibleProvider {
             .build()
             .map_err(|e| ProviderError::Request(format!("failed to build HTTP client: {e}")))?;
 
-        Ok(Self { client, api_base_url, model, temperature, api_key })
+        Ok(Self { client, api_base_url, model, temperature, timeout_seconds, api_key })
     }
 
     /// Send `content` as a single user message and return the assistant's reply with usage.
@@ -82,7 +83,31 @@ impl OpenAiCompatibleProvider {
             req = req.bearer_auth(key);
         }
 
+        // #region agent log
+        if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+            let line = format!("{{\"location\":\"openai_compatible.rs:complete\",\"message\":\"llm request start\",\"data\":{{\"url\":\"{}\",\"model\":\"{}\",\"timeout_seconds\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
+                self.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
+                self.model.replace('\\', "\\\\").replace('"', "\\\""),
+                self.timeout_seconds, ts);
+            let _ = f.write_all(line.as_bytes());
+        }
+        // #endregion
+
         let response = req.send().await.map_err(|e| {
+            // #region agent log
+            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                let err_msg = e.to_string().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ");
+                let line = format!("{{\"location\":\"openai_compatible.rs:send_err\",\"message\":\"llm request failed\",\"data\":{{\"url\":\"{}\",\"error\":\"{}\",\"is_timeout\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
+                    self.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
+                    err_msg,
+                    e.is_timeout(), ts);
+                let _ = f.write_all(line.as_bytes());
+            }
+            // #endregion
             error!(url = %self.api_base_url, error = %e, "LLM HTTP request failed (transport)");
             ProviderError::Request(e.to_string())
         })?;

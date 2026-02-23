@@ -42,4 +42,5 @@ t_interval = "3d"  # also supports: 1mon, 1min, 1h, 1w
 
 [agents.docs]
 enabled = true
-path = "docs/quick-intro.md"
+docsdir = "docs/"
+index = "index.md"

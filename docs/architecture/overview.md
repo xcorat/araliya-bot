@@ -79,6 +79,7 @@ See [identity.md](identity.md) for full details.
 - [subsystems/agents.md](subsystems/agents.md) — agent routing, LLM wiring, method grammar
 - [subsystems/llm.md](subsystems/llm.md) — LLM provider abstraction, dummy provider, adding real providers
 - [subsystems/memory.md](subsystems/memory.md) — sessions, transcripts, working memory (planned), 
+- [subsystems/intelligent_doc_store.md](subsystems/intelligent_doc_store.md) — feature-gated document indexing, chunking, BM25 search
 - [subsystems/cron.md](subsystems/cron.md) — timer-based event scheduling, schedule/cancel/list API
 - [subsystems/tools.md](subsystems/tools.md) — tool execution, Gmail MVP
 - [standards/index.md](standards/index.md) — bus protocol, component runtime, plugin interfaces, capabilities model

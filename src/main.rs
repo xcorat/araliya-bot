@@ -167,6 +167,8 @@ async fn run() -> Result<(), error::AppError> {
         };
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
             .with_llm_rates(rates);
+        #[cfg(feature = "plugin-docs")]
+        agents.init_docs().await?;
         handlers.push(Box::new(agents));
         configured_handlers.push("agents".to_string());
     }

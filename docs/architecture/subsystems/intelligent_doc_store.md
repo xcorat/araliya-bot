@@ -1,8 +1,10 @@
 # Intelligent Document Store (IDocStore)
 
-**Status:** Phase 1 (2026-02-23) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence · **background `DocstoreManager`** (auto-index + orphan cleanup) · **smart Markdown-aware chunking via `text-splitter`**.
+**Status:** Phase 1 (2026-02-23) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence · **background `DocstoreManager`** (auto-index + orphan cleanup) · **smart Markdown-aware chunking via `text-splitter`** · **shared type/helper core (`docstore_core`) for `IKGDocStore` reuse**.
 
 **Cargo Feature:** `idocstore`
+
+> **See also:** [kg_docstore.md](kg_docstore.md) — `IKGDocStore`, the knowledge-graph augmented sibling store that shares `docstore_core` types.
 
 ---
 
@@ -346,9 +348,28 @@ This is non-blocking — work is queued and executed in the background task.
 
 ---
 
+## Shared Core (`docstore_core`)
+
+`IDocStore` and `IKGDocStore` share common types and internal helpers via the crate-private `docstore_core` module (`src/subsystems/memory/stores/docstore_core.rs`).  This module is compiled when **either** `idocstore` or `ikgdocstore` is enabled.
+
+| Item | Description |
+|------|-------------|
+| `Document`, `DocMetadata`, `Chunk`, `SearchResult` | Public types re-exported from both stores. |
+| `DB_FILENAME`, `SCHEMA_VERSION` | Schema constants. |
+| `init_schema(conn)` | Creates the `doc_metadata` and `chunks` FTS5 tables. |
+| `open_conn(path)` | Opens SQLite with WAL + busy-timeout pragmas. |
+| `sha256_hex(content)` | Returns hex-encoded SHA-256 for dedup fingerprinting. |
+| `now_iso8601()` | Current UTC time as RFC 3339 string. |
+| `escape_fts5_query(query)` | Token-level quoting to prevent FTS5 syntax errors. |
+
+`IDocStore`'s public API is **unchanged** by the introduction of `docstore_core` — the refactoring is purely internal.
+
+---
+
 ## Related Documentation
 
 - [Memory Subsystem](memory.md) — parent system providing agent identity and persistence paths
+- [kg_docstore.md](kg_docstore.md) — IKGDocStore, the KG-augmented sibling store
 - [Agent Identity](../identity.md) — how agent directories are initialized
 - [IDocStore Design Proposal](../../../notes/implementation/idocstore-design.md) — detailed design rationale
 

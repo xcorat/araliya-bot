@@ -28,7 +28,7 @@ The `public_id` names the identity directory for the bot:
 
 ## File Layout
 
-The identity system is hierarchical. The main bot identity sits at the root, and agent/subagent identities are nested within the bot's memory directory. Any prompts must be saved as text to minimize prompt injection.
+The identity system is hierarchical. The main bot identity sits at the root, and agent/subagent identities are nested within the bot's memory directory. Any prompts must be saved as text files (see `config/prompts/`) to minimize prompt injection and allow for secure, auditable prompt management.
 
 ```
 {work_dir}/
