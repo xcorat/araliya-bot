@@ -12,6 +12,12 @@ use crate::error::AppError;
 use crate::subsystems::runtime::{Component, ComponentFuture};
 use super::state::CommsState;
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+/// Telegram has a 4096 character limit per message.
+/// We chunk at 4000 to be safe.
+const MAX_MESSAGE_LENGTH: usize = 4000;
+
 // ── TelegramChannel ──────────────────────────────────────────────────────────
 
 /// A Telegram channel instance.
@@ -68,8 +74,20 @@ async fn run_telegram(
                     
                     match state.send_message(&channel_id, text.to_string(), None).await {
                         Ok(reply) => {
-                            if let Err(e) = bot.send_message(msg.chat.id, reply.reply).await {
-                                warn!("failed to send telegram reply: {e}");
+                            let mut text = reply.reply;
+                            if text.is_empty() {
+                                text = "(empty response)".to_string();
+                            }
+                            
+                            // Telegram has a 4096 character limit per message.
+                            // We chunk at MAX_MESSAGE_LENGTH to be safe.
+                            let chars: Vec<char> = text.chars().collect();
+                            
+                            for chunk in chars.chunks(MAX_MESSAGE_LENGTH) {
+                                let chunk_str: String = chunk.iter().collect();
+                                if let Err(e) = bot.send_message(msg.chat.id, chunk_str).await {
+                                    warn!("failed to send telegram reply: {e}");
+                                }
                             }
                         }
                         Err(e) => {
