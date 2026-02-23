@@ -768,25 +768,27 @@ impl AppView {
 
         let left_group = h_flex()
             .items_center()
-            .gap_3()
-            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Araliya"))
-            .child(div().text_sm().child(format!("Session: {}", session_short)))
-            .child(div().text_sm().child(format!("Messages: {}", self.state.messages.len())));
+            .gap_2()
+            .child(div().text_xs().child(format!("Session: {}", session_short)))
+            .child(div().text_xs().child(format!("Messages: {}", self.state.messages.len())));
 
         let right_group = h_flex()
             .items_center()
-            .gap_3()
-            .child(div().text_sm().child(format!("Section: {}", self.state.active_section.label())))
-            .child(div().text_sm().child(format!("Mode: {}", self.state.layout.mode.label())))
-            .child(div().text_sm().child(format!("Surface: {}", self.state.surface_mode.label())));
+            .gap_2()
+            .child(div().text_xs().child(format!("Section: {}", self.state.active_section.label())))
+            .child(div().text_xs().child(format!("Mode: {}", self.state.layout.mode.label())))
+            .child(div().text_xs().child(format!("Surface: {}", self.state.surface_mode.label())));
 
         h_flex()
             .w_full()
-            .p_2()
+            .px_2()
+            .py_1()
             .items_center()
             .justify_between()
-            .bg(cx.theme().primary)
-            .text_color(cx.theme().primary_foreground)
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .text_color(cx.theme().muted_foreground)
             .child(left_group)
             .child(right_group)
     }
