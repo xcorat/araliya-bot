@@ -60,7 +60,7 @@ impl Agent for DocsAgentPlugin {
             };
 
             let prompt = format!(
-                "### Document\n{}\n\n### Question\n{}\n\n### Answer:\n",
+                "Answer using the docs. Limit chars < 4000 hard.\n\n### Document\n{}\n\n### Question\n{}\n\n### Answer:\n",
                 file_content, query
             );
 

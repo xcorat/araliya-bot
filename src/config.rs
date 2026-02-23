@@ -343,7 +343,7 @@ struct RawAgentEntry {
     #[serde(default)]
     query: Option<RawNewsAgentQuery>,
     /// For the `docs` agent this may specify the path to read.
-    #[serde(default)]
+    #[serde(default, rename = "path")]
     docs_path: Option<String>,
 }
 

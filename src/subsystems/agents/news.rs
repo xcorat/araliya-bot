@@ -90,17 +90,18 @@ impl Agent for NewsAgentPlugin {
             let raw_filename = format!("{hash}.json");
             let cache_key = format!("summary:{hash}");
 
-            // ── 3. Persist raw fetch + check summary cache (blocking I/O) ──
+            // ── 3. Persist raw fetch + check cache + open agent session ──
             let items = parse_tool_items(&raw_json);
             let state_store = state.clone();
             let raw_json_clone = raw_json.clone();
             let items_clone = items.clone();
             let cache_key_clone = cache_key.clone();
-            let cached: Option<String> = tokio::task::spawn_blocking(move || {
+            let (cached, agent_session) = tokio::task::spawn_blocking(move || {
+                let memory = state_store.memory.clone();
                 match state_store.open_agent_store("news") {
                     Err(e) => {
                         warn!(error = %e, "news: failed to open agent store");
-                        None
+                        (None, None)
                     }
                     Ok(store) => {
                         if let Err(e) = store.write_raw(&raw_filename, &raw_json_clone) {
@@ -109,12 +110,17 @@ impl Agent for NewsAgentPlugin {
                         if let Err(e) = store.texts_replace_all(items_clone) {
                             warn!(error = %e, "news: failed to persist texts");
                         }
-                        store.kv_get(&cache_key_clone).unwrap_or(None)
+                        let cached = store.kv_get(&cache_key_clone).unwrap_or(None);
+                        let session = store.get_or_create_session(&memory).map_err(|e| {
+                            warn!(error = %e, "news: failed to open agent session");
+                            e
+                        }).ok();
+                        (cached, session)
                     }
                 }
             })
             .await
-            .unwrap_or(None);
+            .unwrap_or((None, None));
 
             // ── 4. Return cached summary if available ───────────────────
             if let Some(summary) = cached {
@@ -158,7 +164,17 @@ impl Agent for NewsAgentPlugin {
                 }
             };
 
-            // ── 7. Cache the summary + record fetch time ────────────────
+            // ── 7. Record comm transcript in agent session ──────────────
+            if let Some(ref session) = agent_session {
+                if let Err(e) = session.transcript_append("agent", &prompt).await {
+                    warn!(error = %e, "news: failed to append prompt to transcript");
+                }
+                if let Err(e) = session.transcript_append("llm", &summary).await {
+                    warn!(error = %e, "news: failed to append response to transcript");
+                }
+            }
+
+            // ── 8. Cache the summary + record fetch time ────────────────
             persist_summary(&state, &cache_key, &summary).await;
 
             let _ = reply_tx.send(Ok(BusPayload::CommsMessage {

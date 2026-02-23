@@ -72,7 +72,7 @@ enabled = false
 
 [agents.docs]
 # Docs agent — reads a Markdown file and answers questions by forwarding
-to the configured LLM.
+# to the configured LLM.
 # Path is relative to the working directory; defaults to "docs/quick-intro.md".
 enabled = false
 path = "docs/quick-intro.md"

@@ -378,15 +378,46 @@ impl AgentsSubsystem {
             }
         };
 
+        let sessions_root = memory.sessions_root().to_path_buf();
         let body = serde_json::json!({
-            "sessions": sessions.iter().map(|s| serde_json::json!({
-                "session_id": s.session_id,
-                "created_at": s.created_at,
-                "store_types": s.store_types,
-                "last_agent": s.last_agent,
-            })).collect::<Vec<_>>()
+            "sessions": sessions.iter().map(|s| {
+                let updated_at = read_session_updated_at(&sessions_root, &s.session_id)
+                    .unwrap_or_else(|| s.created_at.clone());
+                serde_json::json!({
+                    "session_id": s.session_id,
+                    "created_at": s.created_at,
+                    "updated_at": updated_at,
+                    "store_types": s.store_types,
+                    "last_agent": s.last_agent,
+                })
+            }).collect::<Vec<_>>()
         });
 
+        let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+            data: body.to_string(),
+        }));
+    }
+
+    /// Handle `agents/list` — return metadata for all registered agents.
+    fn handle_agents_list(&self, reply_tx: oneshot::Sender<BusResult>) {
+        let identities = &self.state.agent_identities;
+        let agents: Vec<serde_json::Value> = identities
+            .iter()
+            .map(|(agent_id, identity)| {
+                let kv_path = identity.identity_dir.join("store").join("kv.json");
+                let last_fetched = read_agent_kv_value(&kv_path, "last_fetched");
+                let index_path = identity.identity_dir.join("sessions.json");
+                let session_count = count_agent_sessions(&index_path);
+                serde_json::json!({
+                    "agent_id": agent_id,
+                    "name": agent_id,
+                    "last_fetched": last_fetched,
+                    "session_count": session_count,
+                })
+            })
+            .collect();
+
+        let body = serde_json::json!({ "agents": agents });
         let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
             data: body.to_string(),
         }));
@@ -570,6 +601,12 @@ impl BusHandler for AgentsSubsystem {
     /// `agents/sessions/memory`, `agents/sessions/files`) are
     /// intercepted before agent routing to return session metadata.
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        // ── Agent metadata queries ─────────────────────────────
+        if method == "agents/list" {
+            self.handle_agents_list(reply_tx);
+            return;
+        }
+
         // ── Session queries (intercepted before agent routing) ──────
         if method == "agents/sessions" {
             self.handle_session_list(reply_tx);
@@ -618,6 +655,35 @@ impl BusHandler for AgentsSubsystem {
             }
         }
     }
+}
+
+// ── Module-level helpers ──────────────────────────────────────────────────────
+
+/// Read `last_updated` from `{session_dir}/spend.json`, fall back to None.
+fn read_session_updated_at(sessions_root: &std::path::Path, session_id: &str) -> Option<String> {
+    let data = std::fs::read_to_string(
+        sessions_root.join(session_id).join("spend.json")
+    ).ok()?;
+    #[derive(serde::Deserialize)]
+    struct SpendTs { last_updated: String }
+    serde_json::from_str::<SpendTs>(&data).ok().map(|s| s.last_updated)
+}
+
+/// Read a single string value from an AgentStore `kv.json` file.
+fn read_agent_kv_value(kv_path: &std::path::Path, key: &str) -> Option<String> {
+    let data = std::fs::read_to_string(kv_path).ok()?;
+    #[derive(serde::Deserialize)]
+    struct KvPartial { values: std::collections::HashMap<String, String> }
+    serde_json::from_str::<KvPartial>(&data).ok()?.values.remove(key)
+}
+
+/// Return the number of sessions in an agent's `sessions.json` index.
+fn count_agent_sessions(index_path: &std::path::Path) -> usize {
+    if !index_path.exists() { return 0; }
+    let data = match std::fs::read_to_string(index_path) { Ok(d) => d, Err(_) => return 0 };
+    #[derive(serde::Deserialize)]
+    struct Idx { sessions: std::collections::HashMap<String, serde_json::Value> }
+    serde_json::from_str::<Idx>(&data).map(|i| i.sessions.len()).unwrap_or(0)
 }
 
 fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {

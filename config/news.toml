@@ -1,21 +1,25 @@
 [meta]
 base = "full.toml"
 
-[agents]
-default = "news"
-
 # Future command style examples (not parsed yet):
 # /chat news --n_last 5
 # /chat news --t_interval 1d
+
+[agents]
+default = "docs"
+
+[agents.docs]
+enabled = true
+path = "docs/quick-intro.md"
 
 [agents.news]
 enabled = true
 
 [agents.news.query]
 label = "Label_6135459501644760604"
-n_last = 25
-t_interval = "7d"  # also supports: 1mon, 1min, 1h, 1w
+n_last = 10
+t_interval = "3d"  # also supports: 1mon, 1min, 1h, 1w
 # q = "is:unread"    # extra Gmail search terms appended to the built query
 
 [comms.telegram]
-enabled = false
+enabled = true
