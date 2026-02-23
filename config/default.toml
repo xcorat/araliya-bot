@@ -94,7 +94,7 @@ enabled = false
 
 [llm]
 # Which LLM component to activate. Each component has its own config section below.
-# Options: "dummy", "openai"
+# Options: "dummy", "openai", "qwen"
 default = "openai"
 
 [llm.dummy]
@@ -112,6 +112,18 @@ timeout_seconds = 60
 input_per_million_usd = 0.05
 output_per_million_usd = 0.40
 cached_input_per_million_usd = 0.005
+
+[llm.qwen]
+# Used when default = "qwen".
+# For local Qwen servers this is commonly a keyless endpoint.
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 60
+# Token pricing (USD per 1 million tokens). Defaults to 0.0 when not set.
+input_per_million_usd = 0.0
+output_per_million_usd = 0.0
+cached_input_per_million_usd = 0.0
 
 ## ------------------------- Tools Subsystem ---------------------------------
 

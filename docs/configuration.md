@@ -232,7 +232,7 @@ News agent endpoint (MVP):
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"` or `"openai"`). Requires `subsystem-llm` feature. |
+| `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"`, `"openai"`, or `"qwen"`). Requires `subsystem-llm` feature. |
 | `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Override for Ollama / LM Studio. |
 | `llm.openai.model` | string | `"gpt-4o-mini"` | Model name sent in each request. |
 | `llm.openai.temperature` | float | `0.2` | Sampling temperature (omitted automatically for `gpt-5` family). |
@@ -240,6 +240,13 @@ News agent endpoint (MVP):
 | `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
 | `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
 | `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
+| `llm.qwen.api_base_url` | string | `"http://127.0.0.1:8081/v1/chat/completions"` | Qwen-style chat completions URL. |
+| `llm.qwen.model` | string | `"qwen2.5-instruct"` | Model name sent in each request. |
+| `llm.qwen.temperature` | float | `0.2` | Sampling temperature. |
+| `llm.qwen.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
+| `llm.qwen.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
+| `llm.qwen.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
+| `llm.qwen.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
 
 Pricing fields are used by `SessionHandle::accumulate_spend` to write per-session `spend.json` sidecars after each LLM turn. They default to `0.0` so cost is silently omitted rather than wrong when not set.
 

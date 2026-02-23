@@ -5,6 +5,7 @@
 
 pub mod dummy;
 pub mod openai_compatible;
+pub mod qwen;
 
 use crate::config::LlmConfig;
 use crate::llm::{LlmProvider, ProviderError};
@@ -26,6 +27,17 @@ pub fn build(config: &LlmConfig, api_key: Option<String>) -> Result<LlmProvider,
                 api_key,
             )?;
             Ok(LlmProvider::OpenAiCompatible(p))
+        }
+        "qwen" => {
+            let q = &config.qwen;
+            let p = qwen::QwenProvider::new(
+                q.api_base_url.clone(),
+                q.model.clone(),
+                q.temperature,
+                q.timeout_seconds,
+                api_key,
+            )?;
+            Ok(LlmProvider::Qwen(p))
         }
         _ => Err(ProviderError::UnknownProvider(config.provider.clone())),
     }

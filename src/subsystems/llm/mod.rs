@@ -22,10 +22,17 @@ impl LlmSubsystem {
     /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
     pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
         let provider = providers::build(config, api_key)?;
-        let rates = ModelRates {
-            input_per_million_usd: config.openai.input_per_million_usd,
-            output_per_million_usd: config.openai.output_per_million_usd,
-            cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
+        let rates = match config.provider.as_str() {
+            "qwen" => ModelRates {
+                input_per_million_usd: config.qwen.input_per_million_usd,
+                output_per_million_usd: config.qwen.output_per_million_usd,
+                cached_input_per_million_usd: config.qwen.cached_input_per_million_usd,
+            },
+            _ => ModelRates {
+                input_per_million_usd: config.openai.input_per_million_usd,
+                output_per_million_usd: config.openai.output_per_million_usd,
+                cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
+            },
         };
         Ok(Self { provider, rates })
     }

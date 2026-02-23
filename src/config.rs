@@ -106,6 +106,24 @@ pub struct OpenAiConfig {
     pub cached_input_per_million_usd: f64,
 }
 
+/// Qwen provider configuration.
+/// Populated from `[llm.qwen]` in the TOML.
+#[derive(Debug, Clone)]
+pub struct QwenConfig {
+    /// Full chat completions endpoint URL.
+    pub api_base_url: String,
+    /// Model name passed in the request body.
+    pub model: String,
+    /// Sampling temperature.
+    pub temperature: f32,
+    /// Per-request HTTP timeout in seconds.
+    pub timeout_seconds: u64,
+    /// Token pricing rates (USD per 1 million tokens).
+    pub input_per_million_usd: f64,
+    pub output_per_million_usd: f64,
+    pub cached_input_per_million_usd: f64,
+}
+
 /// LLM subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
@@ -115,6 +133,8 @@ pub struct LlmConfig {
     pub provider: String,
     /// Config for the OpenAI / OpenAI-compatible provider (`[llm.openai]`).
     pub openai: OpenAiConfig,
+    /// Config for the Qwen provider (`[llm.qwen]`).
+    pub qwen: QwenConfig,
 }
 
 /// Agents subsystem configuration.
@@ -272,11 +292,17 @@ struct RawLlm {
     provider: String,
     #[serde(default)]
     openai: RawOpenAiConfig,
+    #[serde(default)]
+    qwen: RawQwenConfig,
 }
 
 impl Default for RawLlm {
     fn default() -> Self {
-        Self { provider: default_llm_provider(), openai: RawOpenAiConfig::default() }
+        Self {
+            provider: default_llm_provider(),
+            openai: RawOpenAiConfig::default(),
+            qwen: RawQwenConfig::default(),
+        }
     }
 }
 
@@ -312,11 +338,47 @@ impl Default for RawOpenAiConfig {
     }
 }
 
+#[derive(Deserialize)]
+struct RawQwenConfig {
+    #[serde(default = "default_qwen_api_base_url")]
+    api_base_url: String,
+    #[serde(default = "default_qwen_model")]
+    model: String,
+    #[serde(default = "default_qwen_temperature")]
+    temperature: f32,
+    #[serde(default = "default_qwen_timeout_seconds")]
+    timeout_seconds: u64,
+    #[serde(default)]
+    input_per_million_usd: f64,
+    #[serde(default)]
+    output_per_million_usd: f64,
+    #[serde(default)]
+    cached_input_per_million_usd: f64,
+}
+
+impl Default for RawQwenConfig {
+    fn default() -> Self {
+        Self {
+            api_base_url: default_qwen_api_base_url(),
+            model: default_qwen_model(),
+            temperature: default_qwen_temperature(),
+            timeout_seconds: default_qwen_timeout_seconds(),
+            input_per_million_usd: 0.0,
+            output_per_million_usd: 0.0,
+            cached_input_per_million_usd: 0.0,
+        }
+    }
+}
+
 fn default_llm_provider() -> String { "dummy".to_string() }
 fn default_openai_api_base_url() -> String { "https://api.openai.com/v1/chat/completions".to_string() }
 fn default_openai_model() -> String { "gpt-4o-mini".to_string() }
 fn default_openai_temperature() -> f32 { 0.2 }
 fn default_openai_timeout_seconds() -> u64 { 60 }
+fn default_qwen_api_base_url() -> String { "http://127.0.0.1:8081/v1/chat/completions".to_string() }
+fn default_qwen_model() -> String { "qwen2.5-instruct".to_string() }
+fn default_qwen_temperature() -> f32 { 0.2 }
+fn default_qwen_timeout_seconds() -> u64 { 60 }
 
 #[derive(Deserialize, Default)]
 struct RawAgents {
@@ -596,6 +658,15 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
                 },
+                qwen: QwenConfig {
+                    api_base_url: "http://127.0.0.1:8081/v1/chat/completions".to_string(),
+                    model: "qwen2.5-instruct".to_string(),
+                    temperature: 0.2,
+                    timeout_seconds: 60,
+                    input_per_million_usd: 0.0,
+                    output_per_million_usd: 0.0,
+                    cached_input_per_million_usd: 0.0,
+                },
             },
             llm_api_key: env::var("LLM_API_KEY").ok(),
             ui: UiConfig {
@@ -706,6 +777,15 @@ pub fn load_from(
                 output_per_million_usd: parsed.llm.openai.output_per_million_usd,
                 cached_input_per_million_usd: parsed.llm.openai.cached_input_per_million_usd,
             },
+            qwen: QwenConfig {
+                api_base_url: parsed.llm.qwen.api_base_url,
+                model: parsed.llm.qwen.model,
+                temperature: parsed.llm.qwen.temperature,
+                timeout_seconds: parsed.llm.qwen.timeout_seconds,
+                input_per_million_usd: parsed.llm.qwen.input_per_million_usd,
+                output_per_million_usd: parsed.llm.qwen.output_per_million_usd,
+                cached_input_per_million_usd: parsed.llm.qwen.cached_input_per_million_usd,
+            },
         },
         llm_api_key: env::var("LLM_API_KEY").ok(),
         ui: UiConfig {
@@ -781,6 +861,15 @@ impl Config {
                     model: "test-model".into(),
                     temperature: 0.0,
                     timeout_seconds: 1,
+                    input_per_million_usd: 0.0,
+                    output_per_million_usd: 0.0,
+                    cached_input_per_million_usd: 0.0,
+                },
+                qwen: QwenConfig {
+                    api_base_url: "http://127.0.0.1:8081/v1/chat/completions".into(),
+                    model: "qwen2.5-instruct".into(),
+                    temperature: 0.2,
+                    timeout_seconds: 60,
                     input_per_million_usd: 0.0,
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,

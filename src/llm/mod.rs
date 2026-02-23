@@ -76,6 +76,7 @@ pub struct LlmResponse {
 pub enum LlmProvider {
     Dummy(providers::dummy::DummyProvider),
     OpenAiCompatible(providers::openai_compatible::OpenAiCompatibleProvider),
+    Qwen(providers::qwen::QwenProvider),
 }
 
 impl LlmProvider {
@@ -84,6 +85,7 @@ impl LlmProvider {
         match self {
             LlmProvider::Dummy(p) => p.complete(content).await,
             LlmProvider::OpenAiCompatible(p) => p.complete(content).await,
+            LlmProvider::Qwen(p) => p.complete(content).await,
         }
     }
 }
