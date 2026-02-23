@@ -46,6 +46,7 @@ assert_eq!(cfg.work_dir, PathBuf::from("/tmp/override"));
 - One assertion per test where possible — keep failures specific
 - Use `tempfile::TempDir` for any test that creates files
 - Test error paths as well as happy paths
+- Parser and helper code (e.g. FTS5 query escaping) should have unit or integration tests to prevent regressions
 
 ## CI (Future)
 

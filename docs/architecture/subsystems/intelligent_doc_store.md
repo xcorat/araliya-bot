@@ -136,7 +136,7 @@ CREATE VIRTUAL TABLE chunks USING fts5(
 );
 ```
 
-FTS5 provides automatic BM25 scoring; queries use `bm25(chunks)` ranking function.
+FTS5 provides automatic BM25 scoring; queries use `bm25(chunks)` ranking function. Queries are automatically quoted/escaped to avoid syntax errors from punctuation (e.g. `?`, `"`, parentheses).
 
 ### SQLite Pragmas
 
