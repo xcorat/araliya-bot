@@ -160,6 +160,11 @@ impl MemorySystem {
         &self.memory_root
     }
 
+    /// Return the root directory under which bot-scoped sessions are stored.
+    pub fn sessions_root(&self) -> &Path {
+        &self.sessions_dir
+    }
+
     /// Create a new session with the given store types.
     ///
     /// Returns a [`SessionHandle`] for reading and writing session data.
@@ -303,6 +308,133 @@ impl MemorySystem {
         Ok(idx.sessions.into_values().collect())
     }
 
+    // ── Rooted session helpers ────────────────────────────────────────
+    // These let agents create and load sessions under their own identity
+    // directory instead of the global sessions dir.
+
+    /// Create a session rooted at `sessions_root`, indexed in `index_path`.
+    pub fn create_session_in(
+        &self,
+        sessions_root: &Path,
+        index_path: &Path,
+        store_types: &[&str],
+        agent_id: Option<&str>,
+    ) -> Result<SessionHandle, AppError> {
+        let mut session_stores = Vec::new();
+        for &st in store_types {
+            let store = self.stores.get(st).ok_or_else(|| {
+                AppError::Memory(format!("unknown store type: {st}"))
+            })?;
+            session_stores.push(store.clone());
+        }
+
+        let session_id = uuid::Uuid::now_v7().to_string();
+        let session_dir = sessions_root.join(&session_id);
+
+        let all_tmp = store_types.iter().all(|&s| s == "tmp");
+        if !all_tmp {
+            fs::create_dir_all(&session_dir)
+                .map_err(|e| AppError::Memory(format!(
+                    "cannot create session dir {}: {e}",
+                    session_dir.display()
+                )))?;
+        }
+
+        for store in &session_stores {
+            store.init(&session_dir)?;
+        }
+
+        let now = now_iso8601();
+        let info = SessionInfo {
+            session_id: session_id.clone(),
+            created_at: now,
+            store_types: store_types.iter().map(|s| s.to_string()).collect(),
+            last_agent: agent_id.map(|s| s.to_string()),
+            spend: None,
+        };
+        Self::update_index_at(index_path, |idx| {
+            idx.sessions.insert(session_id.clone(), info);
+        })?;
+
+        let tmp_store = store_types
+            .contains(&"tmp")
+            .then(|| self.tmp_store.clone());
+
+        info!(
+            session_id = %session_id,
+            stores = ?store_types,
+            agent = ?agent_id,
+            "agent-scoped session created"
+        );
+
+        Ok(SessionHandle::new(session_id, session_dir, session_stores, tmp_store))
+    }
+
+    /// Load an existing session from `sessions_root`, indexed at `index_path`.
+    pub fn load_session_in(
+        &self,
+        sessions_root: &Path,
+        index_path: &Path,
+        session_id: &str,
+        agent_id: Option<&str>,
+    ) -> Result<SessionHandle, AppError> {
+        let idx = Self::read_index_at(index_path)?;
+        let info = idx.sessions.get(session_id).ok_or_else(|| {
+            AppError::Memory(format!("session not found: {session_id}"))
+        })?;
+
+        let session_dir = sessions_root.join(session_id);
+        let all_tmp = info.store_types.iter().all(|s| s == "tmp");
+        if !all_tmp && !session_dir.exists() {
+            return Err(AppError::Memory(format!(
+                "session dir missing for {session_id}"
+            )));
+        }
+
+        let mut session_stores = Vec::new();
+        for st in &info.store_types {
+            let store = self.stores.get(st.as_str()).ok_or_else(|| {
+                AppError::Memory(format!(
+                    "session {session_id} requires store '{st}' which is not registered"
+                ))
+            })?;
+            session_stores.push(store.clone());
+        }
+
+        if let Some(agent) = agent_id {
+            let agent = agent.to_string();
+            let sid = session_id.to_string();
+            Self::update_index_at(index_path, |idx| {
+                if let Some(info) = idx.sessions.get_mut(&sid) {
+                    info.last_agent = Some(agent);
+                }
+            })?;
+        }
+
+        let tmp_store = info
+            .store_types
+            .iter()
+            .any(|s| s == "tmp")
+            .then(|| self.tmp_store.clone());
+
+        Ok(SessionHandle::new(
+            session_id.to_string(),
+            session_dir,
+            session_stores,
+            tmp_store,
+        ))
+    }
+
+    /// List sessions from an arbitrary index file.
+    /// Returns an empty list if the index file does not yet exist.
+    pub fn list_sessions_in(index_path: &Path) -> Result<Vec<SessionInfo>, AppError> {
+        if !index_path.exists() {
+            return Ok(Vec::new());
+        }
+        let idx = Self::read_index_at(index_path)?;
+        Ok(idx.sessions.into_values().collect())
+    }
+
     // ── Index helpers ─────────────────────────────────────────────────
 
     fn index_path(&self) -> PathBuf {
@@ -310,20 +442,26 @@ impl MemorySystem {
     }
 
     fn read_index(&self) -> Result<SessionIndex, AppError> {
-        let path = self.index_path();
-        let data = fs::read_to_string(&path)
+        Self::read_index_at(&self.index_path())
+    }
+
+    fn update_index<F: FnOnce(&mut SessionIndex)>(&self, f: F) -> Result<(), AppError> {
+        Self::update_index_at(&self.index_path(), f)
+    }
+
+    fn read_index_at(path: &Path) -> Result<SessionIndex, AppError> {
+        let data = fs::read_to_string(path)
             .map_err(|e| AppError::Memory(format!("cannot read {}: {e}", path.display())))?;
         serde_json::from_str(&data)
             .map_err(|e| AppError::Memory(format!("malformed {}: {e}", path.display())))
     }
 
-    fn update_index<F: FnOnce(&mut SessionIndex)>(&self, f: F) -> Result<(), AppError> {
-        let path = self.index_path();
-        let mut idx = self.read_index()?;
+    fn update_index_at<F: FnOnce(&mut SessionIndex)>(path: &Path, f: F) -> Result<(), AppError> {
+        let mut idx = Self::read_index_at(path)?;
         f(&mut idx);
         let data = serde_json::to_string_pretty(&idx)
             .map_err(|e| AppError::Memory(format!("serialise index: {e}")))?;
-        fs::write(&path, data)
+        fs::write(path, data)
             .map_err(|e| AppError::Memory(format!("cannot write {}: {e}", path.display())))
     }
 }

@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 use crate::error::AppError;
 use super::super::collections::Doc;
 use super::super::types::PrimaryValue;
+use super::super::{MemorySystem, SessionInfo};
+use super::super::handle::SessionHandle;
 
 const KV_FILENAME: &str = "kv.json";
 const TEXTS_FILENAME: &str = "texts.json";
@@ -105,6 +107,8 @@ impl TextItem {
 /// when inside an async task.
 pub struct AgentStore {
     dir: PathBuf,
+    /// The agent's identity directory (parent of `store/` and `sessions/`).
+    pub identity_dir: PathBuf,
 }
 
 impl AgentStore {
@@ -126,7 +130,14 @@ impl AgentStore {
                 .map_err(|e| AppError::Memory(format!("agent store: cannot create {}: {e}", texts_path.display())))?;
         }
 
-        Ok(Self { dir })
+        // Ensure a sessions index exists so agent sessions can be created later.
+        let sessions_index = agent_identity_dir.join("sessions.json");
+        if !sessions_index.exists() {
+            fs::write(&sessions_index, "{\"sessions\":{}}")
+                .map_err(|e| AppError::Memory(format!("agent store: cannot create sessions.json: {e}")))?;
+        }
+
+        Ok(Self { dir, identity_dir: agent_identity_dir.to_path_buf() })
     }
 
     // ── KV helpers ────────────────────────────────────────────────────
@@ -250,6 +261,58 @@ impl AgentStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(AppError::Memory(format!("agent store: cannot read raw/{name}: {e}"))),
         }
+    }
+
+    // ── Agent session API ─────────────────────────────────────────
+
+    /// Return the root directory for this agent's sessions.
+    pub fn agent_sessions_dir(&self) -> PathBuf {
+        self.identity_dir.join("sessions")
+    }
+
+    /// Return the path to this agent's sessions index file.
+    pub fn agent_sessions_index(&self) -> PathBuf {
+        self.identity_dir.join("sessions.json")
+    }
+
+    /// Get the active session for this agent, creating one on first use.
+    ///
+    /// The session ID is persisted in the agent KV store under
+    /// `active_session_id` so the same rolling transcript is reused across
+    /// restarts.  The session lives at `{identity_dir}/sessions/{uuid}/`.
+    pub fn get_or_create_session(
+        &self,
+        memory: &MemorySystem,
+    ) -> Result<SessionHandle, AppError> {
+        let sessions_root = self.agent_sessions_dir();
+        let index_path = self.agent_sessions_index();
+
+        fs::create_dir_all(&sessions_root)
+            .map_err(|e| AppError::Memory(format!("agent: cannot create sessions dir: {e}")))?;
+
+        if let Some(sid) = self.kv_get("active_session_id")? {
+            match memory.load_session_in(&sessions_root, &index_path, &sid, Some("agent")) {
+                Ok(handle) => return Ok(handle),
+                Err(_) => {
+                    // Session missing from index or dir — create a fresh one.
+                    let _ = self.kv_delete("active_session_id");
+                }
+            }
+        }
+
+        let handle = memory.create_session_in(
+            &sessions_root,
+            &index_path,
+            &["basic_session"],
+            Some("agent"),
+        )?;
+        self.kv_set("active_session_id", &handle.session_id)?;
+        Ok(handle)
+    }
+
+    /// List all sessions stored under this agent's identity directory.
+    pub fn list_agent_sessions(&self) -> Result<Vec<SessionInfo>, AppError> {
+        MemorySystem::list_sessions_in(&self.agent_sessions_index())
     }
 }
 
