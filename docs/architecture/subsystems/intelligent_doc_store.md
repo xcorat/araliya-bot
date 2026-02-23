@@ -1,6 +1,6 @@
 # Intelligent Document Store (IDocStore)
 
-**Status:** Phase 1 (2026-02-22) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence.
+**Status:** Phase 1 (2026-02-23) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence · **background `DocstoreManager`** (auto-index + orphan cleanup).
 
 **Cargo Feature:** `idocstore`
 
@@ -309,6 +309,40 @@ cargo test --features idocstore docstore
 - **BM25 scoring:** O(log n) for indexed queries; no per-document scanning.
 - **Chunk storage:** Fixed 2KB chunks recommended (~500 chunks per 1MB document).
 - **Position tracking:** Enables O(1) lookup of chunk location in original.
+
+---
+
+## DocstoreManager
+
+A private background task (`pub(super)`) spawned by `MemorySystem::start_docstore_manager`. Invisible outside the `memory` module.
+
+### Responsibilities
+
+- **Auto-index:** Every 5 minutes (and on demand), scans `{memory_root}/agent/*/docstore/` for documents that have no FTS5 chunk entries and indexes them automatically at 2 KB chunk size.
+- **Orphan cleanup:** Removes `docstore/docs/*.txt` files that have no matching row in `doc_metadata`.
+
+### Startup
+
+```rust
+// Called once before Arc::new(mem):
+mem.start_docstore_manager(shutdown.clone());
+```
+
+`shutdown` is the global `CancellationToken`; the manager stops cleanly when it is cancelled.
+
+### Triggering immediate maintenance
+
+After ingesting a document, callers inside the memory subsystem can request immediate indexing:
+
+```rust
+memory.schedule_docstore_index(agent_identity_dir);
+```
+
+This is non-blocking — work is queued and executed in the background task.
+
+### Visibility
+
+`DocstoreManager` is `pub(super)` — it cannot be imported by agents, subsystems, or any code outside `src/subsystems/memory/`. The two public `MemorySystem` methods (`start_docstore_manager`, `schedule_docstore_index`) are the only gateway, and both are `#[cfg(feature = "idocstore")]`.
 
 ---
 
