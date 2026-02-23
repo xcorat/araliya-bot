@@ -425,6 +425,7 @@ impl AppView {
         let state = &self.state;
         v_flex()
             .flex_1()
+            .h_full()
             .child(self.render_chat_messages(cx))
             .child(
                 h_flex()
@@ -490,7 +491,7 @@ impl AppView {
     }
 
     fn render_section_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut panel = v_flex().flex_1();
+        let mut panel = v_flex().flex_1().h_full();
         match self.state.active_section {
             ActivitySection::Chat => panel = panel.child(self.render_chat_view(cx)),
             ActivitySection::Status => panel = panel.child(self.render_status_view(cx)),
@@ -756,6 +757,39 @@ impl AppView {
 
         panel
     }
+
+    fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let session_short = self
+            .state
+            .active_session_id
+            .as_deref()
+            .map(|id| &id[..8])
+            .unwrap_or("none");
+
+        let left_group = h_flex()
+            .items_center()
+            .gap_3()
+            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Araliya"))
+            .child(div().text_sm().child(format!("Session: {}", session_short)))
+            .child(div().text_sm().child(format!("Messages: {}", self.state.messages.len())));
+
+        let right_group = h_flex()
+            .items_center()
+            .gap_3()
+            .child(div().text_sm().child(format!("Section: {}", self.state.active_section.label())))
+            .child(div().text_sm().child(format!("Mode: {}", self.state.layout.mode.label())))
+            .child(div().text_sm().child(format!("Surface: {}", self.state.surface_mode.label())));
+
+        h_flex()
+            .w_full()
+            .p_2()
+            .items_center()
+            .justify_between()
+            .bg(cx.theme().primary)
+            .text_color(cx.theme().primary_foreground)
+            .child(left_group)
+            .child(right_group)
+    }
 }
 
 impl Render for AppView {
@@ -890,33 +924,6 @@ impl Render for AppView {
             }
         }
 
-        let bottom_bar = h_flex()
-            .w_full()
-            .p_2()
-            .gap_3()
-            .border_t_1()
-            .border_color(border)
-            .child(div().text_sm().text_color(muted_foreground).child(format!(
-                "Session: {}",
-                self.state
-                    .active_session_id
-                    .as_deref()
-                    .map(|id| &id[..8])
-                    .unwrap_or("none")
-            )))
-            .child(div().text_sm().text_color(muted_foreground).child(format!(
-                "Messages: {}",
-                self.state.messages.len()
-            )))
-            .child(div().text_sm().text_color(muted_foreground).child(format!(
-                "Mode: {}",
-                self.state.layout.mode.label()
-            )))
-            .child(div().text_sm().text_color(muted_foreground).child(format!(
-                "Surface: {}",
-                self.state.surface_mode.label()
-            )));
-
         h_flex()
             .size_full()
             .items_start()
@@ -929,7 +936,7 @@ impl Render for AppView {
                     .h_full()
                     .child(header)
                     .child(panel_row)
-                    .child(bottom_bar)
+                    .child(self.render_status_bar(cx))
             )
     }
 }

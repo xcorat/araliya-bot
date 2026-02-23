@@ -189,6 +189,34 @@ default = "chat"
 memory = ["basic_session"]
 ```
 
+## Future: RAG and Vector Store 🎯
+
+The lightweight `docs` agent introduced in v0.0.5 is the first step toward a full
+retrieval‑augmented generation workflow. Its initial behaviour is simple: read a
+single Markdown file and forward both the document and user query to the LLM.
+
+Planned enhancements include:
+
+1. **Embeddings & Vector Store** – add a `Vector` collection type within the
+   memory subsystem (`src/subsystems/memory/vector.rs`), backed by a cosine
+   similarity index stored alongside sessions or as a global store. The agent
+   will iterate over `docs/` directory files, embed each paragraph, and insert
+   vectors into the new store.
+2. **Search-api** – expose `MemoryRequest::VectorQuery` on the supervisor bus;
+   implement a `MemoryResponse::VectorResult(Vec<(score, doc_id)>)` response.
+3. **Prompt construction** – during `docs/ask` the agent will query the vector
+   store, fetch the top‑K text snippets, and include only those in the LLM
+   prompt (true RAG). This reduces token usage and improves relevance.
+4. **Caching & updates** – monitor `docs/` for changes and re-index modified
+   files; optionally maintain a timestamped `last_indexed` field in agent store.
+
+The vector store design is intentionally self‑contained, allowing other agents
+(such as future analytics or Q&A helpers) to reuse it.
+
+> With the groundwork in place, enabling full RAG is mostly a matter of
+> implementing the vector store and extending `DocsAgentPlugin` to handle
+> retrieval prior to the LLM call.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
