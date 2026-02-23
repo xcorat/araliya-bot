@@ -6,6 +6,8 @@ use tokio::sync::oneshot;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use super::{Agent, AgentsState};
 
+const ERR_INTERNAL: i32 = -32000;
+
 pub(crate) struct DocsAgentPlugin;
 
 impl Agent for DocsAgentPlugin {
@@ -42,6 +44,14 @@ impl Agent for DocsAgentPlugin {
                 return;
             };
 
+            if query.trim().is_empty() {
+                let _ = reply_tx.send(Err(BusError::new(
+                    ERR_INTERNAL,
+                    "empty query: please provide a question about the docs".to_string(),
+                )));
+                return;
+            }
+
             // Read markdown file (blocking I/O in spawn_blocking to avoid
             // holding tokio threads).
             let path_opt = state.docs_path.clone();
@@ -49,7 +59,7 @@ impl Agent for DocsAgentPlugin {
             let file_content = tokio::task::spawn_blocking(move || fs::read_to_string(&path))
                 .await
                 .unwrap_or_else(|e| Err(e.into()))
-                .map_err(|e| BusError::new(-32000, format!("failed to read docs file: {e}")));
+                .map_err(|e| BusError::new(ERR_INTERNAL, format!("failed to read docs file: {e}")));
 
             let file_content = match file_content {
                 Ok(text) => text,
@@ -59,9 +69,14 @@ impl Agent for DocsAgentPlugin {
                 }
             };
 
+            if file_content.len() > 200_000 {
+                tracing::warn!("docs file is large: {} bytes; truncating to 200KB", file_content.len());
+            }
+            let truncated_content = &file_content[..file_content.len().min(200_000)];
+
             let prompt = format!(
                 "Answer using the docs. Limit chars < 4000 hard.\n\n### Document\n{}\n\n### Question\n{}\n\n### Answer:\n",
-                file_content, query
+                truncated_content, query
             );
 
             let llm_result = state.complete_via_llm(&channel_id, &prompt).await;
@@ -76,7 +91,7 @@ impl Agent for DocsAgentPlugin {
                 }
                 Ok(other) => {
                     let _ = reply_tx.send(Err(BusError::new(
-                        -32000,
+                        ERR_INTERNAL,
                         format!("unexpected LLM reply: {other:?}"),
                     )));
                 }

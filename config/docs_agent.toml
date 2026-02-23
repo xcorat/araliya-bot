@@ -1,6 +1,9 @@
+[meta]
+base = "default.toml"
+
 [supervisor]
 bot_name = "docs-bot"
-work_dir = "~/.araliya"
+work_dir = "~/araliya"
 log_level = "info"
 
 [comms.pty]
@@ -12,7 +15,7 @@ bind = "127.0.0.1:8080"
 
 [comms.telegram]
 # Telegram channel — requires TELEGRAM_BOT_TOKEN env var.
-enabled = true # *AI AGENT: DO NOT CHANGE*
+enabled = true
 
 [agents]
 default = "docs"

@@ -222,4 +222,5 @@ The vector store design is intentionally self‑contained, allowing other agents
 | `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
-| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). || `agents.docs.path` | string | *none* | Path to markdown file read by the `docs` agent (relative to working dir). Defaults to `docs/quick-intro.md`. |
+| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
+| `agents.docs.path` | string | *none* | Path to markdown file read by the `docs` agent (relative to working dir). Defaults to `docs/quick-intro.md`. |

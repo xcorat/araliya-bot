@@ -12,7 +12,7 @@
 //! is never blocked: sync agents resolve immediately, async ones spawn tasks.
 
 use std::collections::{HashMap, HashSet};
-//TODO: check if we should be using more fine-grained locks.
+// _TODO_: check if we should be using more fine-grained locks.
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
@@ -291,12 +291,6 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-news-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(news::NewsAgentPlugin);
-            agents.insert(agent.id().to_string(), agent);
-        }
-
-        #[cfg(feature = "plugin-docs")]
-        {
-            let agent: Box<dyn Agent> = Box::new(docs::DocsAgentPlugin);
             agents.insert(agent.id().to_string(), agent);
         }
 
@@ -1004,6 +998,7 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
+            docs: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
