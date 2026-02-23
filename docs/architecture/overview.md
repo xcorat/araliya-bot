@@ -6,14 +6,12 @@
 
 ## Design Principles
 
-- **Single-process supervisor model** — all subsystems run as Tokio tasks within one process; upgradeable to OS-level processes later without changing message types
-- **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor, not directly with each other. Per-hop overhead is ~100–500 ns (tokio mpsc + oneshot); replies bypass the supervisor via direct oneshot channels. This is negligible next to the I/O the bus orchestrates (LLM/HTTP calls in the hundreds-of-ms range). The central hub provides free centralised logging, cancellation, and a future permission gate without the complexity of actor mailboxes or external brokers
-- **Capability-passing** — subsystems receive only the handles they need at init; no global service locator
-- **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to each handler and returns immediately; handlers resolve the reply in their own time (sync or via `tokio::spawn`)
-- **Split planes** — subsystem traffic uses the supervisor bus; supervisor management uses an internal control plane (not routed through bus methods)
-- **Plugin-based extensibility** — subsystems can load and unload plugins at runtime
-- **Agent / Plugin distinction** — `Agent` trait for autonomous actors in the agents subsystem; `Plugin` (future) for capability extensions in the tools subsystem
-- **Compile-time Modularity** — Subsystems (`agents`, `llm`, `comms`, `memory`) and agents can be disabled via Cargo features to optimize binary size and memory footprint.
+- **Single-process supervisor model** — all subsystems run as Tokio tasks within one process; upgradeable to OS-level processes later without changing message types.
+- **Star topology** — supervisor is the hub; subsystems communicate only via the supervisor. Per-hop overhead is negligible (~100–500 ns). Provides centralized logging, cancellation, and permission gating without actor mailbox complexity.
+- **Capability-passing** — subsystems receive only the handles they need at init; no global service locator.
+- **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to handlers and returns immediately.
+- **Split planes** — subsystem traffic uses the supervisor bus; supervisor management uses an internal control plane.
+- **Compile-time Modularity** — Subsystems and agents can be disabled via Cargo features to optimize binary size and memory footprint.
 
 ---
 
@@ -28,7 +26,6 @@
 │  ┌─────────────┐   ┌─────────────┐  ┌────────────┐  │
 │  │   Comms     │   │   Memory    │  │    Cron    │  │
 │  │  Subsystem  │   │   System    │  │  Subsystem │  │
-│  │PTY│HTTP│Tg. │   │basic_session│  │ timer svc  │  │
 │  └──────┬──────┘   └──────┬──────┘  └─────┬──────┘  │
 │         │                 │               │         │
 │  ┌──────┴─────────────────┴───────────────┴──┐      │
@@ -38,97 +35,9 @@
 │  ┌──────┴──────┐  ┌───────┴──────┐  ┌────────────┐  │
 │  │   Agents    │  │     LLM      │  │   Tools    │  │
 │  │  Subsystem  │  │  Subsystem   │  │  Subsystem │  │
-│  │             │  │ DummyProvider│  │  Gmail MVP │  │
 │  └─────────────┘  └──────────────┘  └────────────┘  │
 │                                                      │
 └──────────────────────────────────────────────────────┘
-```
-
----
-
-## Modularity (Features)
-
-Building on the ZeroClaw standard, Araliya supports swappable subsystems and plugins:
-
-| Feature | Scope | Description |
-|---------|-------|-------------|
-| `subsystem-agents` | Agents | Routing engine for agent workflows. |
-| `subsystem-llm` | LLM | Completion provider subsystem. |
-| `subsystem-comms` | Comms | I/O channel management. |
-| `subsystem-memory` | Memory | Session management and pluggable memory stores. |
-| `plugin-echo` | Agent | Echo agent for the Agents subsystem. |
-| `plugin-basic-chat` | Agent | Basic chat agent — minimal LLM pass-through (requires `subsystem-llm`). |
-| `plugin-chat` | Agent | Session-aware chat agent — extends `ChatCore` with memory integration (requires `subsystem-llm`, `subsystem-memory`). |
-| `plugin-docs` | Agent | Filesystem-backed docs agent (reads a Markdown file, performs simple LLM query). |
-| `channel-pty` | Channel | Local console PTY channel. |
-| `channel-http` | Channel | HTTP channel — API routes under `/api/`, optional UI serving. |
-| `channel-telegram` | Channel | Telegram bot channel via teloxide (requires `TELEGRAM_BOT_TOKEN`). |
-| `subsystem-ui` | UI | Display-oriented interface providers. |
-| `ui-svui` | UI backend | Svelte-based web UI — static file serving (requires `subsystem-ui`). |
-| `subsystem-cron` | Cron | Timer-based event scheduling — emits bus notifications on schedule. |
-| `subsystem-tools` | Tools | Tool execution subsystem for agent-delegated actions. |
-| `plugin-gmail-tool` | Tool | Gmail read_latest tool implementation (OAuth). |
-| `plugin-gmail-agent` | Agent | Gmail agent — `agents/gmail/read` endpoint. |
-
----
-
-## Modules
-
-| Module | File | Summary |
-|--------|------|---------|
-| Supervisor | `main.rs`, `supervisor/` | Async entry point; owns the event bus; routes messages between subsystems |
-| Supervisor bus | `supervisor/bus.rs` | JSON-RPC 2.0-style protocol: `BusMessage` (Request/Notification), `BusPayload` enum, `BusHandle` (public API), `SupervisorBus` (owned receiver + handle) |
-| Supervisor control | `supervisor/control.rs` | Thin supervisor-internal management interface (typed commands/responses), intended transport target for stdio/http adapters |
-| Config | `config.rs` | TOML load, env overrides, path expansion; `[comms.pty]`, `[comms.http]`, `[agents]`, `[llm]`, `[memory]`, `[ui]` sections |
-| Identity | `identity.rs` | ed25519 keypair, bot_id derivation, file persistence |
-| Logger | `logger.rs` | tracing-subscriber init, CLI/env/config level precedence |
-| Error | `error.rs` | Typed error enum with thiserror |
-| LLM providers | `llm/` | `LlmProvider` enum dispatch; `providers::build(name)` factory; `DummyProvider` |
-
----
-
-## Subsystems
-
-| Subsystem | Doc | Status |
-|-----------|-----|--------|
-| Comms — PTY channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-pty`) |
-| Comms — HTTP channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-http`) |
-| Comms — Telegram channel | [comms.md](subsystems/comms.md) | Implemented (Optional feature: `channel-telegram`) |
-| UI — svui backend | [subsystems/ui.md](subsystems/ui.md) | Implemented (Optional features: `subsystem-ui`, `ui-svui`) |
-| Memory System | [subsystems/memory.md](subsystems/memory.md) | Implemented — `basic_session` store (Optional feature: `subsystem-memory`) |
-| Agents | [subsystems/agents.md](subsystems/agents.md) | Implemented (Optional features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`) |
-| LLM Subsystem | [subsystems/llm.md](subsystems/llm.md) | Implemented (Optional feature: `subsystem-llm`) |
-| Cron | [subsystems/cron.md](subsystems/cron.md) | Implemented (Optional feature: `subsystem-cron`) |
-| Tools | [subsystems/tools.md](subsystems/tools.md) | Implemented — Gmail MVP (Optional feature: `subsystem-tools`) |
-| Management | — | Implemented (always-on) — health API, cron status aggregation |
-
----
-
-## Startup Sequence
-
-```
-main()  [#[tokio::main]]
-  ├─ dotenvy::dotenv()              load .env if present
-  ├─ config::load()                 read default.toml + env overrides
-  ├─ parse CLI `-v` flags           resolve verbosity override
-  ├─ logger::init(...)              initialize logger once
-  ├─ identity::setup(&config)       load or generate ed25519 keypair
-  ├─ (conditional) MemorySystem::new(identity_dir, config)  init memory
-  ├─ CancellationToken::new()       shared shutdown signal
-  ├─ SupervisorBus::new(64)         mpsc channel; clone bus.handle before move
-  ├─ SupervisorControl::new(32)     supervisor-internal control channel
-  ├─ spawn: ctrl_c → token.cancel() Ctrl-C handler
-  ├─ (conditional) LlmSubsystem::new(&config.llm) build LLM subsystem
-  ├─ (conditional) AgentsSubsystem::new(config.agents, bus_handle.clone(), memory)
-  │                  .with_llm_rates(rates_from_config)    wire pricing into agent state
-  ├─ (conditional) CronSubsystem::new(bus_handle, shutdown)  cron timer service
-  ├─ ManagementSubsystem::new(control, bus_handle, info)  health/status handler
-  ├─ (conditional) handlers = vec![Box::new(agents), Box::new(llm), Box::new(cron), ...]  register handlers
-  ├─ spawn: supervisor::run(bus, control, handlers)  router + control command loop
-  ├─ supervisor::adapters::start(control_handle, bus_handle, shutdown)  supervisor-internal stdio/http adapters
-  ├─ (conditional) ui_handle = subsystems::ui::start(&config)  build UI serve handle
-  ├─ (conditional) comms = subsystems::comms::start(...)  non-blocking; channels spawn immediately
-  ├─ (conditional) comms.join().await             block until all channels exit
 ```
 
 ---
@@ -147,7 +56,7 @@ Request { method, payload, reply_tx }
   └─ unknown     → reply_tx.send(Err(ERR_METHOD_NOT_FOUND))
 ```
 
-Handlers resolve `reply_tx` directly for synchronous work (echo) or from a `tokio::spawn`ed task for async work (LLM calls, future tool I/O). Adding a new subsystem is one match arm.
+Handlers resolve `reply_tx` directly for synchronous work or from a `tokio::spawn`ed task for async work.
 
 ---
 

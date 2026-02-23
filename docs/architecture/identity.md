@@ -28,7 +28,7 @@ The `public_id` names the identity directory for the bot:
 
 ## File Layout
 
-The identity system is hierarchical. The main bot identity sits at the root, and agent/subagent identities are nested within the bot's memory directory.
+The identity system is hierarchical. The main bot identity sits at the root, and agent/subagent identities are nested within the bot's memory directory. Any prompts must be saved as text to minimize prompt injection.
 
 ```
 {work_dir}/
@@ -56,8 +56,7 @@ The identity system is hierarchical. The main bot identity sits at the root, and
 identity::setup(&config)
   ├─ scan work_dir for bot-pkey*/ directory containing id_ed25519
   ├─ if found:
-  │   ├─ load id_ed25519 (32 bytes)
-  │   ├─ load id_ed25519.pub (32 bytes)
+  │   ├─ load id_ed25519 & id_ed25519.pub
   │   ├─ reconstruct verifying key from seed
   │   ├─ verify reconstructed vk == stored pub (integrity check)
   │   └─ return Identity
@@ -65,8 +64,7 @@ identity::setup(&config)
       ├─ generate new ed25519 keypair (OsRng)
       ├─ compute public_id from verifying key
       ├─ create {work_dir}/bot-pkey{public_id}/
-      ├─ save id_ed25519 (mode 0600)
-      ├─ save id_ed25519.pub (mode 0644)
+      ├─ save id_ed25519 (mode 0600) & id_ed25519.pub (mode 0644)
       └─ return Identity
 ```
 
