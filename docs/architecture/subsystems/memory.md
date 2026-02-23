@@ -158,7 +158,7 @@ When built with feature `idocstore`, agents can host an indexed document store u
         └── {doc_id}.txt           raw document payload
 ```
 
-Phase 1 APIs include document add/list/get/delete, fixed-size chunking, indexing, hash-based deduplication (`SHA-256`), and BM25 text search.
+Phase 1 APIs include document add/list/get/delete, smart Markdown-aware chunking (`text-splitter`), indexing, hash-based deduplication (`SHA-256`), and BM25 text search.
 
 ### `spend.json` shape
 
@@ -253,6 +253,14 @@ memory = ["basic_session"]  # store types this agent uses
 | `agents.{id}.memory` | array\<string\> | `[]` | Store types (`"basic_session"` or `"tmp"`). |
 
 Core memory is always compiled. `IDocStore` is behind the Cargo feature gate `idocstore`.
+
+---
+
+## Related Documentation
+
+- [intelligent_doc_store.md](intelligent_doc_store.md) — IDocStore API, schema, integration patterns
+- [../../identity.md](../../identity.md) — agent identity provisioning and directory layout
+- [../../standards/index.md](../../standards/index.md) — bus protocol and subsystem patterns
 
 ---
 

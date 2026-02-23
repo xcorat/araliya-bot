@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use chrono::{SecondsFormat, Utc};
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
+use text_splitter::MarkdownSplitter;
+use tracing::warn;
 
 use crate::error::AppError;
 
@@ -121,7 +123,17 @@ impl IDocStore {
         tx.commit()
             .map_err(|e| AppError::Memory(format!("docstore: commit add_document: {e}")))?;
 
-        fs::write(self.doc_content_path(&doc.id), doc.content).map_err(|e| {
+        let content_path = self.doc_content_path(&doc.id);
+        if let Some(parent) = content_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                AppError::Memory(format!(
+                    "docstore: create parent dirs {}: {e}",
+                    parent.display()
+                ))
+            })?;
+        }
+
+        fs::write(&content_path, doc.content).map_err(|e| {
             AppError::Memory(format!("docstore: write document content for {}: {e}", doc.id))
         })?;
 
@@ -233,40 +245,18 @@ impl IDocStore {
             AppError::Memory(format!("docstore: read document content for {doc_id}: {e}"))
         })?;
 
-        let mut chunks = Vec::new();
-        let mut start = 0usize;
-        let mut current_bytes = 0usize;
-
-        for (idx, ch) in content.char_indices() {
-            current_bytes += ch.len_utf8();
-            if current_bytes >= chunk_size {
-                let text = content[start..idx + ch.len_utf8()].to_string();
-                if !text.trim().is_empty() {
-                    chunks.push(Chunk {
-                        id: uuid::Uuid::now_v7().to_string(),
-                        doc_id: doc_id.to_string(),
-                        text,
-                        position: start,
-                        metadata: HashMap::new(),
-                    });
-                }
-                start = idx + ch.len_utf8();
-                current_bytes = 0;
-            }
-        }
-
-        if start < content.len() {
-            let text = content[start..].to_string();
-            if !text.trim().is_empty() {
-                chunks.push(Chunk {
-                    id: uuid::Uuid::now_v7().to_string(),
-                    doc_id: doc_id.to_string(),
-                    text,
-                    position: start,
-                    metadata: HashMap::new(),
-                });
-            }
-        }
+        let splitter = MarkdownSplitter::new(chunk_size);
+        let chunks = splitter
+            .chunk_indices(&content)
+            .filter(|(_, text)| !text.trim().is_empty())
+            .map(|(pos, text)| Chunk {
+                id: uuid::Uuid::now_v7().to_string(),
+                doc_id: doc_id.to_string(),
+                text: text.to_string(),
+                position: pos,
+                metadata: HashMap::new(),
+            })
+            .collect();
 
         Ok(chunks)
     }
@@ -308,6 +298,32 @@ impl IDocStore {
         Ok(())
     }
 
+    /// Escape a user-supplied string for use in an FTS5 `MATCH` query.
+    ///
+    /// FTS5 parses the argument to `MATCH` with its own mini-language, so
+    /// characters like `?`, `"`, `(`, etc. are significant.  Simple parameter
+    /// binding does **not** quote the content; binding only protects against SQL
+    /// injection, not FTS syntax errors.  We perform a lightweight token-based
+    /// quoting here: whitespace splits the query, and any token containing a
+    /// non-alphanumeric character is wrapped in double-quotes with internal
+    /// quotes doubled.  This is sufficient for our use case (most queries are
+    /// natural language) and prevents common syntax errors.
+    fn escape_fts5_query(query: &str) -> String {
+        query
+            .split_whitespace()
+            .map(|tok| {
+                if tok.chars().all(|c| c.is_alphanumeric()) {
+                    tok.to_string()
+                } else {
+                    // double any existing quotes and wrap the token in quotes
+                    let escaped = tok.replace('"', "\"\"");
+                    format!("\"{}\"", escaped)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub fn search_by_text(&self, query: &str, top_k: usize) -> Result<Vec<SearchResult>, AppError> {
         if query.trim().is_empty() || top_k == 0 {
             return Ok(Vec::new());
@@ -337,44 +353,59 @@ impl IDocStore {
             )
             .map_err(|e| AppError::Memory(format!("docstore: prepare search_by_text: {e}")))?;
 
-        let rows = stmt
-            .query_map(params![query, top_k as i64], |row| {
-                let chunk_metadata_json: String = row.get(4)?;
-                let doc_metadata_json: String = row.get(11)?;
+        // sanitize the query before binding, then run and handle syntax errors
+        let safe_query = Self::escape_fts5_query(query);
 
-                let chunk_metadata =
-                    serde_json::from_str::<HashMap<String, String>>(&chunk_metadata_json)
-                        .unwrap_or_default();
-                let doc_metadata =
-                    serde_json::from_str::<HashMap<String, String>>(&doc_metadata_json)
-                        .unwrap_or_default();
+        let rows_result = stmt.query_map(params![safe_query, top_k as i64], |row| {
+            let chunk_metadata_json: String = row.get(4)?;
+            let doc_metadata_json: String = row.get(11)?;
 
-                let score = {
-                    let bm25_score: f64 = row.get(5)?;
-                    (-bm25_score) as f32
-                };
+            let chunk_metadata =
+                serde_json::from_str::<HashMap<String, String>>(&chunk_metadata_json)
+                    .unwrap_or_default();
+            let doc_metadata =
+                serde_json::from_str::<HashMap<String, String>>(&doc_metadata_json)
+                    .unwrap_or_default();
 
-                Ok(SearchResult {
-                    chunk: Chunk {
-                        id: row.get(0)?,
-                        doc_id: row.get(1)?,
-                        text: row.get(2)?,
-                        position: row.get::<_, i64>(3)? as usize,
-                        metadata: chunk_metadata,
-                    },
-                    score,
-                    doc_metadata: DocMetadata {
-                        doc_id: row.get(1)?,
-                        title: row.get(6)?,
-                        source: row.get(7)?,
-                        content_hash: row.get(8)?,
-                        created_at: row.get(9)?,
-                        updated_at: row.get(10)?,
-                        metadata: doc_metadata,
-                    },
-                })
+            let score = {
+                let bm25_score: f64 = row.get(5)?;
+                (-bm25_score) as f32
+            };
+
+            Ok(SearchResult {
+                chunk: Chunk {
+                    id: row.get(0)?,
+                    doc_id: row.get(1)?,
+                    text: row.get(2)?,
+                    position: row.get::<_, i64>(3)? as usize,
+                    metadata: chunk_metadata,
+                },
+                score,
+                doc_metadata: DocMetadata {
+                    doc_id: row.get(1)?,
+                    title: row.get(6)?,
+                    source: row.get(7)?,
+                    content_hash: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                    metadata: doc_metadata,
+                },
             })
-            .map_err(|e| AppError::Memory(format!("docstore: execute search_by_text: {e}")))?;
+        });
+
+        let rows = match rows_result {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("fts5: syntax error") {
+                    warn!(error=%msg, "docstore: FTS5 syntax error in query, returning empty results");
+                    return Ok(Vec::new());
+                }
+                return Err(AppError::Memory(format!(
+                    "docstore: execute search_by_text: {e}"
+                )));
+            }
+        };
 
         let mut results = Vec::new();
         for row in rows {
@@ -443,7 +474,9 @@ impl IDocStore {
     }
 
     fn doc_content_path(&self, doc_id: &str) -> PathBuf {
-        self.docs_dir.join(format!("{doc_id}.txt"))
+        // Treat `doc_id` as a relative path and normalize the extension to `.txt`.
+        let rel = std::path::Path::new(doc_id).with_extension("txt");
+        self.docs_dir.join(rel)
     }
 
     fn find_doc_id_by_hash(conn: &Connection, content_hash: &str) -> Result<Option<String>, AppError> {
@@ -493,6 +526,14 @@ mod tests {
         fs::create_dir_all(&identity_dir).expect("create identity dir");
         let store = IDocStore::open(&identity_dir).expect("open docstore");
         (temp, store)
+    }
+
+    #[test]
+    fn escape_fts5_query_quotes_special_tokens() {
+        assert_eq!(IDocStore::escape_fts5_query("foo bar"), "foo bar");
+        assert_eq!(IDocStore::escape_fts5_query("foo? bar"), "\"foo?\" bar");
+        assert_eq!(IDocStore::escape_fts5_query("foo\"bar baz"), "\"foo\"\"bar\" baz");
+        assert_eq!(IDocStore::escape_fts5_query("(a|b)"), "\"(a|b)\"");
     }
 
     #[test]

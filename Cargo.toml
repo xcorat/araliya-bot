@@ -33,6 +33,7 @@ wgpu = { version = "23", optional = true }
 pollster = { version = "0.3", optional = true }
 chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
+text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
 
 [features]
 default = [
@@ -62,7 +63,7 @@ gmail-app = []
 # Subsystems
 subsystem-agents = ["subsystem-memory"]
 subsystem-memory = []
-idocstore = ["dep:rusqlite"]
+idocstore = ["dep:rusqlite", "dep:text-splitter"]
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = []
@@ -71,7 +72,7 @@ subsystem-cron = []
 
 # Agent Plugins
 plugin-echo = ["subsystem-agents"]
-plugin-docs = ["subsystem-agents"]
+plugin-docs = ["subsystem-agents", "idocstore"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]

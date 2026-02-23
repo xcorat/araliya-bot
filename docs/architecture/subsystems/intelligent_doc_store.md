@@ -1,6 +1,6 @@
 # Intelligent Document Store (IDocStore)
 
-**Status:** Phase 1 (2026-02-23) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence · **background `DocstoreManager`** (auto-index + orphan cleanup).
+**Status:** Phase 1 (2026-02-23) — Feature-gated document store · SQLite + FTS5 backend · document metadata · chunk-based indexing · BM25 text search · hash-based deduplication · agent-scoped persistence · **background `DocstoreManager`** (auto-index + orphan cleanup) · **smart Markdown-aware chunking via `text-splitter`**.
 
 **Cargo Feature:** `idocstore`
 
@@ -97,7 +97,7 @@ Opens or creates the document store at `{agent_identity_dir}/docstore/`. Initial
 
 | Method | Signature | Behavior |
 |--------|-----------|----------|
-| `chunk_document` | `&str, usize → Result<Vec<Chunk>>` | Split document by byte size (deterministic, UTF-8 aware). Skips empty chunks. Returns chunks with `position` offset set. |
+| `chunk_document` | `&str, usize → Result<Vec<Chunk>>` | Split document using `MarkdownSplitter` (respects headers, paragraphs, code fences; falls back to sentence → word → character). Skips empty chunks. Returns chunks with `position` byte-offset set. |
 | `index_chunks` | `Vec<Chunk> → Result<()>` | Insert chunks into FTS5 index. Re-indexes by `doc_id` (clears old chunks for same doc). |
 
 ### Search
@@ -212,22 +212,22 @@ This prevents index bloat when the same document is added multiple times.
 
 ## Chunking Strategy
 
-Chunks are deterministic and UTF-8-aware:
+Chunks are Markdown-aware and semantics-preserving, powered by [`text-splitter`](https://crates.io/crates/text-splitter) (`MarkdownSplitter`):
 
-- Fixed byte-size splits (parameter: `chunk_size`).
-- Iterate by `char_indices()` to respect UTF-8 boundaries.
-- Store `position` (byte offset) for each chunk to enable linking back to original.
-- Skip empty/whitespace-only chunks.
+- **Recursive semantic splitting:** tries to split at `#` headers first, then `##`, then paragraphs, then sentences, then words, and only falls back to raw character boundaries as a last resort.
+- **Structure preservation:** headers stay with their content; code fences (` ``` `) are never sliced in half.
+- **`chunk_size` is a character-count ceiling** — no chunk will exceed that many characters.
+- **Byte-offset `position`:** `chunk_indices()` returns `(byte_offset, &str)` slices of the original string, so `position` is always an exact byte offset into the raw document — useful for linking chunks back to source.
+- **Zero extra allocation:** slices reference the original string where possible.
+- **Plain-text fallback:** for non-Markdown content, behaviour degrades gracefully to sentence/word/character splitting.
 
 Example:
 
 ```rust
 let chunks = docstore.chunk_document("doc-123", 2048)?;
-// Returns chunks: [
-//   Chunk { text: "Chapter 1...", position: 0, ... },
-//   Chunk { text: "Chapter 2...", position: 2048, ... },
-//   ...
-// ]
+// Returns chunks aligned to Markdown sections, e.g.:
+//   Chunk { text: "# Chapter 1\n\nIntro paragraph...", position: 0, ... },
+//   Chunk { text: "## Sub-section\n\nMore text...", position: 1843, ... },
 ```
 
 ---
@@ -274,7 +274,7 @@ Logging is via standard `tracing` macros in the memory subsystem.
 ```toml
 # Cargo.toml
 [features]
-idocstore = ["dep:rusqlite"]
+idocstore = ["dep:rusqlite", "dep:text-splitter"]
 ```
 
 Enable in builds:
@@ -307,7 +307,7 @@ cargo test --features idocstore docstore
 
 - **SQLite + FTS5:** Suitable for ~100k–1M documents per agent. WAL mode enables concurrent reads.
 - **BM25 scoring:** O(log n) for indexed queries; no per-document scanning.
-- **Chunk storage:** Fixed 2KB chunks recommended (~500 chunks per 1MB document).
+- **Chunk storage:** 2KB `chunk_size` recommended; actual chunk count varies by document structure (Markdown sections tend to align naturally, producing fewer but denser chunks than fixed splits).
 - **Position tracking:** Enables O(1) lookup of chunk location in original.
 
 ---
