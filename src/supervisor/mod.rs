@@ -2,6 +2,7 @@
 
 pub mod adapters;
 pub mod bus;
+pub mod component_info;
 pub mod control;
 pub mod dispatch;
 
@@ -12,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 
 use bus::{BusError, BusMessage, ERR_METHOD_NOT_FOUND, SupervisorBus};
+use component_info::ComponentInfo;
 use control::{ControlCommand, ControlError, ControlMessage, ControlResponse, SupervisorControl};
 use dispatch::BusHandler;
 
@@ -81,6 +83,25 @@ pub async fn run(
                                 Ok(ControlResponse::Subsystems {
                                     handlers: sorted_handler_ids(&table),
                                 })
+                            }
+                            ControlCommand::ComponentTree => {
+                                // Collect per-handler component info via direct fn call (not bus).
+                                let mut children: Vec<ComponentInfo> = {
+                                    let mut ids: Vec<&String> = table.keys().collect();
+                                    ids.sort();
+                                    ids.iter().map(|k| table[*k].component_info()).collect()
+                                };
+                                children.sort_by(|a, b| a.id.cmp(&b.id));
+                                let root = ComponentInfo {
+                                    id: "supervisor".to_string(),
+                                    name: "Supervisor".to_string(),
+                                    status: "running".to_string(),
+                                    state: component_info::ComponentStatus::On,
+                                    uptime_ms: Some(uptime_ms),
+                                    children,
+                                };
+                                let tree_json = serde_json::to_string(&root).unwrap_or_else(|_| "{}".to_string());
+                                Ok(ControlResponse::ComponentTree { tree_json })
                             }
                             ControlCommand::Shutdown => {
                                 info!("control requested supervisor shutdown");

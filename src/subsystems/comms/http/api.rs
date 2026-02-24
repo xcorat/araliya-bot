@@ -57,6 +57,39 @@ pub(super) async fn handle_health(
     }
 }
 
+/// GET /api/tree — component tree (no private data).
+pub(super) async fn handle_tree(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+) -> Result<(), AppError> {
+    let response = tokio::time::timeout(Duration::from_secs(3), state.management_http_tree()).await;
+
+    match response {
+        Ok(Ok(body)) => super::write_json_response(socket, "200 OK", body.as_bytes()).await,
+        Ok(Err(e)) => {
+            warn!(%channel_id, "management tree request failed: {e}");
+            super::write_response(
+                socket,
+                "502 Bad Gateway",
+                "text/plain; charset=utf-8",
+                b"management adapter error\n",
+            )
+            .await
+        }
+        Err(_) => {
+            warn!(%channel_id, "management tree request timed out");
+            super::write_response(
+                socket,
+                "504 Gateway Timeout",
+                "text/plain; charset=utf-8",
+                b"management adapter timeout\n",
+            )
+            .await
+        }
+    }
+}
+
 /// POST /api/message
 pub(super) async fn handle_message(
     socket: &mut tokio::net::TcpStream,

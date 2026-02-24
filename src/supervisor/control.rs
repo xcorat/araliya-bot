@@ -16,6 +16,8 @@ pub enum ControlCommand {
     Health,
     Status,
     SubsystemsList,
+    /// Request a JSON component tree (same shape as manage/tree bus response).
+    ComponentTree,
     SubsystemEnable { id: String },
     SubsystemDisable { id: String },
     Shutdown,
@@ -27,6 +29,8 @@ pub enum ControlResponse {
     Health { uptime_ms: u64 },
     Status { uptime_ms: u64, handlers: Vec<String> },
     Subsystems { handlers: Vec<String> },
+    /// JSON string of the full component tree (id, name, status, state, children).
+    ComponentTree { tree_json: String },
     Ack { message: String },
 }
 

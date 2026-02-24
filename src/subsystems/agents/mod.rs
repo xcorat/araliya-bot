@@ -21,6 +21,7 @@ use crate::config::{AgentsConfig, DocsAgentConfig, DocsKgConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
 
 use crate::identity::{self, Identity};
@@ -716,6 +717,23 @@ impl BusHandler for AgentsSubsystem {
                 )));
             }
         }
+    }
+
+    fn component_info(&self) -> ComponentInfo {
+        let mut children: Vec<ComponentInfo> = self
+            .agents
+            .keys()
+            .map(|id| {
+                let name = ComponentInfo::capitalise(id);
+                let mut node = ComponentInfo::leaf(id, &name);
+                if id.as_str() == self.default_agent.as_str() {
+                    node.name = format!("{name} (default)");
+                }
+                node
+            })
+            .collect();
+        children.sort_by(|a, b| a.id.cmp(&b.id));
+        ComponentInfo::running("agents", "Agents", children)
     }
 }
 

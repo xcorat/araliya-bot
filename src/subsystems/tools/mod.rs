@@ -3,6 +3,7 @@ use tokio::sync::oneshot;
 
 use crate::config::NewsmailAggregatorConfig;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
 
 #[cfg(feature = "plugin-gmail-tool")]
@@ -158,5 +159,16 @@ impl BusHandler for ToolsSubsystem {
                 )));
             }
         }
+    }
+
+    fn component_info(&self) -> ComponentInfo {
+        let mut children: Vec<ComponentInfo> = vec![];
+        #[cfg(feature = "plugin-gmail-tool")]
+        {
+            children.push(ComponentInfo::leaf("gmail", "Gmail"));
+            children.push(ComponentInfo::leaf("newsmail_aggregator", "Newsmail Aggregator"));
+        }
+        children.sort_by(|a, b| a.id.cmp(&b.id));
+        ComponentInfo::running("tools", "Tools", children)
     }
 }

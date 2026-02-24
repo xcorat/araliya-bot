@@ -26,7 +26,10 @@ mod subsystems;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+use std::sync::{Arc, OnceLock};
+
 use supervisor::bus::SupervisorBus;
+use supervisor::component_info::ComponentInfo;
 use supervisor::control::SupervisorControl;
 use supervisor::dispatch::BusHandler;
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
@@ -101,12 +104,14 @@ async fn run() -> Result<(), error::AppError> {
         };
         let mut mem = MemorySystem::new(&identity.identity_dir, mem_config)
             .map_err(|e| error::AppError::Memory(e.to_string()))?;
+        // CHECK: We are only starting the docstore manager, so this might be ok.
         #[cfg(feature = "idocstore")]
         mem.start_docstore_manager(shutdown.clone());
         std::sync::Arc::new(mem)
     };
 
     // Build the supervisor bus (buffer = 64 messages).
+    // TODO: Add config, and a refuse collector.
     let bus = SupervisorBus::new(64);
     // Build the supervisor-internal control plane (buffer = 32 messages).
     let control = SupervisorControl::new(32);
@@ -126,20 +131,27 @@ async fn run() -> Result<(), error::AppError> {
     });
 
     // Build subsystem handlers and register with supervisor.
+    // TODO:
     #[allow(unused_mut)]
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
     #[allow(unused_mut)]
     let mut configured_handlers: Vec<String> = vec!["management".to_string()];
     
+    // OnceLock bridge: comms::start() will populate this once channel list is known.
+    // ManagementSubsystem reads it when building the component tree.
+    let comms_info: Arc<OnceLock<ComponentInfo>> = Arc::new(OnceLock::new());
+
     handlers.push(Box::new(ManagementSubsystem::new(
         control_handle.clone(),
         bus_handle.clone(),
+        // TODO: IMPORTANT: we shouldn't add the llm provider here. let the subsystem handle it.
         ManagementInfo {
             bot_id: identity.public_id.clone(),
             llm_provider: config.llm.provider.clone(),
             llm_model: config.llm.openai.model.clone(),
             llm_timeout_seconds: config.llm.openai.timeout_seconds,
         },
+        comms_info.clone(),
     )));
 
     #[cfg(feature = "subsystem-llm")]
@@ -218,6 +230,7 @@ async fn run() -> Result<(), error::AppError> {
             shutdown.clone(),
             #[cfg(feature = "subsystem-ui")]
             ui_handle,
+            comms_info,
         );
         comms.join().await?;
     }
@@ -231,6 +244,7 @@ async fn run() -> Result<(), error::AppError> {
 
     // In interactive mode, print a clean exit line so the shell prompt
     // appears below the tracing output.  In daemon mode, exit silently.
+    // CHECK: what the correct way to do this.
     if args.interactive {
         use std::io::Write as _;
         println!("\nBye :) ...");
@@ -241,6 +255,7 @@ async fn run() -> Result<(), error::AppError> {
     Ok(())
 }
 
+// TODO: Move this to a separate file.
 fn print_startup_summary(
     config: &config::Config,
     identity: &identity::Identity,
@@ -399,11 +414,12 @@ fn print_startup_summary(
 
     #[cfg(not(feature = "channel-axum"))]
     if config.comms.axum_channel.enabled {
+        // CHECK: whats the use of this?
         comms_lines.push("🧩 axum: configured but not compiled in".to_string());
     }
 
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║ 🤖 Araliya Supervisor Status                                ║");
+    println!("║ 🤖 Araliya Supervisor Status                                 ║");
     println!("╟──────────────────────────────────────────────────────────────╢");
     println!("║ 🧾 Bot: {:<52}║", config.bot_name);
     println!("║ 🆔 Public ID: {:<46}║", identity.public_id);
@@ -413,20 +429,20 @@ fn print_startup_summary(
     println!("║ ⚙️  Subsystems                                               ║");
     println!("║   {}║", fit(format!("✅ {}", subsystem_summary)));
     println!("╟──────────────────────────────────────────────────────────────╢");
-    println!("║ 📡 Comms                                                    ║");
+    println!("║ 📡 Comms                                                     ║");
     for line in comms_lines {
         println!("║   {}║", fit(line));
     }
     println!("╟──────────────────────────────────────────────────────────────╢");
-    println!("║ 🧠 LLM                                                      ║");
+    println!("║ 🧠 LLM                                                       ║");
     println!("║   {}║", fit(llm_line));
     println!("╟──────────────────────────────────────────────────────────────╢");
-    println!("║ 🤝 Agents                                                   ║");
+    println!("║ 🤝 Agents                                                    ║");
     for line in agent_lines {
         println!("║   {}║", fit(line));
     }
     println!("╟──────────────────────────────────────────────────────────────╢");
-    println!("║ 🧰 Tools                                                    ║");
+    println!("║ 🧰 Tools                                                     ║");
     println!("║   {}║", fit(tools_line));
     #[cfg(feature = "subsystem-tools")]
     {
@@ -506,4 +522,3 @@ fn parse_cli_args() -> CliArgs {
 
     CliArgs { log_level, interactive, config_path }
 }
-

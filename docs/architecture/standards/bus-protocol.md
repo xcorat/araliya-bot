@@ -168,6 +168,20 @@ Rules:
 The supervisor owns handlers as `Vec<Box<dyn BusHandler>>` and builds a `HashMap<&str, usize>` index at startup for O(1) prefix lookup.
 
 ---
+
+## Management routes (`manage/*`)
+
+The management subsystem owns the `manage` prefix. These routes are used by HTTP channels and control/CLI consumers. **No private or secure data** is exposed on the HTTP-facing routes.
+
+| Method | Payload | Response | Use |
+|--------|---------|----------|-----|
+| `manage/http/get` | `Empty` | `CommsMessage` with health/status JSON | HTTP `GET /api/health` |
+| `manage/http/tree` | `Empty` | `CommsMessage` with component tree JSON | HTTP `GET /api/tree` (same shape as `manage/tree`; no private data) |
+| `manage/tree` | `Empty` | `CommsMessage` with component tree JSON | Control/CLI (e.g. `araliya-ctl tree`, `/tree`) |
+
+**Tree JSON shape** (for both `manage/tree` and `manage/http/tree`): root object with `id`, `name`, `status`, `state`, `uptime_ms`, and `children` (array of nodes with `id`, `name`, `status`, `state`, `children`). All nodes use `status: "running"` and `state: "on"` for currently registered components.
+
+---
 TODO: check this section, code and doc
 ## Observability
 

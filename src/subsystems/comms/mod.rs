@@ -28,7 +28,7 @@ pub mod telegram;
 
 pub use state::{CommsEvent, CommsState};
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -39,6 +39,7 @@ use crate::subsystems::ui::UiServeHandle;
 
 use crate::config::Config;
 use crate::supervisor::bus::BusHandle;
+use crate::supervisor::component_info::ComponentInfo;
 use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
 
 // ── start ───────────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ pub fn start(
     bus: BusHandle,
     shutdown: CancellationToken,
     #[cfg(feature = "subsystem-ui")] ui_handle: Option<UiServeHandle>,
+    comms_info: Arc<OnceLock<ComponentInfo>>,
 ) -> SubsystemHandle {
     // Intra-subsystem event channel: channels → manager.
     let (event_tx, event_rx) = mpsc::channel::<CommsEvent>(32);
@@ -148,6 +150,16 @@ pub fn start(
 
     if components.is_empty() {
         info!("no comms channels configured — waiting for shutdown");
+    }
+
+    // Snapshot the channel list into the component-info slot for the management tree.
+    // Each Component exposes its id(); we use that as both the node id and display name.
+    {
+        let channel_children: Vec<ComponentInfo> = components
+            .iter()
+            .map(|c| ComponentInfo::leaf(c.id(), &ComponentInfo::capitalise(c.id())))
+            .collect();
+        let _ = comms_info.set(ComponentInfo::running("comms", "Comms", channel_children));
     }
 
     // Spawn a background event drain: consumes CommsEvent until all channel

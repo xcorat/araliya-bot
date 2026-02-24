@@ -38,6 +38,7 @@ enum ControlCommand {
     Health,
     Status,
     SubsystemsList,
+    ComponentTree,
     SubsystemEnable { id: String },
     SubsystemDisable { id: String },
     Shutdown,
@@ -48,6 +49,7 @@ enum ControlResponse {
     Health { uptime_ms: u64 },
     Status { uptime_ms: u64, handlers: Vec<String> },
     Subsystems { handlers: Vec<String> },
+    ComponentTree { tree_json: String },
     Ack { message: String },
 }
 
@@ -107,6 +109,7 @@ fn print_help() {
     eprintln!("  health              show bot uptime");
     eprintln!("  status              show uptime + active subsystem handlers");
     eprintln!("  subsystems          list registered subsystem handlers");
+    eprintln!("  tree                print full component tree (JSON)");
     eprintln!("  shutdown            request graceful daemon shutdown");
     eprintln!();
     eprintln!("flags:");
@@ -157,6 +160,7 @@ fn build_command(cmd: &str, rest: &[String]) -> Result<ControlCommand, String> {
         "health" => Ok(ControlCommand::Health),
         "status" => Ok(ControlCommand::Status),
         "subsystems" | "subsys" => Ok(ControlCommand::SubsystemsList),
+        "tree" => Ok(ControlCommand::ComponentTree),
         "shutdown" => Ok(ControlCommand::Shutdown),
         "enable" => {
             let id = rest.first().ok_or("usage: araliya-ctl enable <id>")?;
@@ -191,6 +195,14 @@ fn print_response(resp: WireResponse) {
                 println!("ok  subsystems ({}):", handlers.len());
                 for h in &handlers {
                     println!("      {h}");
+                }
+            }
+            ControlResponse::ComponentTree { tree_json } => {
+                let pretty =
+                    serde_json::from_str::<serde_json::Value>(&tree_json).and_then(serde_json::to_string_pretty);
+                match pretty {
+                    Ok(s) => println!("{s}"),
+                    Err(_) => println!("{tree_json}"),
                 }
             }
             ControlResponse::Ack { message } => {

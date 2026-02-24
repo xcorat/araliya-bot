@@ -190,6 +190,7 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
         }
         "status" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Status)),
         "subsys" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::SubsystemsList)),
+        "tree" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::ComponentTree)),
         "exit" => ensure_no_args(rest, StdioFrame::Control(ControlCommand::Shutdown)),
         "help" => ensure_no_args(rest, StdioFrame::Help),
         "" => Err("usage: /<command> [args]".to_string()),
@@ -211,6 +212,7 @@ fn print_usage() {
     eprintln!("  /health [agent]");
     eprintln!("  /status");
     eprintln!("  /subsys");
+    eprintln!("  /tree");
     eprintln!("  /exit");
     eprintln!("  /help");
 }
@@ -228,6 +230,14 @@ fn print_control_response(response: ControlResponse) {
         }
         ControlResponse::Subsystems { handlers } => {
             println!("subsystems: {handlers:?}");
+        }
+        ControlResponse::ComponentTree { tree_json } => {
+            let pretty = serde_json::from_str::<serde_json::Value>(&tree_json)
+                .and_then(|v| serde_json::to_string_pretty(&v));
+            match pretty {
+                Ok(s) => println!("{s}"),
+                Err(_) => println!("{tree_json}"),
+            }
         }
         ControlResponse::Ack { message } => {
             println!("ok: {message}");

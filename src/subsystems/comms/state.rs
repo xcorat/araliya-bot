@@ -97,6 +97,32 @@ impl CommsState {
         }
     }
 
+    /// Request the component tree (JSON) via the management bus route `manage/tree`.
+    pub async fn management_component_tree(&self) -> Result<String, AppError> {
+        match self.bus.request("manage/tree", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+        }
+    }
+
+    /// Request the component tree for HTTP (GET /api/tree). Same data as `manage/tree`; no private data.
+    pub async fn management_http_tree(&self) -> Result<String, AppError> {
+        match self.bus.request("manage/http/tree", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+        }
+    }
+
     /// Request a list of all sessions from the agents subsystem.
     pub async fn request_sessions(&self) -> Result<String, AppError> {
         match self.bus.request("agents/sessions", BusPayload::Empty).await {

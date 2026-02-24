@@ -3,12 +3,15 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { RefreshCw, Server, Cpu, ChevronDown, ChevronUp } from '@lucide/svelte';
+	import { RefreshCw, Server, Cpu, GitBranch, ChevronDown, ChevronUp } from '@lucide/svelte';
 	import { getBaseUrl } from '$lib/state.svelte';
 	import * as api from '$lib/api';
-	import type { HealthResponse, MainProcessStatus, SubsystemStatus } from '$lib/types';
+	import type { HealthResponse, MainProcessStatus, SubsystemStatus, TreeNode } from '$lib/types';
+	import ComponentTreeNode from '$lib/components/ComponentTreeNode.svelte';
 
 	let serviceInfo = $state<HealthResponse | null>(null);
+	let treeData = $state<TreeNode | null>(null);
+	let treeError = $state('');
 	let expandedSubsystems = $state<Record<string, boolean>>({});
 	let isPolling = $state(true);
 	let loading = $state(false);
@@ -60,12 +63,26 @@
 
 		loading = true;
 		error = '';
+		treeError = '';
 		try {
-			const healthRes = await api.checkHealth(baseUrl);
-			serviceInfo = healthRes;
+			const [healthRes, treeRes] = await Promise.allSettled([
+				api.checkHealth(baseUrl),
+				api.fetchComponentTree(baseUrl)
+			]);
+
+			if (healthRes.status === 'fulfilled') {
+				serviceInfo = healthRes.value;
+			} else {
+				error = healthRes.reason instanceof Error ? healthRes.reason.message : 'Failed to fetch status data';
+			}
+
+			if (treeRes.status === 'fulfilled') {
+				treeData = treeRes.value;
+			} else {
+				treeError = treeRes.reason instanceof Error ? treeRes.reason.message : 'Failed to fetch component tree';
+			}
+
 			lastRefresh = new Date().toLocaleTimeString();
-		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : 'Failed to fetch status data';
 		} finally {
 			loading = false;
 		}
@@ -526,5 +543,26 @@
 				{/if}
 			</CardContent>
 		</Card>
+
+		<!-- Component Tree -->
+		{#if treeData || treeError}
+			<Card>
+				<CardHeader class="pb-3">
+					<CardTitle class="flex items-center gap-2 text-sm font-medium">
+						<GitBranch class="size-4 text-primary" />
+						Component Tree
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{#if treeError}
+						<p class="text-sm text-muted-foreground">{treeError}</p>
+					{:else if treeData}
+						<div class="rounded-lg border border-border/50 bg-muted/5 p-2">
+							<ComponentTreeNode node={treeData} />
+						</div>
+					{/if}
+				</CardContent>
+			</Card>
+		{/if}
 	{/if}
 </div>

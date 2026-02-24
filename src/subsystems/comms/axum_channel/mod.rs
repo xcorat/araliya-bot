@@ -11,6 +11,7 @@
 //!
 //! ```text
 //! GET  /api/health
+//! GET  /api/tree   — component tree (no private data)
 //! POST /api/message
 //! GET  /api/sessions
 //! GET  /api/sessions/{id}/memory
@@ -139,6 +140,7 @@ fn build_router(state: AxumState) -> Router {
     Router::new()
         // API routes
         .route("/api/health",                        get(api::health))
+        .route("/api/tree",                           get(api::tree))
         .route("/api/message",                       post(api::message))
         .route("/api/sessions",                      get(api::sessions))
         .route("/api/agents",                        get(api::agents))

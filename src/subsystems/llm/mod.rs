@@ -11,10 +11,13 @@ use crate::config::LlmConfig;
 use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use crate::llm::providers;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
 
 pub struct LlmSubsystem {
     provider: LlmProvider,
+    provider_name: String,
+    model_name: String,
     rates: ModelRates,
 }
 
@@ -22,6 +25,11 @@ impl LlmSubsystem {
     /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
     pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
         let provider = providers::build(config, api_key)?;
+        let provider_name = config.provider.clone();
+        let model_name = match config.provider.as_str() {
+            "qwen" => config.qwen.model.clone(),
+            _ => config.openai.model.clone(),
+        };
         let rates = match config.provider.as_str() {
             "qwen" => ModelRates {
                 input_per_million_usd: config.qwen.input_per_million_usd,
@@ -34,7 +42,7 @@ impl LlmSubsystem {
                 cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
             },
         };
-        Ok(Self { provider, rates })
+        Ok(Self { provider, provider_name, model_name, rates })
     }
 }
 
@@ -84,5 +92,17 @@ impl BusHandler for LlmSubsystem {
                 )));
             }
         }
+    }
+
+    fn component_info(&self) -> ComponentInfo {
+        let provider_id = self.provider_name.as_str();
+        let provider_label = format!(
+            "{} ({})",
+            ComponentInfo::capitalise(provider_id),
+            self.model_name
+        );
+        ComponentInfo::running("llm", "LLM", vec![
+            ComponentInfo::leaf(provider_id, &provider_label),
+        ])
     }
 }

@@ -6,6 +6,7 @@ import type {
 	SessionDetailResponse,
 	SessionMemoryResponse,
 	SessionFilesResponse,
+	TreeNode,
 	ApiError,
 	SessionMode
 } from './types';
@@ -35,6 +36,12 @@ export async function checkHealth(baseUrl: string): Promise<HealthResponse> {
 	const response = await fetch(`${baseUrl}/api/health`);
 	if (!response.ok) return handleError(response);
 	return readResponse<HealthResponse>(response);
+}
+
+export async function fetchComponentTree(baseUrl: string): Promise<TreeNode> {
+	const response = await fetch(`${baseUrl}/api/tree`);
+	if (!response.ok) return handleError(response);
+	return readResponse<TreeNode>(response);
 }
 
 export async function sendMessage(

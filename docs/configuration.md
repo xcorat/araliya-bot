@@ -160,6 +160,7 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 |------|-------------|
 | `GET /` | Root welcome page (always available, even without UI subsystem). |
 | `GET /api/health` | JSON health status from management bus. |
+| `GET /api/tree` | Component tree JSON (no private data); see [Bus Protocol](architecture/standards/bus-protocol.md#management-routes-manage). |
 | `/ui/*` | Delegated to the UI backend when `ui.svui.enabled = true`. |
 
 ## UI Configuration

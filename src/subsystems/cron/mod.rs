@@ -26,6 +26,7 @@ use tracing::{debug, warn};
 use crate::supervisor::bus::{
     BusError, BusHandle, BusPayload, BusResult, CronScheduleSpec, ERR_METHOD_NOT_FOUND,
 };
+use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
 
 use service::{CronCommand, CronService};
@@ -205,5 +206,11 @@ impl BusHandler for CronSubsystem {
                 )));
             }
         }
+    }
+
+    fn component_info(&self) -> ComponentInfo {
+        ComponentInfo::running("cron", "Cron", vec![
+            ComponentInfo::leaf("timer-service", "Timer Service"),
+        ])
     }
 }

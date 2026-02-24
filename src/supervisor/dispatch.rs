@@ -11,6 +11,12 @@
 //! handler table.  Everything after that first segment is passed verbatim as
 //! `method` to the handler, so subsystems can do their own secondary routing.
 //!
+//! # Component info
+//!
+//! Each handler may override [`BusHandler::component_info`] to expose its
+//! internal component list (agents, tools, channels, etc.) for the management
+//! tree. The default implementation returns a leaf node using the handler prefix.
+//!
 //! # Default notification handler
 //!
 //! `handle_notification` has a no-op default implementation; subsystems that
@@ -19,6 +25,7 @@
 use tokio::sync::oneshot;
 
 use crate::supervisor::bus::{BusPayload, BusResult};
+use crate::supervisor::component_info::ComponentInfo;
 
 /// A subsystem that can handle [`crate::supervisor::bus::BusMessage`]s.
 ///
@@ -46,4 +53,12 @@ pub trait BusHandler: Send + Sync {
     ///
     /// Default: silently ignore.
     fn handle_notification(&self, _method: &str, _payload: BusPayload) {}
+
+    /// Return a snapshot of this subsystem's component tree node.
+    ///
+    /// Override this to expose child components (agents, channels, tools…).
+    /// The default returns a single running leaf using `prefix()` as the id.
+    fn component_info(&self) -> ComponentInfo {
+        ComponentInfo::leaf(self.prefix(), &ComponentInfo::capitalise(self.prefix()))
+    }
 }

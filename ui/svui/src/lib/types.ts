@@ -116,6 +116,17 @@ export interface ApiError {
 	message: string;
 }
 
+// ── Component tree types ────────────────────────────────────
+
+export interface TreeNode {
+	id: string;
+	name: string;
+	status: string;
+	state: string;
+	uptime_ms?: number;
+	children: TreeNode[];
+}
+
 // ── Monitor types ───────────────────────────────────────────
 
 export interface SessionMemoryResponse {
