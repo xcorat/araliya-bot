@@ -5,8 +5,8 @@
 /.env.*
 !/.env.example
 
-# UI build artifacts
-ui/build/
-ui/svui/node_modules/
-ui/svui/.svelte-kit/
+# Frontend build artifacts
+frontend/build/
+frontend/svui/node_modules/
+frontend/svui/.svelte-kit/
 config/gmail_token.json

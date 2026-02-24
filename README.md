@@ -71,7 +71,7 @@ Each tier bundle includes:
 
 - `bin/araliya-bot`
 - `config/` (including `minimal.toml`, `default.toml`, `full.toml`, and `cfg.toml`)
-- `ui/svui/`
+- `frontend/svui/`
 
 ---
 
@@ -79,20 +79,25 @@ Each tier bundle includes:
 
 ```
 araliya-bot/
+├── Cargo.toml                 workspace root
 ├── config/
 │   └── default.toml           main config
-├── src/
-│   ├── main.rs                entry point / supervisor bootstrap
-│   ├── config.rs              TOML loading + env overrides
-│   ├── identity.rs            ed25519 keypair, bot_id derivation
-│   ├── logger.rs              tracing-subscriber init
-│   ├── error.rs               error types
-│   ├── llm/                   LLM provider abstraction
-│   ├── supervisor/            bus, dispatch, run-loop
-│   └── subsystems/
-│       ├── agents/            agent routing + plugins
-│       │   └── chat/          chat-family plugins (ChatCore composition)
-│       ├── comms/             communication channels (PTY, Telegram)
-│       └── llm/               LLM subsystem (BusHandler)
+├── crates/
+│   └── araliya-bot/           Rust package
+│       ├── src/
+│       │   ├── main.rs        entry point / supervisor bootstrap
+│       │   ├── config.rs      TOML loading + env overrides
+│       │   ├── identity.rs    ed25519 keypair, bot_id derivation
+│       │   ├── logger.rs      tracing-subscriber init
+│       │   ├── error.rs       error types
+│       │   ├── llm/           LLM provider abstraction
+│       │   ├── supervisor/    bus, dispatch, run-loop
+│       │   └── subsystems/
+│       │       ├── agents/    agent routing + plugins
+│       │       ├── comms/     communication channels (PTY, Telegram)
+│       │       └── llm/       LLM subsystem (BusHandler)
+│       └── tests/
+├── frontend/
+│   └── svui/                  SvelteKit web UI
 └── docs/                      documentation
 ```

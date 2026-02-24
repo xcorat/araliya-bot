@@ -173,10 +173,10 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 The UI is a SvelteKit SPA built with shadcn-svelte, served at `/ui/`. Build it with:
 
 ```bash
-cd ui/svui && pnpm install && pnpm build
+cd frontend/svui && pnpm install && pnpm build
 ```
 
-The build output goes to `ui/build/`, which matches the default `static_dir` setting.
+The build output goes to `frontend/build/`, which matches the default `static_dir` setting.
 
 ## Agents Configuration
 

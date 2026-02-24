@@ -4,7 +4,17 @@
 	import type { TreeNode } from '$lib/types';
 	import Self from './ComponentTreeNode.svelte';
 
-	let { node, depth = 0 }: { node: TreeNode; depth?: number } = $props();
+	let {
+		node,
+		depth = 0,
+		selectedId = '',
+		onSelectNode
+	}: {
+		node: TreeNode;
+		depth?: number;
+		selectedId?: string;
+		onSelectNode?: (node: TreeNode) => void;
+	} = $props();
 
 	// Nodes at depth 0 and 1 start expanded; deeper levels start collapsed.
 	// Capture depth via a closure to satisfy Svelte's reactive-access linting.
@@ -12,6 +22,7 @@
 
 	const hasChildren = $derived(node.children && node.children.length > 0);
 	const isRoot = $derived(depth === 0);
+	const isSelected = $derived(selectedId === node.id);
 
 	function stateDotClass(state: string, status: string): string {
 		const s = state.toLowerCase();
@@ -50,8 +61,10 @@
 	{#if hasChildren}
 		<Collapsible.Root bind:open>
 			<Collapsible.Trigger
+				onclick={() => onSelectNode?.(node)}
 				class="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/40
-					{isRoot ? 'bg-muted/20 font-medium' : ''}"
+					{isRoot ? 'font-medium' : ''}
+					{isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : isRoot ? 'bg-muted/20' : ''}"
 			>
 				<!-- expand/collapse chevron -->
 				<ChevronRight
@@ -95,16 +108,19 @@
 			>
 				<div class="mt-0.5 border-l border-border/40 ml-3.5">
 					{#each node.children as child (child.id)}
-						<Self node={child} depth={depth + 1} />
+						<Self node={child} depth={depth + 1} {selectedId} {onSelectNode} />
 					{/each}
 				</div>
 			</Collapsible.Content>
 		</Collapsible.Root>
 	{:else}
-		<!-- Leaf node — no toggle -->
-		<div
-			class="flex items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/30
-				{isRoot ? 'bg-muted/20 font-medium' : ''}"
+		<!-- Leaf node -->
+		<button
+			type="button"
+			onclick={() => onSelectNode?.(node)}
+			class="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/30
+				{isRoot ? 'font-medium' : ''}
+				{isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : isRoot ? 'bg-muted/20' : ''}"
 		>
 			<!-- placeholder to align with chevron width -->
 			<span class="size-3.5 shrink-0"></span>
@@ -133,6 +149,6 @@
 			>
 				{node.state}
 			</span>
-		</div>
+		</button>
 	{/if}
 </div>

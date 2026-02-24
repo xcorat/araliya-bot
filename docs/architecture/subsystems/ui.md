@@ -66,7 +66,7 @@ When the `subsystem-ui` feature is disabled at compile time, the HTTP channel ha
 ```toml
 [ui.svui]
 enabled = true
-# static_dir = "ui/build"
+# static_dir = "frontend/build"
 ```
 
 | Field | Default | Description |

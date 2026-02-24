@@ -10,7 +10,7 @@ Start here:
 
 UI notes:
 
-- Svelte web UI: `ui/svui` (served by bot HTTP channel).
+- Svelte web UI: `frontend/svui` (served by bot HTTP channel).
 - GPUI desktop UI: `araliya-gpui` binary (`cargo run --bin araliya-gpui --features ui-gpui`).
 
 Deep dives:

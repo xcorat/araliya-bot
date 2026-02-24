@@ -1,10 +1,10 @@
 # Build artifacts
 target/
 
-# UI build artifacts and dependencies
-ui/svui/node_modules/
-ui/svui/.svelte-kit/
-ui/build/
+# Frontend build artifacts and dependencies
+frontend/svui/node_modules/
+frontend/svui/.svelte-kit/
+frontend/build/
 
 # Environment files (never bake secrets into the image)
 .env

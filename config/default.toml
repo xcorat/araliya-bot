@@ -154,7 +154,7 @@ n_last = 10
 # Svelte-based web UI backend — served by the HTTP channel.
 # When enabled, non-API HTTP requests are delegated to this backend.
 enabled = true
-# Path to the static build directory (Svelte output from ui/svui).
+# Path to the static build directory (Svelte output from frontend/svui).
 # Relative to the working directory where the bot binary runs.
 # If the directory doesn't exist, a built-in placeholder page is served.
-static_dir = "ui/build"
+static_dir = "frontend/build"

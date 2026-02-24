@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-bot"
-version = "0.0.5"
+version = "0.1.1"
 dependencies = [
  "axum",
  "base64 0.22.1",

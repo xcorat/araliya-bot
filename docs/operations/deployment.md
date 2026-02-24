@@ -88,7 +88,7 @@ araliya-bot -f config/cfg.toml
 
 `TIER` options: `minimal`, `default`, `full`.
 
-Each tiered tarball includes `bin/araliya-bot`, `config/`, and `ui/svui/`.
+Each tiered tarball includes `bin/araliya-bot`, `config/`, and `frontend/svui/`.
 Inside the bundle, `config/cfg.toml` points to the tier-specific default:
 
 - `minimal` → `config/minimal.toml`

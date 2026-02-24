@@ -14,7 +14,7 @@ Start here:
 
 UI notes:
 
-- Svelte web UI: `ui/svui` (served by bot HTTP channel).
+- Svelte web UI: `frontend/svui` (served by bot HTTP channel).
 - GPUI desktop UI: `araliya-gpui` binary (`cargo run --bin araliya-gpui --features ui-gpui`).
 
 Deep dives:
@@ -220,10 +220,10 @@ cargo build --release --locked
 
 ### Building the Web UI
 
-The Svelte UI lives in `ui/svui/` and builds to `ui/build/`:
+The Svelte UI lives in `frontend/svui/` and builds to `frontend/build/`:
 
 ```bash
-cd ui/svui
+cd frontend/svui
 pnpm install
 pnpm build
 ```
@@ -233,7 +233,7 @@ The bot serves the built UI at `http://127.0.0.1:8080/ui/` when `comms.http.enab
 For development with hot reload:
 
 ```bash
-cd ui/svui
+cd frontend/svui
 pnpm dev   # starts on http://localhost:5173/ui/
 ```
 
@@ -560,10 +560,10 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 The UI is a SvelteKit SPA built with shadcn-svelte, served at `/ui/`. Build it with:
 
 ```bash
-cd ui/svui && pnpm install && pnpm build
+cd frontend/svui && pnpm install && pnpm build
 ```
 
-The build output goes to `ui/build/`, which matches the default `static_dir` setting.
+The build output goes to `frontend/build/`, which matches the default `static_dir` setting.
 
 ## Agents Configuration
 
@@ -2652,7 +2652,7 @@ Svelte-based web UI backend. Serves static files from a build directory, or a bu
 
 MIME types are inferred from file extensions (html, css, js, svg, png, woff2, wasm, etc.).
 
-**Source:** `src/subsystems/ui/svui.rs`
+**Source:** `src/subsystems/frontend/svui.rs`
 
 ---
 
@@ -2690,7 +2690,7 @@ When the `subsystem-ui` feature is disabled at compile time, the HTTP channel ha
 ```toml
 [ui.svui]
 enabled = true
-# static_dir = "ui/build"
+# static_dir = "frontend/build"
 ```
 
 | Field | Default | Description |
@@ -3066,7 +3066,7 @@ araliya-bot -f config/cfg.toml
 
 `TIER` options: `minimal`, `default`, `full`.
 
-Each tiered tarball includes `bin/araliya-bot`, `config/`, and `ui/svui/`.
+Each tiered tarball includes `bin/araliya-bot`, `config/`, and `frontend/svui/`.
 Inside the bundle, `config/cfg.toml` points to the tier-specific default:
 
 - `minimal` → `config/minimal.toml`

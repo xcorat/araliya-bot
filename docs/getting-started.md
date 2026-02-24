@@ -53,10 +53,10 @@ cargo build --release --locked
 
 ### Building the Web UI
 
-The Svelte UI lives in `ui/svui/` and builds to `ui/build/`:
+The Svelte UI lives in `frontend/svui/` and builds to `frontend/build/`:
 
 ```bash
-cd ui/svui
+cd frontend/svui
 pnpm install
 pnpm build
 ```
@@ -66,7 +66,7 @@ The bot serves the built UI at `http://127.0.0.1:8080/ui/` when `comms.http.enab
 For development with hot reload:
 
 ```bash
-cd ui/svui
+cd frontend/svui
 pnpm dev   # starts on http://localhost:5173/ui/
 ```
 
