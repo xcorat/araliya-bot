@@ -42,11 +42,35 @@
 
 	const kind = $derived(subsystem ? subsystemKind(subsystem.id) : 'default');
 
+	// Find the agents subsystem entry regardless of which node is selected,
+	// so we can detect whether the current node is a child agent.
+	const agentsSubsystem = $derived<SubsystemStatus | undefined>(
+		serviceInfo?.subsystems?.find((s) => subsystemKind(s.id) === 'agents')
+	);
+
+	// True when the selected node is a direct child agent (e.g. "docs", "chat"),
+	// detected by checking its id against the agents subsystem's own agents list.
+	const isAgentChild = $derived(
+		!!node &&
+			kind !== 'agents' &&
+			detailList(agentsSubsystem?.details, ['agents', 'enabled_agents', 'agents_enabled']).includes(
+				node.id
+			)
+	);
+
 	let detailsExpanded = $state(true);
 
 	// ── Memory tab state ────────────────────────────────────────
 
 	let sessions = $state<SessionInfo[]>([]);
+
+	// Sessions to display in the Memory tab: all for the agents subsystem node,
+	// filtered by last_agent for individual agent child nodes.
+	const visibleSessions = $derived(
+		isAgentChild && node
+			? sessions.filter((s) => s.last_agent === node.id)
+			: sessions
+	);
 	let sessionsLoading = $state(false);
 	let sessionsError = $state('');
 	// Map from session_id -> { loading, error, content, loaded }

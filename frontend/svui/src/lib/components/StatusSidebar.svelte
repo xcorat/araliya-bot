@@ -50,7 +50,7 @@
 				{#if treeError}
 					<p class="px-1 text-xs text-muted-foreground">{treeError}</p>
 				{:else if treeData}
-					<div class="rounded-lg border border-border/50 bg-muted/5 p-1.5">
+					<div class="rounded-lg border border-border/50 bg-muted/5 p-1">
 						<ComponentTreeNode node={treeData} selectedId={selectedNodeId} {onSelectNode} />
 					</div>
 				{:else}
