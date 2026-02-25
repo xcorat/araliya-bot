@@ -21,7 +21,7 @@ use crate::config::{AgentsConfig, DocsAgentConfig, DocsKgConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
@@ -701,6 +701,37 @@ impl BusHandler for AgentsSubsystem {
             return;
         }
 
+        // ── Status routes ──────────────────────────────────────
+        if method == "agents/status" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let resp = status_from_reporter("agents", reporter).await;
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            });
+            return;
+        }
+
+        if method == "agents/detailed_status" {
+            let reporter = self.reporter.clone();
+            let memory = self.state.memory.clone();
+            let default_agent = self.default_agent.clone();
+            let enabled_agents: Vec<String> = self.agents.keys().cloned().collect();
+            tokio::spawn(async move {
+                let base = status_from_reporter("agents", reporter).await;
+                let session_count = memory.list_sessions().map(|s| s.len()).unwrap_or(0);
+                let data = serde_json::json!({
+                    "id": base.id,
+                    "status": base.status,
+                    "state": base.state,
+                    "default_agent": default_agent,
+                    "enabled_agents": enabled_agents,
+                    "session_count": session_count,
+                });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+            });
+            return;
+        }
+
         // ── Agent metadata queries ─────────────────────────────
         if method == "agents/list" {
             self.handle_agents_list(reply_tx);
@@ -730,6 +761,54 @@ impl BusHandler for AgentsSubsystem {
             Ok(v) => v,
             Err(e) => { let _ = reply_tx.send(Err(e)); return; }
         };
+
+        // Per-agent status routes (intercepted before payload dispatch).
+        if let Some(ref agent_id) = method_agent_id {
+            if action == "status" {
+                let exists = self.agents.contains_key(agent_id.as_str());
+                let id = agent_id.clone();
+                tokio::spawn(async move {
+                    let resp = if exists {
+                        ComponentStatusResponse::running(id)
+                    } else {
+                        ComponentStatusResponse::error(id, "not found")
+                    };
+                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                });
+                return;
+            }
+
+            if action == "detailed_status" {
+                let exists = self.agents.contains_key(agent_id.as_str());
+                let id = agent_id.clone();
+                let identities = self.state.agent_identities.clone();
+                tokio::spawn(async move {
+                    if !exists {
+                        let resp = ComponentStatusResponse::error(&id, "not found");
+                        let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                        return;
+                    }
+                    let kv_path = identities.get(&id)
+                        .map(|ident| ident.identity_dir.join("store").join("kv.json"));
+                    let last_fetched = kv_path.as_ref()
+                        .and_then(|p| read_agent_kv_value(p, "last_fetched"));
+                    let index_path = identities.get(&id)
+                        .map(|ident| ident.identity_dir.join("sessions.json"));
+                    let session_count = index_path.as_ref()
+                        .map(|p| count_agent_sessions(p))
+                        .unwrap_or(0);
+                    let data = serde_json::json!({
+                        "id": id,
+                        "status": "running",
+                        "state": "on",
+                        "session_count": session_count,
+                        "last_fetched": last_fetched,
+                    });
+                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                });
+                return;
+            }
+        }
 
         match payload {
             BusPayload::CommsMessage { channel_id, content, session_id, .. } => {
@@ -801,6 +880,24 @@ fn count_agent_sessions(index_path: &std::path::Path) -> usize {
     #[derive(serde::Deserialize)]
     struct Idx { sessions: std::collections::HashMap<String, serde_json::Value> }
     serde_json::from_str::<Idx>(&data).map(|i| i.sessions.len()).unwrap_or(0)
+}
+
+/// Derive a [`ComponentStatusResponse`] from an optional [`HealthReporter`].
+///
+/// Returns `running` when the reporter has not yet written any state (or is
+/// absent) — the component is assumed healthy until told otherwise.
+async fn status_from_reporter(
+    id: &str,
+    reporter: Option<HealthReporter>,
+) -> ComponentStatusResponse {
+    match reporter {
+        Some(r) => match r.get_current().await {
+            Some(h) if h.healthy => ComponentStatusResponse::running(id),
+            Some(h) => ComponentStatusResponse::error(id, h.message),
+            None => ComponentStatusResponse::running(id),
+        },
+        None => ComponentStatusResponse::running(id),
+    }
 }
 
 fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {

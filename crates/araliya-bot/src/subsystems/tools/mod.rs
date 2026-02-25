@@ -2,7 +2,7 @@ use tokio::sync::oneshot;
 
 use crate::config::NewsmailAggregatorConfig;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
@@ -58,6 +58,52 @@ impl BusHandler for ToolsSubsystem {
                 };
                 let data = serde_json::to_string(&h).unwrap_or_default();
                 let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+            });
+            return;
+        }
+
+        if method == "tools/status" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let resp = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running("tools"),
+                        Some(h) => ComponentStatusResponse::error("tools", h.message),
+                        None => ComponentStatusResponse::running("tools"),
+                    },
+                    None => ComponentStatusResponse::running("tools"),
+                };
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            });
+            return;
+        }
+
+        if method == "tools/detailed_status" {
+            let reporter = self.reporter.clone();
+            #[allow(unused_mut)]
+            let mut available_tools: Vec<&str> = vec![];
+            #[cfg(feature = "plugin-gmail-tool")]
+            {
+                available_tools.push("gmail");
+                available_tools.push("newsmail_aggregator");
+            }
+            let available_tools: Vec<String> = available_tools.iter().map(|s| s.to_string()).collect();
+            tokio::spawn(async move {
+                let base = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running("tools"),
+                        Some(h) => ComponentStatusResponse::error("tools", h.message),
+                        None => ComponentStatusResponse::running("tools"),
+                    },
+                    None => ComponentStatusResponse::running("tools"),
+                };
+                let data = serde_json::json!({
+                    "id": base.id,
+                    "status": base.status,
+                    "state": base.state,
+                    "available_tools": available_tools,
+                });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
             });
             return;
         }

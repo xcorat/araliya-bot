@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::oneshot;
 
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::control::{ControlCommand, ControlHandle, ControlResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthRegistry;
@@ -75,6 +75,13 @@ impl BusHandler for ManagementSubsystem {
         const HTTP_TREE: &str = "manage/http/tree";
         const TREE: &str = "manage/tree";
         const HEALTH_REFRESH: &str = "manage/health/refresh";
+
+        // manage/status — management subsystem is always running.
+        if method == "manage/status" {
+            let resp = ComponentStatusResponse::running("manage");
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            return;
+        }
 
         let is_tree = matches!(method, HTTP_TREE | TREE);
         if !matches!(method, HTTP_GET | HTTP_TREE | TREE | HEALTH_REFRESH) {

@@ -14,7 +14,7 @@ use crate::config::LlmConfig;
 use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use crate::llm::providers;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
@@ -135,6 +135,68 @@ impl BusHandler for LlmSubsystem {
                     let data = serde_json::to_string(&h).unwrap_or_default();
                     let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
                 }
+            });
+            return;
+        }
+
+        // llm/status — derived from health reporter.
+        if method == "llm/status" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let resp = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running("llm"),
+                        Some(h) => ComponentStatusResponse::error("llm", h.message),
+                        None => ComponentStatusResponse::running("llm"),
+                    },
+                    None => ComponentStatusResponse::running("llm"),
+                };
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            });
+            return;
+        }
+
+        // llm/{provider_id}/status — same health, scoped to the provider child.
+        let provider_status_prefix = format!("llm/{}/status", self.provider_name);
+        if method == provider_status_prefix {
+            let reporter = self.reporter.clone();
+            let provider_id = self.provider_name.clone();
+            tokio::spawn(async move {
+                let resp = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running(provider_id),
+                        Some(h) => ComponentStatusResponse::error(provider_id, h.message),
+                        None => ComponentStatusResponse::running(provider_id),
+                    },
+                    None => ComponentStatusResponse::running(provider_id),
+                };
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            });
+            return;
+        }
+
+        // llm/detailed_status — includes provider and model info.
+        if method == "llm/detailed_status" {
+            let reporter = self.reporter.clone();
+            let provider = self.provider_name.clone();
+            let model = self.model_name.clone();
+            tokio::spawn(async move {
+                let base = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running("llm"),
+                        Some(h) => ComponentStatusResponse::error("llm", h.message),
+                        None => ComponentStatusResponse::running("llm"),
+                    },
+                    None => ComponentStatusResponse::running("llm"),
+                };
+                let data = serde_json::json!({
+                    "id": base.id,
+                    "status": base.status,
+                    "state": base.state,
+                    "provider": provider,
+                    "model": model,
+                });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
             });
             return;
         }

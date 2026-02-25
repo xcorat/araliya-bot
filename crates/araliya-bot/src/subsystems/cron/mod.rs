@@ -26,7 +26,7 @@ use tracing::{debug, warn};
 use crate::supervisor::bus::{
     BusError, BusHandle, BusPayload, BusResult, CronScheduleSpec, ERR_METHOD_NOT_FOUND,
 };
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
@@ -86,6 +86,56 @@ impl BusHandler for CronSubsystem {
                 };
                 let data = serde_json::to_string(&h).unwrap_or_default();
                 let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+            });
+            return;
+        }
+
+        if method == "cron/status" || method == "cron/timer-service/status" {
+            let reporter = self.reporter.clone();
+            let id = if method == "cron/timer-service/status" { "timer-service" } else { "cron" };
+            let id = id.to_string();
+            tokio::spawn(async move {
+                let resp = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running(id),
+                        Some(h) => ComponentStatusResponse::error(id, h.message),
+                        None => ComponentStatusResponse::running(id),
+                    },
+                    None => ComponentStatusResponse::running(id),
+                };
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            });
+            return;
+        }
+
+        if method == "cron/detailed_status" {
+            let reporter = self.reporter.clone();
+            let cmd_tx_ds = self.cmd_tx.clone();
+            tokio::spawn(async move {
+                let base = match reporter {
+                    Some(r) => match r.get_current().await {
+                        Some(h) if h.healthy => ComponentStatusResponse::running("cron"),
+                        Some(h) => ComponentStatusResponse::error("cron", h.message),
+                        None => ComponentStatusResponse::running("cron"),
+                    },
+                    None => ComponentStatusResponse::running("cron"),
+                };
+                // Ask the service for active schedule count.
+                let active_schedules: usize = {
+                    let (list_tx, list_rx) = tokio::sync::oneshot::channel();
+                    if cmd_tx_ds.send(CronCommand::List { reply: list_tx }).await.is_ok() {
+                        list_rx.await.map(|entries| entries.len()).unwrap_or(0)
+                    } else {
+                        0
+                    }
+                };
+                let data = serde_json::json!({
+                    "id": base.id,
+                    "status": base.status,
+                    "state": base.state,
+                    "active_schedules": active_schedules,
+                });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
             });
             return;
         }

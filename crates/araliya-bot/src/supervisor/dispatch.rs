@@ -61,4 +61,31 @@ pub trait BusHandler: Send + Sync {
     fn component_info(&self) -> ComponentInfo {
         ComponentInfo::leaf(self.prefix(), &ComponentInfo::capitalise(self.prefix()))
     }
+
+    // ── Status route convention ───────────────────────────────────────────
+    //
+    // Every [`BusHandler`] **must** handle the following bus methods:
+    //
+    //   `{prefix}/status`
+    //       Returns `BusPayload::JsonResponse { data }` where `data` is a
+    //       JSON-serialised `ComponentStatusResponse` for the subsystem itself.
+    //       Input payload: `BusPayload::Empty`.
+    //
+    //   `{prefix}/{child_id}/status`  (required when the handler has children)
+    //       Same shape, scoped to the named child component.
+    //
+    // The following methods are **optional**:
+    //
+    //   `{prefix}/detailed_status`
+    //       Same `JsonResponse` wrapper; body is a JSON object that extends
+    //       the base status with subsystem-specific metrics or details.
+    //
+    //   `{prefix}/{child_id}/detailed_status`
+    //       As above, scoped to the named child.
+    //
+    // Response shape (base):
+    //   { "id": "<component id>", "status": "<string>", "state": "on"|"off"|"err" }
+    //
+    // Handlers derive `status` / `state` from their health reporter so that
+    // the bus route and the management tree stay consistent.
 }

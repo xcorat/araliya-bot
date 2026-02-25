@@ -50,6 +50,8 @@ use subsystems::memory::{MemoryConfig, MemorySystem};
 
 use subsystems::management::ManagementSubsystem;
 use subsystems::management::ManagementInfo;
+#[cfg(feature = "subsystem-comms")]
+use subsystems::comms::CommsStatusHandler;
 
 #[tokio::main]
 async fn main() {
@@ -197,6 +199,15 @@ async fn run() -> Result<(), error::AppError> {
             .with_health_reporter(health_registry.reporter("cron"));
         handlers.push(Box::new(cron));
         configured_handlers.push("cron".to_string());
+    }
+
+    // Comms status handler — exposes comms/status and comms/{channel_id}/status
+    // on the bus.  The channel list is populated later by comms::start() via the
+    // same OnceLock; the handler reads it lazily on each status request.
+    #[cfg(feature = "subsystem-comms")]
+    {
+        handlers.push(Box::new(CommsStatusHandler::new(comms_info.clone())));
+        configured_handlers.push("comms".to_string());
     }
 
     // Spawn supervisor run-loop (owns the bus receiver).

@@ -55,6 +55,58 @@ pub struct ComponentInfo {
     pub children: Vec<ComponentInfo>,
 }
 
+// ── ComponentStatusResponse ───────────────────────────────────────────────────
+
+/// Response payload for `{prefix}/status` and `{prefix}/{child_id}/status` bus routes.
+///
+/// Serialised as `BusPayload::JsonResponse { data }`.  Every component that
+/// implements the status convention returns this shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentStatusResponse {
+    /// Component identifier (matches the node id in the management tree).
+    pub id: String,
+    /// Current operational status string (e.g. `"running"`, `"stopped"`, `"error"`).
+    pub status: String,
+    /// Operational state flag.
+    pub state: ComponentStatus,
+}
+
+impl ComponentStatusResponse {
+    /// A running / healthy component.
+    pub fn running(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            status: "running".to_string(),
+            state: ComponentStatus::On,
+        }
+    }
+
+    /// A stopped / inactive component.
+    pub fn stopped(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            status: "stopped".to_string(),
+            state: ComponentStatus::Off,
+        }
+    }
+
+    /// A component in an error / degraded state.
+    pub fn error(id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            status: message.into(),
+            state: ComponentStatus::Err,
+        }
+    }
+
+    /// Serialise to a JSON string for use in `BusPayload::JsonResponse { data }`.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+}
+
+// ── ComponentInfo ─────────────────────────────────────────────────────────────
+
 impl ComponentInfo {
     /// A running node with children.
     pub fn running(id: &str, name: &str, children: Vec<ComponentInfo>) -> Self {

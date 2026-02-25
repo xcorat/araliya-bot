@@ -30,7 +30,7 @@ pub use state::{CommsEvent, CommsState};
 
 use std::sync::{Arc, OnceLock};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 
@@ -38,9 +38,95 @@ use tracing::{debug, info};
 use crate::subsystems::ui::UiServeHandle;
 
 use crate::config::Config;
-use crate::supervisor::bus::BusHandle;
-use crate::supervisor::component_info::ComponentInfo;
+use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
+use crate::supervisor::dispatch::BusHandler;
 use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
+
+// ── CommsStatusHandler ───────────────────────────────────────────────────────
+
+/// Minimal [`BusHandler`] that exposes `comms/status` and `comms/{channel_id}/status`
+/// for the comms subsystem and its channel children.
+///
+/// Comms is not a bus-handler subsystem; it injects its [`ComponentInfo`] via an
+/// [`OnceLock`] populated by [`start`].  This handler reads from that same lock so
+/// all components in the tree have a callable status route.
+pub struct CommsStatusHandler {
+    /// Populated by [`start`] once the channel list is known.  May be unset
+    /// briefly at startup; status routes return "running" in that window.
+    comms_info: Arc<OnceLock<ComponentInfo>>,
+}
+
+impl CommsStatusHandler {
+    pub fn new(comms_info: Arc<OnceLock<ComponentInfo>>) -> Self {
+        Self { comms_info }
+    }
+}
+
+impl BusHandler for CommsStatusHandler {
+    fn prefix(&self) -> &str {
+        "comms"
+    }
+
+    fn component_info(&self) -> ComponentInfo {
+        self.comms_info
+            .get()
+            .cloned()
+            .unwrap_or_else(|| ComponentInfo::running("comms", "Comms", vec![]))
+    }
+
+    fn handle_request(
+        &self,
+        method: &str,
+        _payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
+        if method == "comms/status" {
+            let resp = ComponentStatusResponse::running("comms");
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            return;
+        }
+
+        if method == "comms/detailed_status" {
+            let channel_ids: Vec<String> = self
+                .comms_info
+                .get()
+                .map(|info| info.children.iter().map(|c| c.id.clone()).collect())
+                .unwrap_or_default();
+            let data = serde_json::json!({
+                "id": "comms",
+                "status": "running",
+                "state": "on",
+                "channels": channel_ids,
+            });
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+            return;
+        }
+
+        // comms/{channel_id}/status
+        if let Some(channel_id) = method.strip_prefix("comms/").and_then(|rest| {
+            rest.strip_suffix("/status")
+        }) {
+            let exists = self
+                .comms_info
+                .get()
+                .map(|info| info.children.iter().any(|c| c.id == channel_id))
+                .unwrap_or(false);
+            let resp = if exists {
+                ComponentStatusResponse::running(channel_id)
+            } else {
+                ComponentStatusResponse::error(channel_id, "not found")
+            };
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            return;
+        }
+
+        let _ = reply_tx.send(Err(BusError::new(
+            ERR_METHOD_NOT_FOUND,
+            format!("comms method not found: {method}"),
+        )));
+    }
+}
 
 // ── start ───────────────────────────────────────────────────────────────────
 
