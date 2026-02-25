@@ -31,7 +31,6 @@ pub enum CommsEvent {
     ChannelShutdown { channel_id: String },
     /// A new session/connection was established on the channel.
     // Not yet emitted; planned for HTTP and Telegram channels.
-    #[allow(dead_code)]
     SessionStarted { channel_id: String },
 }
 

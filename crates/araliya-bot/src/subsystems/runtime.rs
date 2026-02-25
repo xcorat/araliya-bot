@@ -68,7 +68,6 @@ pub struct SubsystemHandle {
 impl SubsystemHandle {
     /// Wrap an existing `JoinHandle` — available for subsystems that build
     /// a custom manager task outside of [`spawn_components`].
-    #[allow(dead_code)]
     pub fn from_handle(handle: JoinHandle<Result<(), AppError>>) -> Self {
         Self { inner: handle }
     }

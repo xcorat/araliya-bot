@@ -166,8 +166,6 @@ pub enum BusMessage {
         reply_tx: oneshot::Sender<BusResult>,
     },
     /// A notification with no reply expected.
-    // Constructed by BusHandle::notify; no caller sends notifications yet.
-    #[allow(dead_code)]
     Notification {
         /// Method path: `"subsystem/component/action"`. Reserved: `"$/<name>"`.
         method: String,
@@ -186,7 +184,6 @@ pub enum BusCallError {
     /// The supervisor dropped `reply_tx` without sending a reply.
     Recv,
     /// The bus buffer is full — notification was dropped (only possible via `notify`).
-    #[allow(dead_code)]
     Full,
 }
 
@@ -245,7 +242,6 @@ impl BusHandle {
     /// and `Err(BusCallError::Full)` is returned. Callers should log a warning
     /// but must not block or retry: notifications are intentionally lossy under
     /// back-pressure. If you need guaranteed delivery, use `request` instead.
-    #[allow(dead_code)]
     pub fn notify(
         &self,
         method: impl Into<String>,

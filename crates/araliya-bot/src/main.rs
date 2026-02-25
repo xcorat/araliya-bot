@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(dead_code, unused_variables, unused_imports, unused_mut, unused_macros, private_interfaces))]
-#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_macros, private_interfaces)]
 // TODO: move the core functionality to a `core` crate/folder
 //! Araliya Bot — supervisor entry point.
 //!
@@ -15,13 +13,14 @@
 //!   9. Run comms subsystem (drives console until shutdown)
 //!  10. Cancel token + join supervisor
 
-mod config;
-mod error;
-mod identity;
+mod core;
+mod bootstrap;
 mod llm;
-mod logger;
 mod supervisor;
 mod subsystems;
+
+pub use core::{config, error};
+pub use bootstrap::{identity, logger};
 
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -132,9 +131,7 @@ async fn run() -> Result<(), error::AppError> {
 
     // Build subsystem handlers and register with supervisor.
     // TODO:
-    #[allow(unused_mut)]
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
-    #[allow(unused_mut)]
     let mut configured_handlers: Vec<String> = vec!["management".to_string()];
     
     // OnceLock bridge: comms::start() will populate this once channel list is known.

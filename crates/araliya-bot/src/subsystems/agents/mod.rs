@@ -1170,7 +1170,12 @@ mod tests {
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
             news_query: None,
-            docs: Some(DocsAgentConfig { docsdir: Some(docsdir), index: Some("index.md".to_string()) }),
+            docs: Some(DocsAgentConfig {
+                docsdir: Some(docsdir),
+                index: Some("index.md".to_string()),
+                use_kg: false,
+                kg: DocsKgConfig::default(),
+            }),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Populate the docs docstore before handling any queries.

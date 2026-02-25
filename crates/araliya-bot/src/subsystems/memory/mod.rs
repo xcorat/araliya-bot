@@ -27,12 +27,8 @@ mod docstore_manager;
 
 // Re-export the core type vocabulary so callers can write
 // `memory::PrimaryValue` etc. without spelling out the sub-module.
-// Suppressed until later phases start consuming these types.
-#[allow(unused_imports)]
 pub use collections::{Block, Collection, Doc};
-#[allow(unused_imports)]
 pub use store::Store;
-#[allow(unused_imports)]
 pub use types::{Obj, PrimaryValue, TextFile, Value};
 
 use std::collections::HashMap;

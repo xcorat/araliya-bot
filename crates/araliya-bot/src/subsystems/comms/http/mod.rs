@@ -291,7 +291,6 @@ async fn read_request(
 
 // ── Response helpers ──────────────────────────────────────────────────────────
 
-#[allow(dead_code)]
 async fn write_redirect(
     socket: &mut tokio::net::TcpStream,
     location: &str,

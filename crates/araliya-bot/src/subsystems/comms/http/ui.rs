@@ -60,7 +60,6 @@ pub(super) async fn handle_root(
 }
 
 /// GET /ui/* — delegate to the embedded UI backend, or 404.
-#[allow(unused_variables)]
 pub(super) async fn handle_ui_path(
     socket: &mut tokio::net::TcpStream,
     path: &str,
@@ -72,6 +71,8 @@ pub(super) async fn handle_ui_path(
             return super::write_response(socket, resp.status, resp.content_type, &resp.body).await;
         }
     }
+    #[cfg(not(feature = "subsystem-ui"))]
+    let _ = (path, ui_handle);
 
     handle_not_found(socket).await
 }

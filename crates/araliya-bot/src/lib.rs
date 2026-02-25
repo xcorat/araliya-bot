@@ -1,9 +1,8 @@
 // Library root — exposes internals for integration tests and future crate consumers.
 // The binary entry point is src/main.rs.
-#![allow(dead_code, unused_imports, unused_variables)]
 
-pub mod error;
-pub mod config;
+mod core;
+pub use core::{config, error};
 pub mod llm;
 
 #[cfg(feature = "subsystem-memory")]

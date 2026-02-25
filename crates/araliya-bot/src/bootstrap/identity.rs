@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(dead_code))]
 //! Bot identity — ed25519 keypair generation, persistence, and `public_id` derivation.
 //!
 //! Layout under `work_dir`:

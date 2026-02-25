@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(unused_variables))]
 use tokio::sync::oneshot;
 
 use crate::config::NewsmailAggregatorConfig;

@@ -65,7 +65,6 @@ pub(super) async fn root() -> Html<&'static str> {
 }
 
 /// GET /*path — delegate to the UI backend (SPA fallback) or 404.
-#[allow(unused_variables)]
 pub(super) async fn serve_path(
     State(state): State<AxumState>,
     uri: axum::http::Uri,
@@ -89,6 +88,8 @@ pub(super) async fn serve_path(
             Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
+    #[cfg(not(feature = "subsystem-ui"))]
+    let _ = path;
 
     StatusCode::NOT_FOUND.into_response()
 }

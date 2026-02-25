@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(dead_code))]
 //! Supervisor-internal control plane.
 //!
 //! This interface is intentionally separate from the supervisor bus. It is
