@@ -72,6 +72,8 @@ export interface SessionInfo {
 	created_at: string;
 	updated_at: string | null;
 	mode: SessionMode;
+	last_agent?: string | null;
+	store_types?: string[];
 }
 
 export interface SessionsResponse {
