@@ -31,7 +31,7 @@ class SidebarState {
 	openMobile = $state(false);
 	setOpen: SidebarStateProps["setOpen"];
 	#isMobile: IsMobile;
-	state = $derived.by(() => (this.open ? "expanded" : "collapsed"));
+	state = $derived(this.open ? "expanded" : "collapsed");
 	widthPx = $state(SIDEBAR_DEFAULT_WIDTH_PX);
 
 	constructor(props: SidebarStateProps) {

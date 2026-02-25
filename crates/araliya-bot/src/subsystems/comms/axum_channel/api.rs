@@ -58,6 +58,30 @@ pub(super) async fn health(State(state): State<AxumState>) -> Response {
     }
 }
 
+/// POST /api/health/refresh — triggers a live health check across all subsystems.
+///
+/// Each subsystem reruns its health check synchronously (with a 5 s per-subsystem
+/// timeout) and returns the updated aggregated health body, identical in shape
+/// to `GET /api/health`.
+pub(super) async fn health_refresh(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(Duration::from_secs(15), state.comms.management_health_refresh()).await {
+        Ok(Ok(body)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "health refresh failed: {e}");
+            (StatusCode::BAD_GATEWAY, "management adapter error\n").into_response()
+        }
+        Err(_) => {
+            warn!(channel_id = %state.channel_id, "health refresh timed out");
+            (StatusCode::GATEWAY_TIMEOUT, "management adapter timeout\n").into_response()
+        }
+    }
+}
+
 /// GET /api/tree — component tree (no private data).
 pub(super) async fn tree(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(Duration::from_secs(3), state.comms.management_http_tree()).await {

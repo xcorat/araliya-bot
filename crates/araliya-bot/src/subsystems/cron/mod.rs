@@ -28,6 +28,7 @@ use crate::supervisor::bus::{
 };
 use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
+use crate::supervisor::health::HealthReporter;
 
 use service::{CronCommand, CronService};
 
@@ -39,6 +40,7 @@ const ERR_BAD_REQUEST: i32 = -32600;
 pub struct CronSubsystem {
     /// Send commands to the background timer task.
     cmd_tx: mpsc::Sender<CronCommand>,
+    reporter: Option<HealthReporter>,
 }
 
 impl CronSubsystem {
@@ -51,7 +53,15 @@ impl CronSubsystem {
         let svc = CronService::new(bus, cmd_rx, shutdown);
         tokio::spawn(svc.run());
         debug!("cron subsystem started");
-        Self { cmd_tx }
+        Self { cmd_tx, reporter: None }
+    }
+
+    /// Attach a health reporter and mark the subsystem healthy at startup.
+    pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
+        let r = reporter.clone();
+        tokio::spawn(async move { r.set_healthy().await });
+        self.reporter = Some(reporter);
+        self
     }
 }
 
@@ -66,6 +76,20 @@ impl BusHandler for CronSubsystem {
         payload: BusPayload,
         reply_tx: oneshot::Sender<BusResult>,
     ) {
+        if method == "cron/health" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let h = match reporter {
+                    Some(r) => r.get_current().await
+                        .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("cron")),
+                    None => crate::supervisor::health::SubsystemHealth::ok("cron"),
+                };
+                let data = serde_json::to_string(&h).unwrap_or_default();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+            });
+            return;
+        }
+
         let cmd_tx = self.cmd_tx.clone();
 
         match method {

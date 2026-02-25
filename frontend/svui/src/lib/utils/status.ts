@@ -30,16 +30,16 @@ export function formatUptime(ms: number | undefined): string {
 	return `${hours}h ${minutes}m ${seconds}s`;
 }
 
-export function statusDotClass(status: string): string {
-	const normalized = status.toLowerCase();
+export function statusDotClass(status: string | undefined | null): string {
+	const normalized = (status ?? '').toLowerCase();
 	if (normalized === 'ok' || normalized === 'running') return 'bg-emerald-500';
 	if (normalized === 'degraded' || normalized === 'warning') return 'bg-yellow-500';
 	if (normalized === 'error' || normalized === 'failed') return 'bg-destructive';
 	return 'bg-muted-foreground';
 }
 
-export function statusPillClass(status: string): string {
-	const normalized = status.toLowerCase();
+export function statusPillClass(status: string | undefined | null): string {
+	const normalized = (status ?? '').toLowerCase();
 	if (normalized === 'ok' || normalized === 'running') {
 		return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
 	}
@@ -52,8 +52,8 @@ export function statusPillClass(status: string): string {
 	return 'border-muted-foreground/25 bg-muted/40 text-muted-foreground';
 }
 
-export function subsystemKind(id: string): string {
-	const normalized = id.toLowerCase();
+export function subsystemKind(id: string | undefined | null): string {
+	const normalized = (id ?? '').toLowerCase();
 	if (normalized.includes('agent')) return 'agents';
 	if (normalized.includes('comm')) return 'comms';
 	if (normalized.includes('memory')) return 'memory';

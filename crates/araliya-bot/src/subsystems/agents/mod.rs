@@ -23,6 +23,7 @@ use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
+use crate::supervisor::health::HealthReporter;
 
 use crate::identity::{self, Identity};
 use crate::subsystems::memory::MemorySystem;
@@ -227,6 +228,7 @@ pub struct AgentsSubsystem {
     /// Source directory for docs import (populated from config).
     #[cfg(feature = "plugin-docs")]
     docs_source_dir: Option<std::path::PathBuf>,
+    reporter: Option<HealthReporter>,
 }
 
 impl AgentsSubsystem {
@@ -350,6 +352,7 @@ impl AgentsSubsystem {
             enabled_agents,
             #[cfg(feature = "plugin-docs")]
             docs_source_dir,
+            reporter: None,
         })
     }
 
@@ -393,6 +396,24 @@ impl AgentsSubsystem {
         Arc::get_mut(&mut self.state)
             .expect("AgentsState Arc must be exclusive at build time")
             .llm_rates = rates;
+        self
+    }
+
+    /// Attach a health reporter and report initial healthy state.
+    pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
+        let enabled: Vec<String> = self.enabled_agents.iter().cloned().collect();
+        let agent_count = enabled.len();
+        let r = reporter.clone();
+        tokio::spawn(async move {
+            r.set_healthy_with(
+                "ok",
+                Some(serde_json::json!({
+                    "agent_count": agent_count,
+                    "agents": enabled,
+                })),
+            ).await;
+        });
+        self.reporter = Some(reporter);
         self
     }
 
@@ -664,6 +685,22 @@ impl BusHandler for AgentsSubsystem {
     /// `agents/sessions/memory`, `agents/sessions/files`) are
     /// intercepted before agent routing to return session metadata.
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        // ── Subsystem-level health (must be intercepted before parse_method
+        //    which would interpret "agents/health" as agent_id="health") ──────
+        if method == "agents/health" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let h = match reporter {
+                    Some(r) => r.get_current().await
+                        .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("agents")),
+                    None => crate::supervisor::health::SubsystemHealth::ok("agents"),
+                };
+                let data = serde_json::to_string(&h).unwrap_or_default();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+            });
+            return;
+        }
+
         // ── Agent metadata queries ─────────────────────────────
         if method == "agents/list" {
             self.handle_agents_list(reply_tx);

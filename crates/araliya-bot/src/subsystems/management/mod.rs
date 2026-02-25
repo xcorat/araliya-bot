@@ -13,6 +13,7 @@ use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_MET
 use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::control::{ControlCommand, ControlHandle, ControlResponse};
 use crate::supervisor::dispatch::BusHandler;
+use crate::supervisor::health::HealthRegistry;
 
 /// Static info collected at startup and included in the health response.
 #[derive(Debug, Clone)]
@@ -29,6 +30,8 @@ pub struct ManagementSubsystem {
     info: ManagementInfo,
     /// Populated by `comms::start()` once the channel list is known.
     comms_info: Arc<OnceLock<ComponentInfo>>,
+    /// Shared registry of subsystem health states — read on every health request.
+    health: HealthRegistry,
 }
 
 impl ManagementSubsystem {
@@ -37,8 +40,9 @@ impl ManagementSubsystem {
         bus: BusHandle,
         info: ManagementInfo,
         comms_info: Arc<OnceLock<ComponentInfo>>,
+        health: HealthRegistry,
     ) -> Self {
-        Self { control, bus, info, comms_info }
+        Self { control, bus, info, comms_info, health }
     }
 }
 
@@ -70,9 +74,10 @@ impl BusHandler for ManagementSubsystem {
         const HTTP_GET: &str = "manage/http/get";
         const HTTP_TREE: &str = "manage/http/tree";
         const TREE: &str = "manage/tree";
+        const HEALTH_REFRESH: &str = "manage/health/refresh";
 
         let is_tree = matches!(method, HTTP_TREE | TREE);
-        if !matches!(method, HTTP_GET | HTTP_TREE | TREE) {
+        if !matches!(method, HTTP_GET | HTTP_TREE | TREE | HEALTH_REFRESH) {
             let _ = reply_tx.send(Err(BusError::new(
                 ERR_METHOD_NOT_FOUND,
                 format!("method not found: {method}"),
@@ -92,6 +97,7 @@ impl BusHandler for ManagementSubsystem {
         let bus = self.bus.clone();
         let info = self.info.clone();
         let comms_info = self.comms_info.clone();
+        let health = self.health.clone();
         let channel_id = if method == HTTP_TREE {
             "manage-http-tree"
         } else if method == TREE {
@@ -99,6 +105,8 @@ impl BusHandler for ManagementSubsystem {
         } else {
             "manage-http"
         };
+
+        let is_refresh = method == HEALTH_REFRESH;
 
         tokio::spawn(async move {
             let status = match control.request(ControlCommand::Status).await {
@@ -176,20 +184,28 @@ impl BusHandler for ManagementSubsystem {
                 return;
             }
 
-            // manage/http/get: health body with cron and info
+            // manage/health/refresh: fan out {prefix}/health to each subsystem,
+            // wait for all (with per-request timeout), then fall through to build
+            // the health body with fresh data from the registry.
             let (uptime_ms, handlers) = status;
-            let subsystems: Vec<_> = handlers
-                .iter()
-                .map(|handler| {
-                    serde_json::json!({
-                        "id": handler,
-                        "name": handler,
-                        "status": "running",
-                        "state": "loaded",
-                        "details": { "handler": handler }
-                    })
-                })
-                .collect();
+            if is_refresh {
+                let mut join_set = tokio::task::JoinSet::new();
+                for prefix in handlers.iter().filter(|h| h.as_str() != "manage") {
+                    let method = format!("{prefix}/health");
+                    let bus2 = bus.clone();
+                    join_set.spawn(async move {
+                        let _ = tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            bus2.request(method, BusPayload::Empty),
+                        ).await;
+                    });
+                }
+                // Wait for all concurrent checks to finish (or time out).
+                while join_set.join_next().await.is_some() {}
+            }
+
+            // manage/http/get / manage/health/refresh: health body
+            let (uptime_ms, _handlers) = (uptime_ms, handlers);
 
             let cron_schedules = match bus.request("cron/list", BusPayload::CronList).await {
                 Ok(Ok(BusPayload::CronListResult { entries })) => entries
@@ -206,8 +222,28 @@ impl BusHandler for ManagementSubsystem {
                 _ => vec![],
             };
 
+            // Read live health state from the registry (instant — no fan-out).
+            let health_snapshot = health.snapshot().await;
+            let all_healthy = health_snapshot.iter().all(|h| h.healthy);
+            let top_status = if all_healthy { "ok" } else { "degraded" };
+
+            let subsystems_json: Vec<serde_json::Value> = health_snapshot
+                .iter()
+                .map(|h| {
+                    let mut v = serde_json::json!({
+                        "id": h.id,
+                        "healthy": h.healthy,
+                        "message": h.message,
+                    });
+                    if let Some(details) = &h.details {
+                        v["details"] = details.clone();
+                    }
+                    v
+                })
+                .collect();
+
             let body = serde_json::json!({
-                "status": "ok",
+                "status": top_status,
                 "uptime_ms": uptime_ms,
                 "main_process": {
                     "id": "supervisor",
@@ -215,12 +251,11 @@ impl BusHandler for ManagementSubsystem {
                     "status": "running",
                     "uptime_ms": uptime_ms,
                     "details": {
-                        "handler_count": handlers.len(),
                         "cron_active": cron_schedules.len(),
                         "cron_schedules": cron_schedules,
                     }
                 },
-                "subsystems": subsystems,
+                "subsystems": subsystems_json,
                 "bot_id": info.bot_id,
                 "llm_provider": info.llm_provider,
                 "llm_model": info.llm_model,

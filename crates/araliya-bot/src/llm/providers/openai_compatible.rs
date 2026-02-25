@@ -48,6 +48,28 @@ impl OpenAiCompatibleProvider {
         Ok(Self { client, api_base_url, model, temperature, timeout_seconds, api_key })
     }
 
+    /// Lightweight reachability probe.
+    ///
+    /// Sends a HEAD request to the configured endpoint.  Any HTTP response
+    /// (including 4xx) means the server is reachable.  Only a transport-level
+    /// failure (connection refused, timeout) is treated as unreachable.
+    ///
+    /// Uses a hard 5-second timeout regardless of the LLM timeout config.
+    pub async fn ping(&self) -> Result<(), ProviderError> {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| ProviderError::Request(format!("failed to build ping client: {e}")))?;
+        let mut req = client.head(&self.api_base_url);
+        if let Some(key) = &self.api_key {
+            req = req.bearer_auth(key);
+        }
+        req.send()
+            .await
+            .map(|_| ())
+            .map_err(|e| ProviderError::Request(format!("unreachable: {e}")))
+    }
+
     /// Send `content` as a single user message and return the assistant's reply with usage.
     ///
     /// History management and tool-call loops are intentionally the agent's

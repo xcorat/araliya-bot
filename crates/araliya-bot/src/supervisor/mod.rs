@@ -5,6 +5,7 @@ pub mod bus;
 pub mod component_info;
 pub mod control;
 pub mod dispatch;
+pub mod health;
 
 use std::collections::HashMap;
 use std::time::Instant;

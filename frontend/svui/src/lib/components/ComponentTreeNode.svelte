@@ -17,16 +17,15 @@
 	} = $props();
 
 	// Nodes at depth 0 and 1 start expanded; deeper levels start collapsed.
-	// Capture depth via a closure to satisfy Svelte's reactive-access linting.
-	let open = $state((() => depth < 2)());
+	let open = $state(depth < 2);
 
 	const hasChildren = $derived(node.children && node.children.length > 0);
 	const isRoot = $derived(depth === 0);
 	const isSelected = $derived(selectedId === node.id);
 
-	function stateDotClass(state: string, status: string): string {
-		const s = state.toLowerCase();
-		const st = status.toLowerCase();
+	function stateDotClass(state: string | undefined | null, status: string | undefined | null): string {
+		const s = (state ?? '').toLowerCase();
+		const st = (status ?? '').toLowerCase();
 		if (s === 'on' && (st === 'running' || st === 'ok')) return 'bg-emerald-500';
 		if (s === 'off') return 'border border-muted-foreground/40 bg-transparent';
 		if (s === 'err' || st === 'error' || st === 'failed') return 'bg-destructive';
@@ -34,8 +33,8 @@
 		return 'bg-emerald-500';
 	}
 
-	function statePillClass(state: string): string {
-		const s = state.toLowerCase();
+	function statePillClass(state: string | undefined | null): string {
+		const s = (state ?? '').toLowerCase();
 		if (s === 'on') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
 		if (s === 'off') return 'border-muted-foreground/25 bg-muted/40 text-muted-foreground';
 		if (s === 'err') return 'border-destructive/30 bg-destructive/10 text-destructive';

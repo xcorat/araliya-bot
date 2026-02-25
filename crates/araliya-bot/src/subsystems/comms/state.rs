@@ -109,6 +109,24 @@ impl CommsState {
         }
     }
 
+    /// Trigger a live health refresh across all subsystems and return the updated
+    /// health JSON (same format as [`Self::management_http_get`]).
+    ///
+    /// Sends `manage/health/refresh` on the bus, which fans out `{prefix}/health`
+    /// to every registered subsystem concurrently (5 s timeout each), then
+    /// returns the full health body with fresh data.
+    pub async fn management_health_refresh(&self) -> Result<String, AppError> {
+        match self.bus.request("manage/health/refresh", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+        }
+    }
+
     /// Request the component tree for HTTP (GET /api/tree). Same data as `manage/tree`; no private data.
     pub async fn management_http_tree(&self) -> Result<String, AppError> {
         match self.bus.request("manage/http/tree", BusPayload::Empty).await {

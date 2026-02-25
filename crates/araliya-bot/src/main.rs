@@ -31,6 +31,7 @@ use supervisor::bus::SupervisorBus;
 use supervisor::component_info::ComponentInfo;
 use supervisor::control::SupervisorControl;
 use supervisor::dispatch::BusHandler;
+use supervisor::health::HealthRegistry;
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
 #[cfg(feature = "subsystem-agents")]
 use subsystems::agents::AgentsSubsystem;
@@ -133,7 +134,10 @@ async fn run() -> Result<(), error::AppError> {
     // TODO:
     let mut handlers: Vec<Box<dyn BusHandler>> = vec![];
     let mut configured_handlers: Vec<String> = vec!["management".to_string()];
-    
+
+    // Shared health registry — subsystems push their state; management reads it.
+    let health_registry = HealthRegistry::new();
+
     // OnceLock bridge: comms::start() will populate this once channel list is known.
     // ManagementSubsystem reads it when building the component tree.
     let comms_info: Arc<OnceLock<ComponentInfo>> = Arc::new(OnceLock::new());
@@ -149,21 +153,25 @@ async fn run() -> Result<(), error::AppError> {
             llm_timeout_seconds: config.llm.openai.timeout_seconds,
         },
         comms_info.clone(),
+        health_registry.clone(),
     )));
 
     #[cfg(feature = "subsystem-llm")]
     {
         let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
-            .map_err(|e| error::AppError::Config(e.to_string()))?;
+            .map_err(|e| error::AppError::Config(e.to_string()))?
+            .with_health_reporter(health_registry.reporter("llm"));
+        llm.spawn_health_checker(shutdown.clone());
         handlers.push(Box::new(llm));
         configured_handlers.push("llm".to_string());
     }
 
     #[cfg(feature = "subsystem-tools")]
     {
-        handlers.push(Box::new(ToolsSubsystem::new(
-            config.tools.newsmail_aggregator.clone(),
-        )));
+        handlers.push(Box::new(
+            ToolsSubsystem::new(config.tools.newsmail_aggregator.clone())
+                .with_health_reporter(health_registry.reporter("tools")),
+        ));
         configured_handlers.push("tools".to_string());
     }
 
@@ -175,7 +183,8 @@ async fn run() -> Result<(), error::AppError> {
             cached_input_per_million_usd: config.llm.openai.cached_input_per_million_usd,
         };
         let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
-            .with_llm_rates(rates);
+            .with_llm_rates(rates)
+            .with_health_reporter(health_registry.reporter("agents"));
         #[cfg(feature = "plugin-docs")]
         agents.init_docs().await?;
         handlers.push(Box::new(agents));
@@ -184,7 +193,8 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(feature = "subsystem-cron")]
     {
-        let cron = CronSubsystem::new(bus_handle.clone(), shutdown.clone());
+        let cron = CronSubsystem::new(bus_handle.clone(), shutdown.clone())
+            .with_health_reporter(health_registry.reporter("cron"));
         handlers.push(Box::new(cron));
         configured_handlers.push("cron".to_string());
     }

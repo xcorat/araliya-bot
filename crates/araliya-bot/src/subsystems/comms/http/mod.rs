@@ -142,6 +142,7 @@ async fn handle_connection(
 
     match (method.as_str(), path.as_str()) {
         ("GET", "/api/health")    => api::handle_health(&mut socket, &state, &channel_id).await,
+        ("POST", "/api/health/refresh") => api::handle_health_refresh(&mut socket, &state, &channel_id).await,
         ("GET", "/api/tree")      => api::handle_tree(&mut socket, &state, &channel_id).await,
         ("POST", "/api/message")  => api::handle_message(&mut socket, &state, &channel_id, body).await,
         ("GET", "/api/sessions")  => api::handle_sessions(&mut socket, &state, &channel_id).await,

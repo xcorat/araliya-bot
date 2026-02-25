@@ -88,6 +88,19 @@ impl LlmProvider {
             LlmProvider::Qwen(p) => p.complete(content).await,
         }
     }
+
+    /// Lightweight reachability probe (HEAD request or no-op for dummy).
+    ///
+    /// Returns `Ok(())` if the provider endpoint is reachable, `Err` otherwise.
+    /// Any HTTP response code is treated as reachable; only transport failures
+    /// (connection refused, timeout) are errors.
+    pub async fn ping(&self) -> Result<(), ProviderError> {
+        match self {
+            LlmProvider::Dummy(_) => Ok(()),
+            LlmProvider::OpenAiCompatible(p) => p.ping().await,
+            LlmProvider::Qwen(p) => p.ping().await,
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

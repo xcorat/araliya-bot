@@ -140,6 +140,7 @@ fn build_router(state: AxumState) -> Router {
     Router::new()
         // API routes
         .route("/api/health",                        get(api::health))
+        .route("/api/health/refresh",                post(api::health_refresh))
         .route("/api/tree",                           get(api::tree))
         .route("/api/message",                       post(api::message))
         .route("/api/sessions",                      get(api::sessions))

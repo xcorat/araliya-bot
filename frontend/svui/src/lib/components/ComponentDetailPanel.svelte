@@ -31,7 +31,9 @@
 	const subsystem = $derived<SubsystemStatus | undefined>(
 		node && serviceInfo?.subsystems
 			? serviceInfo.subsystems.find(
-					(s) => s.id === node.id || s.name.toLowerCase() === node.name.toLowerCase()
+					(s) =>
+						s.id === node.id ||
+						(s.name != null && node.name != null && s.name.toLowerCase() === node.name.toLowerCase())
 				)
 			: undefined
 	);
@@ -41,7 +43,7 @@
 	let detailsExpanded = $state(true);
 </script>
 
-<div class="flex h-full w-80 shrink-0 flex-col border-l bg-background">
+<div class="flex h-full flex-1 flex-col overflow-hidden">
 	{#if !node}
 		<!-- Placeholder -->
 		<div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -79,8 +81,8 @@
 		<!-- Scrollable content -->
 		<div class="flex-1 space-y-3 overflow-y-auto p-4">
 			<!-- Core fields -->
-			<Card>
-				<CardContent class="grid grid-cols-2 gap-x-4 gap-y-3 p-3 text-xs">
+			<Card class="max-w-lg">
+				<CardContent class="grid grid-cols-2 gap-x-4 gap-y-3 p-3 text-xs sm:grid-cols-4">
 					<div>
 						<div class="mb-0.5 text-muted-foreground">State</div>
 						<div class="font-medium capitalize">{node.state}</div>

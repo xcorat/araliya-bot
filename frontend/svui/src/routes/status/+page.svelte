@@ -114,7 +114,9 @@
 	<Sidebar.SidebarInset>
 		<div class="flex h-dvh flex-col">
 			<ChatHeader />
-			<div class="flex min-h-0 flex-1">
+			{#if selectedNode}
+				<ComponentDetailPanel node={selectedNode} {serviceInfo} />
+			{:else}
 				<StatusView
 					{serviceInfo}
 					{error}
@@ -124,8 +126,7 @@
 					onTogglePolling={togglePolling}
 					onRefresh={() => void fetchAll()}
 				/>
-				<ComponentDetailPanel node={selectedNode} {serviceInfo} />
-			</div>
+			{/if}
 		</div>
 	</Sidebar.SidebarInset>
 </Sidebar.SidebarProvider>

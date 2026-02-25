@@ -118,6 +118,24 @@ pub fn start(
                                 Err(err) => eprintln!("agent health transport error: {err}"),
                             }
                         }
+                        Ok(Some(StdioFrame::HealthRefresh)) => {
+                            match bus
+                                .request("manage/health/refresh", BusPayload::Empty)
+                                .await
+                            {
+                                Ok(Ok(BusPayload::CommsMessage { content, .. })) => {
+                                    let pretty = serde_json::from_str::<serde_json::Value>(&content)
+                                        .and_then(|v| serde_json::to_string_pretty(&v));
+                                    match pretty {
+                                        Ok(s) => println!("{s}"),
+                                        Err(_) => println!("{content}"),
+                                    }
+                                }
+                                Ok(Ok(other)) => println!("{other:?}"),
+                                Ok(Err(err)) => eprintln!("health refresh error: {} ({})", err.message, err.code),
+                                Err(err) => eprintln!("health refresh transport error: {err}"),
+                            }
+                        }
                         Ok(Some(StdioFrame::Control(command))) => {
                             match control.request(command).await {
                                 Ok(Ok(response)) => print_control_response(response),
@@ -142,6 +160,7 @@ pub fn start(
 enum StdioFrame {
     Chat { content: String },
     AgentHealth { agent_id: String },
+    HealthRefresh,
     Control(ControlCommand),
     Help,
 }
@@ -182,6 +201,8 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
         "health" => {
             if rest.is_empty() {
                 Ok(Some(StdioFrame::Control(ControlCommand::Health)))
+            } else if rest == "refresh" {
+                Ok(Some(StdioFrame::HealthRefresh))
             } else {
                 Ok(Some(StdioFrame::AgentHealth {
                     agent_id: rest.to_string(),
@@ -209,7 +230,7 @@ fn ensure_no_args(rest: &str, frame: StdioFrame) -> Result<Option<StdioFrame>, S
 fn print_usage() {
     eprintln!("commands:");
     eprintln!("  /chat <message>");
-    eprintln!("  /health [agent]");
+    eprintln!("  /health [agent|refresh]");
     eprintln!("  /status");
     eprintln!("  /subsys");
     eprintln!("  /tree");
@@ -283,6 +304,14 @@ mod tests {
     fn parse_plain_health_command() {
         match parse_tty_protocol("/health") {
             Ok(Some(StdioFrame::Control(super::ControlCommand::Health))) => {}
+            other => panic!("unexpected parse result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_health_refresh_command() {
+        match parse_tty_protocol("/health refresh") {
+            Ok(Some(StdioFrame::HealthRefresh)) => {}
             other => panic!("unexpected parse result: {other:?}"),
         }
     }

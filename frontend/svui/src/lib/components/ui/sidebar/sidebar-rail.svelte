@@ -18,6 +18,7 @@
 	let dragging = false;
 	let startX = 0;
 	let startWidth = 0;
+	let containerEl: HTMLElement | null = null;
 
 	function onPointerDown(e: PointerEvent) {
 		// Only handle primary button
@@ -26,6 +27,11 @@
 		dragging = false;
 		startX = e.clientX;
 		startWidth = sidebar.widthPx;
+		// Capture pointer so fast mouse moves still fire even outside the element
+		(e.currentTarget as Element).setPointerCapture(e.pointerId);
+		// Suppress the sidebar width transition for instant feedback during drag
+		containerEl = ref?.closest<HTMLElement>('[data-slot="sidebar-container"]') ?? null;
+		if (containerEl) containerEl.style.transitionDuration = "0s";
 		window.addEventListener("pointermove", onPointerMove);
 		window.addEventListener("pointerup", onPointerUp, { once: true });
 	}
@@ -43,6 +49,11 @@
 
 	function onPointerUp() {
 		window.removeEventListener("pointermove", onPointerMove);
+		// Restore the transition now that drag is done
+		if (containerEl) {
+			containerEl.style.transitionDuration = "";
+			containerEl = null;
+		}
 		if (!dragging) {
 			// Plain click — toggle open/collapsed
 			sidebar.toggle();

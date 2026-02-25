@@ -4,6 +4,7 @@ use crate::config::NewsmailAggregatorConfig;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::component_info::ComponentInfo;
 use crate::supervisor::dispatch::BusHandler;
+use crate::supervisor::health::HealthReporter;
 
 #[cfg(feature = "plugin-gmail-tool")]
 mod gmail;
@@ -12,11 +13,21 @@ mod newsmail_aggregator;
 
 pub struct ToolsSubsystem {
     newsmail_defaults: NewsmailAggregatorConfig,
+    reporter: Option<HealthReporter>,
 }
 
 impl ToolsSubsystem {
     pub fn new(newsmail_defaults: NewsmailAggregatorConfig) -> Self {
-        Self { newsmail_defaults }
+        Self { newsmail_defaults, reporter: None }
+    }
+
+    /// Attach a health reporter.  Reports healthy at startup; individual tool
+    /// failures are surfaced per-execution, not via subsystem health state.
+    pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
+        let r = reporter.clone();
+        tokio::spawn(async move { r.set_healthy().await });
+        self.reporter = Some(reporter);
+        self
     }
 }
 
@@ -37,6 +48,20 @@ impl BusHandler for ToolsSubsystem {
     }
 
     fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        if method == "tools/health" {
+            let reporter = self.reporter.clone();
+            tokio::spawn(async move {
+                let h = match reporter {
+                    Some(r) => r.get_current().await
+                        .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("tools")),
+                    None => crate::supervisor::health::SubsystemHealth::ok("tools"),
+                };
+                let data = serde_json::to_string(&h).unwrap_or_default();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+            });
+            return;
+        }
+
         if method != "tools/execute" {
             let _ = reply_tx.send(Err(BusError::new(
                 ERR_METHOD_NOT_FOUND,

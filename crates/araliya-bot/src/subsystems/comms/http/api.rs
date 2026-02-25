@@ -57,6 +57,42 @@ pub(super) async fn handle_health(
     }
 }
 
+/// POST /api/health/refresh
+///
+/// Triggers a live health check across all subsystems and returns the updated
+/// health body (same format as `GET /api/health`).
+pub(super) async fn handle_health_refresh(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+) -> Result<(), AppError> {
+    let response = tokio::time::timeout(Duration::from_secs(15), state.management_health_refresh()).await;
+
+    match response {
+        Ok(Ok(body)) => super::write_json_response(socket, "200 OK", body.as_bytes()).await,
+        Ok(Err(e)) => {
+            warn!(%channel_id, "health refresh failed: {e}");
+            super::write_response(
+                socket,
+                "502 Bad Gateway",
+                "text/plain; charset=utf-8",
+                b"management adapter error\n",
+            )
+            .await
+        }
+        Err(_) => {
+            warn!(%channel_id, "health refresh timed out");
+            super::write_response(
+                socket,
+                "504 Gateway Timeout",
+                "text/plain; charset=utf-8",
+                b"management adapter timeout\n",
+            )
+            .await
+        }
+    }
+}
+
 /// GET /api/tree — component tree (no private data).
 pub(super) async fn handle_tree(
     socket: &mut tokio::net::TcpStream,
