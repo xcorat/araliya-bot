@@ -127,18 +127,17 @@
 <div style="padding-left: {indent}px;" class="border-b border-border/20 last:border-b-0 {rowBg}">
 	{#if hasChildren}
 		<Collapsible.Root bind:open>
-			<!-- Full-width click area, no highlight here; uses group for inner tab hover -->
+			<!-- Full-width click area; full-row highlight when selected -->
 			<Collapsible.Trigger
 				onclick={() => onSelectNode?.(node)}
-				class="group flex w-full items-center gap-1.5 text-left transition-colors {rowPy}"
+				class="group flex w-full items-center gap-1.5 rounded-md text-left transition-colors {rowPy}
+					{isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/20' : ''}"
 			>
-				<!-- ── Inner "tab": highlighted on select/hover, wraps only identity ── -->
+				<!-- ── Inner "tab": hover-only highlight, wraps identity ── -->
 				<span
 					class="inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors
 						{isRoot ? 'font-medium' : ''}
-						{isSelected
-							? 'bg-primary/10 ring-1 ring-inset ring-primary/30'
-							: 'group-hover:bg-muted/50'}"
+						{!isSelected ? 'group-hover:bg-muted/50' : ''}"
 				>
 					<!-- expand/collapse chevron -->
 					<ChevronRight
@@ -184,26 +183,25 @@
 			>
 				<!-- Hierarchy connector: slightly more visible vertical line -->
 				<div class="ml-2.5 border-l border-border/50">
-					{#each node.children as child (child.id)}
+					{#each node.children.filter(c => c.id !== 'tools') as child (child.id)}
 						<Self node={child} depth={depth + 1} {selectedId} {onSelectNode} />
 					{/each}
 				</div>
 			</Collapsible.Content>
 		</Collapsible.Root>
 	{:else}
-		<!-- Leaf node: same pattern, no chevron -->
+		<!-- Leaf node: same pattern, no chevron; full-row selection highlight -->
 		<button
 			type="button"
 			onclick={() => onSelectNode?.(node)}
-			class="group flex w-full items-center gap-1.5 text-left transition-colors {rowPy}"
+			class="group flex w-full items-center gap-1.5 rounded-md text-left transition-colors {rowPy}
+				{isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/20' : ''}"
 		>
-			<!-- ── Inner "tab" ── -->
+			<!-- ── Inner "tab": hover-only ── -->
 			<span
 				class="inline-flex min-w-0 shrink items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors
 					{isRoot ? 'font-medium' : ''}
-					{isSelected
-						? 'bg-primary/10 ring-1 ring-inset ring-primary/30'
-						: 'group-hover:bg-muted/50'}"
+					{!isSelected ? 'group-hover:bg-muted/50' : ''}"
 			>
 				<!-- spacer to align with chevron width -->
 				<span class="size-3 shrink-0"></span>
