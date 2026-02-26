@@ -28,6 +28,9 @@ use crate::supervisor::health::HealthReporter;
 use crate::identity::{self, Identity};
 use crate::subsystems::memory::MemorySystem;
 
+// CHECK: wat?
+pub(crate) mod core;
+
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
 #[cfg(any(feature = "plugin-basic-chat", feature = "plugin-chat"))]
 mod chat;
@@ -66,6 +69,8 @@ pub struct AgentsState {
     pub docs_use_kg: bool,
     /// KG tuning parameters forwarded to IKGDocStore.
     pub docs_kg_config: DocsKgConfig,
+    /// Names of tool plugins enabled at startup — injected into prompt layer 2.
+    pub enabled_tools: Vec<String>,
 }
 
 impl AgentsState {
@@ -78,6 +83,7 @@ impl AgentsState {
         docs_index_name: Option<String>,
         docs_use_kg: bool,
         docs_kg_config: DocsKgConfig,
+        enabled_tools: Vec<String>,
     ) -> Self {
         Self {
             bus,
@@ -89,6 +95,7 @@ impl AgentsState {
             docs_index_name,
             docs_use_kg,
             docs_kg_config,
+            enabled_tools,
         }
     }
 
@@ -327,6 +334,14 @@ impl AgentsSubsystem {
             agents.insert(agent.id().to_string(), agent);
         }
 
+        // Collect which tool plugins are compiled in.
+        let mut enabled_tools: Vec<String> = Vec::new();
+        #[cfg(feature = "plugin-gmail-tool")]
+        {
+            enabled_tools.push("gmail".to_string());
+            enabled_tools.push("newsmail_aggregator".to_string());
+        }
+
         // Initialize cryptographic identities for all registered agents.
         let mut agent_identities = HashMap::new();
         let agent_memory_root = memory.memory_root().join("agent");
@@ -345,6 +360,7 @@ impl AgentsSubsystem {
                 docs_index_name,
                 docs_use_kg,
                 docs_kg_config,
+                enabled_tools,
             )),
             agents,
             default_agent,

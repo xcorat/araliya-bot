@@ -19,6 +19,7 @@ use tracing::warn;
 use crate::error::AppError;
 use crate::subsystems::memory::stores::docstore::IDocStore;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
 
 const ERR_INTERNAL: i32 = -32000;
@@ -212,18 +213,22 @@ impl Agent for DocsAgentPlugin {
             };
 
             // Build the LLM prompt (optionally include conversation history).
-            let prompt_path = "config/prompts/docs_qa.txt";
-            let template = fs::read_to_string(prompt_path).unwrap_or_else(|_| {
-                "Documentation:\n{{docs}}\n\nQuestion:\n{{question}}\n".to_string()
-            });
             let question_section = if history.trim().is_empty() {
                 query.clone()
             } else {
                 format!("Conversation history:\n{}\n\nQuestion:\n{}", history.trim(), query)
             };
-            let prompt = template
-                .replace("{{docs}}", &context)
-                .replace("{{question}}", &question_section);
+            let body = fs::read_to_string("config/prompts/docs_qa.txt")
+                .unwrap_or_else(|_| "Documentation:\n{{docs}}\n\nQuestion:\n{{question}}\n".to_string());
+            let prompt = PromptBuilder::new("config/prompts")
+                .layer("id.md")
+                .layer("agent.md")
+                .layer("memory_and_tools.md")
+                .with_tools(&state.enabled_tools)
+                .append(body)
+                .var("docs", &context)
+                .var("question", &question_section)
+                .build();
 
             let llm_result = state.complete_via_llm(&channel_id, &prompt).await;
 

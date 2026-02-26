@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use crate::supervisor::bus::{BusPayload, BusResult};
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
+use crate::subsystems::agents::core::prompt::PromptBuilder;
 
 use crate::subsystems::memory::handle::SessionHandle;
 
@@ -127,14 +128,18 @@ async fn handle_with_memory(
         }
     };
 
-    // Build the full prompt with context using external template.
-    let prompt_template = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
-        // fallback minimal prompt
-        "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
-    });
-    let prompt = prompt_template
-        .replace("{{history}}", &context)
-        .replace("{{user_input}}", content);
+    // Build the full prompt with layered templates.
+    let body = std::fs::read_to_string("config/prompts/chat_context.txt")
+        .unwrap_or_else(|_| "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string());
+    let prompt = PromptBuilder::new("config/prompts")
+        .layer("id.md")
+        .layer("agent.md")
+        .layer("memory_and_tools.md")
+        .with_tools(&state.enabled_tools)
+        .append(body)
+        .var("history", &context)
+        .var("user_input", content)
+        .build();
 
     // Get LLM completion.
     let result = ChatCore::basic_complete(state, channel_id, &prompt).await;

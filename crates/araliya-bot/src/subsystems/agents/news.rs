@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
@@ -10,6 +8,7 @@ use tracing::warn;
 use crate::subsystems::memory::stores::agent::TextItem;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
+use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
 
 const NO_NEWS_MSG: &str = "No new news emails.";
@@ -148,7 +147,7 @@ impl Agent for NewsAgentPlugin {
             }
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
-            let prompt = build_summary_prompt(&items);
+            let prompt = build_summary_prompt(&items, &state.enabled_tools);
             let llm_result = state.complete_via_llm(&channel_id, &prompt).await;
 
             let (summary, usage) = match llm_result {
@@ -222,13 +221,8 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
     .ok();
 }
 
-/// Format [`TextItem`]s into an LLM summarisation prompt.
-fn build_summary_prompt(items: &[TextItem]) -> String {
-    let prompt_path = Path::new("config/prompts/news_summary.txt");
-    let template = fs::read_to_string(prompt_path).unwrap_or_else(|_| {
-        // fallback to a minimal prompt if file missing
-        "Summarize the following news items:\n\n{{items}}".to_string()
-    });
+/// Format [`TextItem`]s into an LLM summarisation prompt using layered templates.
+fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> String {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let subject = item.metadata.get("subject").map(|s| s.as_str()).unwrap_or("(no subject)");
@@ -236,7 +230,18 @@ fn build_summary_prompt(items: &[TextItem]) -> String {
         let date    = item.metadata.get("date").map(|s| s.as_str()).unwrap_or("");
         items_str.push_str(&format!("[{}] {}\n    From: {}  Date: {}\n", i + 1, subject, from, date));
     }
-    template.replace("{{items}}", &items_str)
+
+    let body = std::fs::read_to_string("config/prompts/news_summary.txt")
+        .unwrap_or_else(|_| "Summarize the following news items:\n\n{{items}}".to_string());
+
+    PromptBuilder::new("config/prompts")
+        .layer("id.md")
+        .layer("agent.md")
+        .layer("memory_and_tools.md")
+        .with_tools(tools)
+        .append(body)
+        .var("items", &items_str)
+        .build()
 }
 
 /// Parse a JSON array from the tool response into [`TextItem`]s.

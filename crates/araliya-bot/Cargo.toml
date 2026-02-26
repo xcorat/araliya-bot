@@ -47,7 +47,7 @@ default = [
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
-    "plugin-docs-kg",
+    "plugin-docs",
     "channel-pty",
     "channel-axum",
     "ui-svui",
@@ -59,7 +59,9 @@ full    = [
     "plugin-news-agent",
     "channel-telegram",
     "cli",
-    "gmail-app"
+    "gmail-app",
+    "plugin-docs",
+    "ikgdocstore",
     ]
 minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
 

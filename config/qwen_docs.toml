@@ -56,4 +56,4 @@ cached_input_per_million_usd = 0.0
 
 [ui.svui]
 enabled = true
-static_dir = "ui/build"
+static_dir = "frontend/build"
