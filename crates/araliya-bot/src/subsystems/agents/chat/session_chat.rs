@@ -128,21 +128,19 @@ async fn handle_with_memory(
         }
     };
 
-    // Build the full prompt with layered templates.
+    // Build system preamble (identity layers) and user message separately.
+    let system = crate::subsystems::agents::core::prompt::preamble("config/prompts", &state.enabled_tools).build();
+
     let body = std::fs::read_to_string("config/prompts/chat_context.txt")
         .unwrap_or_else(|_| "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string());
     let prompt = PromptBuilder::new("config/prompts")
-        .layer("id.md")
-        .layer("agent.md")
-        .layer("memory_and_tools.md")
-        .with_tools(&state.enabled_tools)
         .append(body)
         .var("history", &context)
         .var("user_input", content)
         .build();
 
-    // Get LLM completion.
-    let result = ChatCore::basic_complete(state, channel_id, &prompt).await;
+    // Get LLM completion with identity in system role.
+    let result = state.complete_via_llm_with_system(channel_id, &prompt, Some(&system)).await;
 
     // Record assistant reply in transcript + accumulate token spend.
     if let Ok(BusPayload::CommsMessage { content: ref reply, ref usage, .. }) = result {

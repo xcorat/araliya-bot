@@ -218,19 +218,17 @@ impl Agent for DocsAgentPlugin {
             } else {
                 format!("Conversation history:\n{}\n\nQuestion:\n{}", history.trim(), query)
             };
+            let system = super::core::prompt::preamble("config/prompts", &state.enabled_tools).build();
+
             let body = fs::read_to_string("config/prompts/docs_qa.txt")
                 .unwrap_or_else(|_| "Documentation:\n{{docs}}\n\nQuestion:\n{{question}}\n".to_string());
             let prompt = PromptBuilder::new("config/prompts")
-                .layer("id.md")
-                .layer("agent.md")
-                .layer("memory_and_tools.md")
-                .with_tools(&state.enabled_tools)
                 .append(body)
                 .var("docs", &context)
                 .var("question", &question_section)
                 .build();
 
-            let llm_result = state.complete_via_llm(&channel_id, &prompt).await;
+            let llm_result = state.complete_via_llm_with_system(&channel_id, &prompt, Some(&system)).await;
 
             // Persist assistant reply and spend to the session.
             if let Ok(BusPayload::CommsMessage { content: ref reply, ref usage, .. }) = llm_result {

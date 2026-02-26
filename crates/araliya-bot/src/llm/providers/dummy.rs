@@ -7,7 +7,7 @@ use crate::llm::{LlmResponse, ProviderError};
 pub struct DummyProvider;
 
 impl DummyProvider {
-    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
+    pub async fn complete(&self, content: &str, _system: Option<&str>) -> Result<LlmResponse, ProviderError> {
         Ok(LlmResponse {
             text: format!("[echo] {content}"),
             usage: None,
@@ -22,18 +22,19 @@ mod tests {
     #[tokio::test]
     async fn complete_prefixes_echo() {
         let p = DummyProvider;
-        assert_eq!(p.complete("hello").await.unwrap().text, "[echo] hello");
+        assert_eq!(p.complete("hello", None).await.unwrap().text, "[echo] hello");
     }
 
     #[tokio::test]
     async fn complete_empty_input() {
         let p = DummyProvider;
-        assert_eq!(p.complete("").await.unwrap().text, "[echo] ");
+        // `_system` param is intentionally unused
+        assert_eq!(p.complete("", None).await.unwrap().text, "[echo] ");
     }
 
     #[tokio::test]
     async fn complete_usage_is_none() {
         let p = DummyProvider;
-        assert!(p.complete("test").await.unwrap().usage.is_none());
+        assert!(p.complete("test", None).await.unwrap().usage.is_none());
     }
 }

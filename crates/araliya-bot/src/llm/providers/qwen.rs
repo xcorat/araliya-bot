@@ -30,8 +30,8 @@ impl QwenProvider {
         Ok(Self { inner })
     }
 
-    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
-        self.inner.complete(content).await
+    pub async fn complete(&self, content: &str, system: Option<&str>) -> Result<LlmResponse, ProviderError> {
+        self.inner.complete(content, system).await
     }
 
     pub async fn ping(&self) -> Result<(), ProviderError> {

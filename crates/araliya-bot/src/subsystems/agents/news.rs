@@ -147,8 +147,8 @@ impl Agent for NewsAgentPlugin {
             }
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
-            let prompt = build_summary_prompt(&items, &state.enabled_tools);
-            let llm_result = state.complete_via_llm(&channel_id, &prompt).await;
+            let (system, user_prompt) = build_summary_prompt(&items, &state.enabled_tools);
+            let llm_result = state.complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system)).await;
 
             let (summary, usage) = match llm_result {
                 Ok(BusPayload::CommsMessage { content, usage, .. }) => (content, usage),
@@ -167,7 +167,7 @@ impl Agent for NewsAgentPlugin {
 
             // ── 7. Record comm transcript in agent session ──────────────
             if let Some(ref session) = agent_session {
-                if let Err(e) = session.transcript_append("agent", &prompt).await {
+                if let Err(e) = session.transcript_append("agent", &user_prompt).await {
                     warn!(error = %e, "news: failed to append prompt to transcript");
                 }
                 if let Err(e) = session.transcript_append("llm", &summary).await {
@@ -222,7 +222,10 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
 }
 
 /// Format [`TextItem`]s into an LLM summarisation prompt using layered templates.
-fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> String {
+///
+/// Returns `(system, user)`: the preamble layers as the system message and the
+/// task-specific body as the user message.
+fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let subject = item.metadata.get("subject").map(|s| s.as_str()).unwrap_or("(no subject)");
@@ -231,17 +234,16 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> String {
         items_str.push_str(&format!("[{}] {}\n    From: {}  Date: {}\n", i + 1, subject, from, date));
     }
 
+    let system = super::core::prompt::preamble("config/prompts", tools).build();
+
     let body = std::fs::read_to_string("config/prompts/news_summary.txt")
         .unwrap_or_else(|_| "Summarize the following news items:\n\n{{items}}".to_string());
-
-    PromptBuilder::new("config/prompts")
-        .layer("id.md")
-        .layer("agent.md")
-        .layer("memory_and_tools.md")
-        .with_tools(tools)
+    let user = PromptBuilder::new("config/prompts")
         .append(body)
         .var("items", &items_str)
-        .build()
+        .build();
+
+    (system, user)
 }
 
 /// Parse a JSON array from the tool response into [`TextItem`]s.

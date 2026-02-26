@@ -80,12 +80,13 @@ pub enum LlmProvider {
 }
 
 impl LlmProvider {
-    /// Send `content` to the provider and return the response including token usage.
-    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
+    /// Send `content` as the user message (and optional `system` as the system prompt)
+    /// to the provider and return the response including token usage.
+    pub async fn complete(&self, content: &str, system: Option<&str>) -> Result<LlmResponse, ProviderError> {
         match self {
-            LlmProvider::Dummy(p) => p.complete(content).await,
-            LlmProvider::OpenAiCompatible(p) => p.complete(content).await,
-            LlmProvider::Qwen(p) => p.complete(content).await,
+            LlmProvider::Dummy(p) => p.complete(content, system).await,
+            LlmProvider::OpenAiCompatible(p) => p.complete(content, system).await,
+            LlmProvider::Qwen(p) => p.complete(content, system).await,
         }
     }
 

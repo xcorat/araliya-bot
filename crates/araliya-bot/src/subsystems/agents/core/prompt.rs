@@ -74,12 +74,18 @@ impl PromptBuilder {
     /// Load `tools.ms` and substitute `{{tools}}` with a comma-separated
     /// list of tool names.  Falls back to an inline sentence if the file
     /// is missing.
+    ///
+    /// Also registers `"tools"` as a variable so `{{tools}}` in any other
+    /// layer (e.g. `memory_and_tools.md`) is substituted at build time.
     pub fn with_tools(mut self, tools: &[String]) -> Self {
         let tools_str = if tools.is_empty() {
             "none".to_string()
         } else {
             tools.join(", ")
         };
+
+        // Register as a variable so {{tools}} in other layers is substituted too.
+        self.vars.insert("tools".to_string(), tools_str.clone());
 
         let path = self.prompts_dir.join("tools.ms");
         let text = fs::read_to_string(&path).unwrap_or_else(|_| {

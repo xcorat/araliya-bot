@@ -44,7 +44,7 @@ pub enum BusPayload {
     /// `channel_id` is threaded through so the LLM subsystem can attach it to
     /// the `CommsMessage` it returns, allowing the caller to re-associate the
     /// reply with the originating channel without extra bookkeeping.
-    LlmRequest { channel_id: String, content: String },
+    LlmRequest { channel_id: String, content: String, system: Option<String> },
         /// Request tool execution in the tools subsystem.
         ToolRequest {
             tool: String,

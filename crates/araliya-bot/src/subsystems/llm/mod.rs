@@ -202,13 +202,13 @@ impl BusHandler for LlmSubsystem {
         }
 
         match payload {
-            BusPayload::LlmRequest { channel_id, content } => {
+            BusPayload::LlmRequest { channel_id, content, system } => {
                 let provider = self.provider.clone();
                 let rates = self.rates.clone();
                 debug!(%method, %channel_id, "dispatching to llm provider");
                 tokio::spawn(async move {
                     let result = provider
-                        .complete(&content)
+                        .complete(&content, system.as_deref())
                         .await
                         .map(|resp| {
                             let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));

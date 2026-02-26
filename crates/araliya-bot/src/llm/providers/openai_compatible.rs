@@ -70,11 +70,11 @@ impl OpenAiCompatibleProvider {
             .map_err(|e| ProviderError::Request(format!("unreachable: {e}")))
     }
 
-    /// Send `content` as a single user message and return the assistant's reply with usage.
+    /// Send `content` as the user message and optionally `system` as the system prompt.
     ///
     /// History management and tool-call loops are intentionally the agent's
     /// responsibility — this method is one round-trip only.
-    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError> {
+    pub async fn complete(&self, content: &str, system: Option<&str>) -> Result<LlmResponse, ProviderError> {
         // Some models (gpt-5 family) do not accept a temperature parameter.
         let temperature = if self.model.starts_with("gpt-5") {
             None
@@ -82,9 +82,15 @@ impl OpenAiCompatibleProvider {
             Some(self.temperature)
         };
 
+        let mut messages = Vec::new();
+        if let Some(sys) = system {
+            messages.push(Message { role: "system".to_string(), content: sys.to_string() });
+        }
+        messages.push(Message { role: "user".to_string(), content: content.to_string() });
+
         let payload = ChatCompletionRequest {
             model: self.model.clone(),
-            messages: vec![Message { role: "user".to_string(), content: content.to_string() }],
+            messages,
             temperature,
         };
 

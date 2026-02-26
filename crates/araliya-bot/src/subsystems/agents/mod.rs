@@ -134,6 +134,19 @@ impl AgentsState {
         channel_id: &str,
         content: &str,
     ) -> BusResult {
+        self.complete_via_llm_with_system(channel_id, content, None).await
+    }
+
+    /// Forward content to the LLM subsystem with an explicit system prompt.
+    ///
+    /// `system` is sent as the `"system"` role message before the user content.
+    /// When `None`, behaviour is identical to [`complete_via_llm`].
+    pub async fn complete_via_llm_with_system(
+        &self,
+        channel_id: &str,
+        content: &str,
+        system: Option<&str>,
+    ) -> BusResult {
         let result = self
             .bus
             .request(
@@ -141,6 +154,7 @@ impl AgentsState {
                 BusPayload::LlmRequest {
                     channel_id: channel_id.to_string(),
                     content: content.to_string(),
+                    system: system.map(|s| s.to_string()),
                 },
             )
             .await;
@@ -239,6 +253,20 @@ pub struct AgentsSubsystem {
 }
 
 impl AgentsSubsystem {
+    fn effective_enabled_agent_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = if self.enabled_agents.is_empty() {
+            self.agents.keys().cloned().collect()
+        } else {
+            self.enabled_agents
+                .iter()
+                .filter(|id| self.agents.contains_key(id.as_str()))
+                .cloned()
+                .collect()
+        };
+        ids.sort();
+        ids
+    }
+
     pub fn new(
         config: AgentsConfig,
         bus: BusHandle,
@@ -417,7 +445,7 @@ impl AgentsSubsystem {
 
     /// Attach a health reporter and report initial healthy state.
     pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
-        let enabled: Vec<String> = self.enabled_agents.iter().cloned().collect();
+        let enabled = self.effective_enabled_agent_ids();
         let agent_count = enabled.len();
         let r = reporter.clone();
         tokio::spawn(async move {
@@ -731,7 +759,7 @@ impl BusHandler for AgentsSubsystem {
             let reporter = self.reporter.clone();
             let memory = self.state.memory.clone();
             let default_agent = self.default_agent.clone();
-            let enabled_agents: Vec<String> = self.agents.keys().cloned().collect();
+            let enabled_agents = self.effective_enabled_agent_ids();
             tokio::spawn(async move {
                 let base = status_from_reporter("agents", reporter).await;
                 let session_count = memory.list_sessions().map(|s| s.len()).unwrap_or(0);
@@ -853,12 +881,12 @@ impl BusHandler for AgentsSubsystem {
 
     fn component_info(&self) -> ComponentInfo {
         let mut children: Vec<ComponentInfo> = self
-            .agents
-            .keys()
+            .effective_enabled_agent_ids()
+            .into_iter()
             .map(|id| {
-                let name = ComponentInfo::capitalise(id);
-                let mut node = ComponentInfo::leaf(id, &name);
-                if id.as_str() == self.default_agent.as_str() {
+                let name = ComponentInfo::capitalise(&id);
+                let mut node = ComponentInfo::leaf(&id, &name);
+                if id == self.default_agent {
                     node.name = format!("{name} (default)");
                 }
                 node
@@ -1106,7 +1134,7 @@ mod tests {
         // Spawn a fake LLM responder that echoes with a marker prefix.
         tokio::spawn(async move {
             if let Some(BusMessage::Request { payload, reply_tx, .. }) = rx.recv().await {
-                if let BusPayload::LlmRequest { channel_id, content } = payload {
+                if let BusPayload::LlmRequest { channel_id, content, .. } = payload {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: format!("[fake] {content}"),
@@ -1169,7 +1197,7 @@ mod tests {
             // Second: llm/complete
             if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest { content, channel_id } = payload {
+                if let BusPayload::LlmRequest { content, channel_id, .. } = payload {
                     assert!(content.contains("Test Headline"), "prompt should contain subject");
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
@@ -1301,7 +1329,7 @@ mod tests {
         tokio::spawn(async move {
             if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest { content, channel_id } = payload {
+                if let BusPayload::LlmRequest { content, channel_id, .. } = payload {
                     assert!(content.contains("the quick brown fox"));
                     assert!(content.contains("what color"));
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
@@ -1395,5 +1423,54 @@ mod tests {
         
         let parent_dir = subagent.identity_dir.parent().unwrap();
         assert!(parent_dir.ends_with("subagents"));
+    }
+
+    #[tokio::test]
+    async fn component_info_shows_only_enabled_agents() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            docs: None,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let info = agents.component_info();
+        let child_ids: Vec<String> = info.children.into_iter().map(|c| c.id).collect();
+        assert_eq!(child_ids, vec!["echo".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn detailed_status_reports_only_enabled_agents() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            docs: None,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx) = oneshot::channel();
+        agents.handle_request("agents/detailed_status", BusPayload::Empty, tx);
+
+        let payload = rx.await.unwrap().unwrap();
+        let BusPayload::JsonResponse { data } = payload else {
+            panic!("unexpected payload");
+        };
+        let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+        let enabled = value
+            .get("enabled_agents")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(enabled, vec![serde_json::Value::String("echo".to_string())]);
     }
 }
