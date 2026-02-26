@@ -141,12 +141,17 @@ impl BusHandler for ManagementSubsystem {
                         if let Some(comms) = comms_info.get() {
                             if let Ok(mut root) = serde_json::from_str::<serde_json::Value>(&tree_json) {
                                 if let Some(children) = root.get_mut("children").and_then(|c| c.as_array_mut()) {
-                                    if let Ok(comms_val) = serde_json::to_value(comms) {
-                                        children.push(comms_val);
-                                        children.sort_by(|a, b| {
-                                            a.get("id").and_then(|v| v.as_str())
-                                                .cmp(&b.get("id").and_then(|v| v.as_str()))
-                                        });
+                                    let has_comms = children.iter().any(|child| {
+                                        child.get("id").and_then(|v| v.as_str()) == Some(comms.id.as_str())
+                                    });
+                                    if !has_comms {
+                                        if let Ok(comms_val) = serde_json::to_value(comms) {
+                                            children.push(comms_val);
+                                            children.sort_by(|a, b| {
+                                                a.get("id").and_then(|v| v.as_str())
+                                                    .cmp(&b.get("id").and_then(|v| v.as_str()))
+                                            });
+                                        }
                                     }
                                 }
                                 tree_json = serde_json::to_string(&root)
@@ -168,12 +173,17 @@ impl BusHandler for ManagementSubsystem {
                             })
                         }).collect();
                         if let Some(comms) = comms_info.get() {
-                            if let Ok(v) = serde_json::to_value(comms) {
-                                children.push(v);
-                                children.sort_by(|a, b| {
-                                    a.get("id").and_then(|v| v.as_str())
-                                        .cmp(&b.get("id").and_then(|v| v.as_str()))
-                                });
+                            let has_comms = children.iter().any(|child| {
+                                child.get("id").and_then(|v| v.as_str()) == Some(comms.id.as_str())
+                            });
+                            if !has_comms {
+                                if let Ok(v) = serde_json::to_value(comms) {
+                                    children.push(v);
+                                    children.sort_by(|a, b| {
+                                        a.get("id").and_then(|v| v.as_str())
+                                            .cmp(&b.get("id").and_then(|v| v.as_str()))
+                                    });
+                                }
                             }
                         }
                         let root = serde_json::json!({

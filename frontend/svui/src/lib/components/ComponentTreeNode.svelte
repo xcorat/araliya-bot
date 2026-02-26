@@ -119,12 +119,19 @@
 	const uptime = $derived(formatUptime(node.uptime_ms));
 	const indent = $derived(depth * 12);
 	const rowBg = $derived(subsystemRowBg(node));
-	// depth-1 subsystem rows get a little extra vertical breathing room
-	const rowPy = $derived(isRoot ? 'py-1' : depth === 1 ? 'py-1' : 'py-0.5');
+	const isSubsystemRow = $derived(depth === 1);
+	// Slightly more breathing room between component rows.
+	const rowPy = $derived(isRoot ? 'py-1.5' : depth === 1 ? 'py-1.5' : 'py-1');
+	// Extra separation between subsystems + more pronounced borders.
+	const wrapperClass = $derived(
+		isSubsystemRow
+			? 'mt-2 first:mt-0 rounded-md border border-border/60'
+			: 'border-b border-border/20 last:border-b-0'
+	);
 </script>
 
 <!-- Row wrapper: full-width, with light bottom border for gentle row separation -->
-<div style="padding-left: {indent}px;" class="border-b border-border/20 last:border-b-0 {rowBg}">
+<div style="padding-left: {indent}px;" class="{wrapperClass} {rowBg}">
 	{#if hasChildren}
 		<Collapsible.Root bind:open>
 			<!-- Full-width click area; full-row highlight when selected -->

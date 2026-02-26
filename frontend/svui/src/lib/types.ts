@@ -85,6 +85,7 @@ export interface AgentInfo {
 	name: string;
 	last_fetched: string | null;
 	session_count: number;
+	store_types?: string[];
 }
 
 export interface AgentsResponse {

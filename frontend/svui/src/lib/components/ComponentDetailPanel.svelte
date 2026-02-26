@@ -3,7 +3,7 @@
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import type { HealthResponse, TreeNode, SubsystemStatus, SessionInfo } from '$lib/types';
+	import type { HealthResponse, TreeNode, SubsystemStatus, SessionInfo, AgentInfo } from '$lib/types';
 	import {
 		statusDotClass,
 		statusPillClass,
@@ -58,11 +58,16 @@
 			)
 	);
 
+	const selectedAgentSubsystem = $derived<SubsystemStatus | undefined>(
+		kind === 'agents' ? subsystem : isAgentChild ? agentsSubsystem : undefined
+	);
+
 	let detailsExpanded = $state(true);
 
 	// ── Memory tab state ────────────────────────────────────────
 
 	let sessions = $state<SessionInfo[]>([]);
+	let agents = $state<AgentInfo[]>([]);
 
 	// Sessions to display in the Memory tab: all for the agents subsystem node,
 	// filtered by last_agent for individual agent child nodes.
@@ -71,11 +76,56 @@
 			? sessions.filter((s) => s.last_agent === node.id)
 			: sessions
 	);
+
+	const displayedAgentSessions = $derived(isAgentChild ? visibleSessions : sessions);
 	let sessionsLoading = $state(false);
 	let sessionsError = $state('');
+	let agentsLoading = $state(false);
+	let agentsError = $state('');
 	// Map from session_id -> { loading, error, content, loaded }
 	let memoryState = $state<Record<string, { loading: boolean; error: string; content: string; loaded: boolean }>>({});
 	let memoryTabActivated = $state(false);
+	let sessionsHydrated = $state(false);
+	let agentsHydrated = $state(false);
+
+	const selectedAgentMeta = $derived<AgentInfo | undefined>(
+		isAgentChild && node ? agents.find((a) => a.agent_id === node.id) : undefined
+	);
+
+	const agentMemoryStoreTypes = $derived(
+		Array.from(
+			new Set(
+				[
+					...displayedAgentSessions.flatMap((session) =>
+					Array.isArray(session.store_types) ? session.store_types : []
+					),
+					...(selectedAgentMeta?.store_types ?? [])
+				]
+			)
+		).sort()
+	);
+
+	const trackedSessionCount = $derived.by(() => {
+		if (displayedAgentSessions.length > 0) return displayedAgentSessions.length;
+		if (isAgentChild && selectedAgentMeta) return selectedAgentMeta.session_count;
+		return displayedAgentSessions.length;
+	});
+
+	const agentMemoryLastUpdated = $derived.by(() => {
+		let latest: string | null = null;
+		let latestMs = -1;
+		for (const session of displayedAgentSessions) {
+			const value = session.updated_at ?? session.created_at;
+			if (!value) continue;
+			const ts = Date.parse(value);
+			if (Number.isNaN(ts)) continue;
+			if (ts > latestMs) {
+				latestMs = ts;
+				latest = value;
+			}
+		}
+		return latest;
+	});
 
 	async function loadSessions() {
 		const baseUrl = getBaseUrl();
@@ -89,8 +139,34 @@
 			sessionsError = e instanceof Error ? e.message : 'Failed to load sessions';
 		} finally {
 			sessionsLoading = false;
+			sessionsHydrated = true;
 		}
 	}
+
+	async function loadAgents() {
+		const baseUrl = getBaseUrl();
+		if (!baseUrl) return;
+		agentsLoading = true;
+		agentsError = '';
+		try {
+			const res = await api.listAgents(baseUrl);
+			agents = res.agents;
+		} catch (e) {
+			agentsError = e instanceof Error ? e.message : 'Failed to load agents';
+		} finally {
+			agentsLoading = false;
+			agentsHydrated = true;
+		}
+	}
+
+	$effect(() => {
+		if ((kind === 'agents' || isAgentChild) && !sessionsHydrated && !sessionsLoading) {
+			void loadSessions();
+		}
+		if ((kind === 'agents' || isAgentChild) && !agentsHydrated && !agentsLoading) {
+			void loadAgents();
+		}
+	});
 
 	function onTabChange(value: string) {
 		if (value === 'memory' && !memoryTabActivated) {
@@ -269,6 +345,15 @@
 					{/if}
 				</Tabs.TabsContent>
 			</Tabs.Tabs>
+		{:else if isAgentChild}
+			<!-- Child agent node: focused detail view with memory summary -->
+			<div class="flex-1 space-y-3 overflow-y-auto p-4">
+				{@render coreCard()}
+				{@render agentsSubsystemCard()}
+				{#if selectedAgentSubsystem}
+					{@render allPropertiesCard()}
+				{/if}
+			</div>
 		{:else}
 			<!-- Non-agents subsystems: single-column layout (no tabs) -->
 			<div class="flex-1 space-y-3 overflow-y-auto p-4">
@@ -391,32 +476,86 @@
 {/snippet}
 
 {#snippet agentsSubsystemCard()}
-	{#if subsystem}
-		<Card class={subsystemCardClass(subsystem.id)}>
+	{#if selectedAgentSubsystem}
+		<Card class={subsystemCardClass(selectedAgentSubsystem.id)}>
 			<CardHeader class="px-3 pb-1 pt-2.5">
 				<CardTitle class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
 					Agent Details
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="grid grid-cols-2 gap-x-4 gap-y-2 px-3 pb-3 text-xs">
+				{#if isAgentChild}
+					<div>
+						<div class="mb-0.5 text-muted-foreground">Selected Agent</div>
+						<div class="font-medium">{node?.id ?? '—'}</div>
+					</div>
+				{/if}
 				<div>
 					<div class="mb-0.5 text-muted-foreground">Session Count</div>
-					<div class="font-medium">{detailCount(subsystem.details, ['session_count', 'sessions', 'active_sessions'])}</div>
+					<div class="font-medium">
+						{#if isAgentChild && selectedAgentMeta}
+							{selectedAgentMeta.session_count}
+						{:else}
+							{detailCount(selectedAgentSubsystem.details, ['session_count', 'sessions', 'active_sessions'])}
+						{/if}
+					</div>
 				</div>
-				<div>
-					<div class="mb-0.5 text-muted-foreground">Default Agent</div>
-					<div class="font-medium">{formatDetailValue(pickDetail(subsystem.details, ['default_agent', 'agent_default']))}</div>
-				</div>
-				{#if detailList(subsystem.details, ['enabled_agents', 'agents_enabled', 'agents']).length > 0}
+				{#if !isAgentChild}
+					<div>
+						<div class="mb-0.5 text-muted-foreground">Default Agent</div>
+						<div class="font-medium">{formatDetailValue(pickDetail(selectedAgentSubsystem.details, ['default_agent', 'agent_default']))}</div>
+					</div>
+				{/if}
+				{#if detailList(selectedAgentSubsystem.details, ['enabled_agents', 'agents_enabled', 'agents']).length > 0}
 					<div class="col-span-2">
 						<div class="mb-1 text-muted-foreground">Enabled Agents</div>
 						<div class="flex flex-wrap gap-1">
-							{#each detailList(subsystem.details, ['enabled_agents', 'agents_enabled', 'agents']) as agent}
+							{#each detailList(selectedAgentSubsystem.details, ['enabled_agents', 'agents_enabled', 'agents']) as agent}
 								<Badge variant="outline" class="text-[10px]">{agent}</Badge>
 							{/each}
 						</div>
 					</div>
 				{/if}
+				<div class="col-span-2 rounded-md border border-border/50 bg-background/60 p-2">
+					<div class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Memory Info</div>
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+						<div>
+							<div class="mb-0.5 text-muted-foreground">Tracked Sessions</div>
+							{#if sessionsLoading && agentsLoading && displayedAgentSessions.length === 0 && trackedSessionCount === 0}
+								<div class="flex items-center gap-1.5 text-muted-foreground">
+									<Loader2 class="size-3 animate-spin" />
+									<span>Loading…</span>
+								</div>
+							{:else}
+								<div class="font-medium">{trackedSessionCount}</div>
+							{/if}
+						</div>
+						<div>
+							<div class="mb-0.5 text-muted-foreground">Last Updated</div>
+							<div class="font-medium">{formatTime(agentMemoryLastUpdated)}</div>
+						</div>
+					</div>
+					<div class="mt-2">
+						<div class="mb-1 text-muted-foreground">Store Types</div>
+						{#if sessionsLoading && agentsLoading && displayedAgentSessions.length === 0 && agentMemoryStoreTypes.length === 0}
+							<div class="text-muted-foreground">Loading…</div>
+						{:else if agentMemoryStoreTypes.length > 0}
+							<div class="flex flex-wrap gap-1">
+								{#each agentMemoryStoreTypes as storeType}
+									<Badge variant="outline" class="text-[10px]">{storeType}</Badge>
+								{/each}
+							</div>
+						{:else}
+							<div class="text-muted-foreground">—</div>
+						{/if}
+					</div>
+					{#if sessionsError}
+						<div class="mt-2 text-destructive">{sessionsError}</div>
+					{/if}
+					{#if agentsError}
+						<div class="mt-2 text-destructive">{agentsError}</div>
+					{/if}
+				</div>
 			</CardContent>
 		</Card>
 	{/if}

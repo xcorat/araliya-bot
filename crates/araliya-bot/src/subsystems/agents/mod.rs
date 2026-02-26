@@ -536,11 +536,17 @@ impl AgentsSubsystem {
                 let last_fetched = read_agent_kv_value(&kv_path, "last_fetched");
                 let index_path = identity.identity_dir.join("sessions.json");
                 let session_count = count_agent_sessions(&index_path);
+                let store_types = detect_agent_store_types(
+                    &identity.identity_dir,
+                    self.state.agent_memory.get(agent_id),
+                    &index_path,
+                );
                 serde_json::json!({
                     "agent_id": agent_id,
                     "name": agent_id,
                     "last_fetched": last_fetched,
                     "session_count": session_count,
+                    "store_types": store_types,
                 })
             })
             .collect();
@@ -924,6 +930,35 @@ fn count_agent_sessions(index_path: &std::path::Path) -> usize {
     #[derive(serde::Deserialize)]
     struct Idx { sessions: std::collections::HashMap<String, serde_json::Value> }
     serde_json::from_str::<Idx>(&data).map(|i| i.sessions.len()).unwrap_or(0)
+}
+
+/// Infer available store types for an agent from config and on-disk layout.
+fn detect_agent_store_types(
+    identity_dir: &std::path::Path,
+    configured: Option<&Vec<String>>,
+    sessions_index: &std::path::Path,
+) -> Vec<String> {
+    let mut stores = std::collections::HashSet::<String>::new();
+
+    if let Some(configured) = configured {
+        for store in configured {
+            stores.insert(store.clone());
+        }
+    }
+
+    if sessions_index.exists() {
+        stores.insert("basic_session".to_string());
+    }
+    if identity_dir.join("docstore").exists() {
+        stores.insert("docstore".to_string());
+    }
+    if identity_dir.join("kgdocstore").exists() {
+        stores.insert("kgdocstore".to_string());
+    }
+
+    let mut out: Vec<String> = stores.into_iter().collect();
+    out.sort();
+    out
 }
 
 /// Derive a [`ComponentStatusResponse`] from an optional [`HealthReporter`].
