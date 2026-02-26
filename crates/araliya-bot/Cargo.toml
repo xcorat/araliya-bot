@@ -1,6 +1,6 @@
 [package]
 name = "araliya-bot"
-version = "0.1.1"
+version = "0.2.6"
 edition = "2024"
 description = "Modular agentic assistant — supervisor bootstrap"
 default-run = "araliya-bot"
@@ -47,12 +47,20 @@ default = [
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
-    "plugin-docs",
+    "plugin-docs-kg",
     "channel-pty",
     "channel-axum",
     "ui-svui",
 ]
-full    = ["default", "plugin-gmail-tool", "plugin-gmail-agent", "plugin-news-agent", "channel-telegram", "cli", "gmail-app"]
+full    = [
+    "default",
+    "plugin-gmail-tool",
+    "plugin-gmail-agent",
+    "plugin-news-agent",
+    "channel-telegram",
+    "cli",
+    "gmail-app"
+    ]
 minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
 
 # Binaries

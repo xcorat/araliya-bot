@@ -2,7 +2,7 @@
 
 Modular agentic assistant. Rust, single-process supervisor with pluggable subsystems.
 
-**Status:** v0.1 — supervisor bootstrap (config, identity, logging)
+**Status:** v0.2.6 — supervisor bootstrap (config, identity, logging)
 
 ---
 
@@ -44,26 +44,27 @@ cargo run -- -vvv  # trace
 
 ## Binary Releases
 
-Tagging `v*` creates layered Linux x86_64 release bundles for `minimal`, `default`, and `full` tiers.
+Tagging `v*` creates layered Linux x86_64 release bundles for `minimal`, `default`, and `full` tiers.  The version itself
+is sourced from `crates/araliya-bot/Cargo.toml`; bump it there before creating a tag.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.6
+git push origin v0.2.6
 ```
 
 Download from the repository Releases page:
 
-- `araliya-bot-v0.1.0-minimal-x86_64-unknown-linux-gnu.tar.gz`
-- `araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu.tar.gz`
-- `araliya-bot-v0.1.0-full-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.6-minimal-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.6-full-x86_64-unknown-linux-gnu.tar.gz`
 - `SHA256SUMS`
 
 Verify and run:
 
 ```bash
 sha256sum -c SHA256SUMS
-tar -xzf araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu.tar.gz
-cd araliya-bot-v0.1.0-default-x86_64-unknown-linux-gnu
+tar -xzf araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu.tar.gz
+cd araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu
 ./bin/araliya-bot -f config/cfg.toml
 ```
 

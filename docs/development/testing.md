@@ -1,12 +1,15 @@
 # Testing
 
+> The current package version is defined solely in `crates/araliya-bot/Cargo.toml` (0.2.6 as of this writing); tests and documentation should refer to that file rather than hard‑coding the string.
+
+
 ## Running Tests
 
 ```bash
 cargo test
 ```
 
-## Test Coverage (v0.1)
+## Test Coverage (v0.2.6)
 
 | Module | Tests | Coverage |
 |--------|-------|---------|

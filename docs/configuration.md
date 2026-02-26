@@ -260,6 +260,7 @@ Provider API keys are never stored in config — supply them via environment or 
 | `-h`, `--help` | Print help information and exit. |
 | `-i`, `--interactive` | Activates the stdio management adapter (`/status`, `/health`, `/chat`, …) and the PTY channel. Without this flag the bot runs as a daemon — no stdin is read and no stdout is written. |
 | `-f`, `--config <PATH>` | Path to configuration file (default: `config/default.toml`). |
+| `--log-file <PATH>` | Write logs to the given file (append mode) instead of stderr. |
 | `-v` … `-vvvv` | Override log level (see Verbosity table below) |
 
 ## CLI Verbosity Flags

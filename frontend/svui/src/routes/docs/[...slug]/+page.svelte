@@ -110,7 +110,7 @@
 								<div class="px-2 py-1.5 text-xs text-muted-foreground">No headings</div>
 							</Sidebar.SidebarMenuItem>
 						{:else}
-							{#each rendered.headings as heading (`${heading.level}:${heading.id}`)}
+							{#each rendered.headings as heading, idx (`${heading.level}:${heading.id}:${idx}`)}
 								<Sidebar.SidebarMenuItem>
 									<Sidebar.SidebarMenuButton
 										onclick={() => jumpToHeading(heading.id)}

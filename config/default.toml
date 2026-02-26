@@ -77,18 +77,6 @@ enabled = false
 enabled = false
 docsdir = "docs/"
 index = "index.md"
-# Set use_kg = true to enable the KG-RAG pipeline (requires ikgdocstore feature
-# and at least one call to rebuild_kg after indexing documents).
-use_kg = false
-
-[agents.docs.kg]
-# KG pipeline tuning (only used when use_kg = true).
-min_entity_mentions = 2    # drop entities seen fewer than N times
-bfs_max_depth = 2          # BFS hops from seed entities
-edge_weight_threshold = 0.15  # minimum normalised edge weight to follow
-max_chunks = 8             # total chunk budget in context
-fts_share = 0.5            # fraction of budget filled by FTS results
-max_seeds = 5              # cap on seed entities per query
 
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
@@ -154,7 +142,7 @@ n_last = 10
 # Svelte-based web UI backend — served by the HTTP channel.
 # When enabled, non-API HTTP requests are delegated to this backend.
 enabled = true
-# Path to the static build directory (Svelte output from frontend/svui).
+# Path to the static build directory (Svelte output from ui/svui).
 # Relative to the working directory where the bot binary runs.
 # If the directory doesn't exist, a built-in placeholder page is served.
 static_dir = "frontend/build"

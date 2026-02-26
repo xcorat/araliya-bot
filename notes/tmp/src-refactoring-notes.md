@@ -118,8 +118,11 @@ All four moved modules are re-exported at the crate root so all `crate::config`,
 |-------|----------|----------|----------|
 | `BusPayload::CommsMessage` has `usage` | Low | L36–41 | bus-protocol.md omits `usage`. **Necessary:** Update spec to include `usage: Option<LlmUsage>`. |
 | `#[allow(dead_code)]` on `Notification` | Medium | L170 | Notification path exists but may be underused. Either document intended use or remove if obsolete. |
+| Route renaming not documented | Low | — | `llm/complete` was renamed to `llm/self/complete`; update table, note, docs, and consumers accordingly. |
 | `#[allow(dead_code)]` on `BusCallError::Full` | Low | L189 | Same — `notify` can return `Full`; ensure callers handle it. |
 | `#[allow(dead_code)]` on `notify` | Low | L248 | `notify` is part of public API. Remove allow if it's used. |
+
+> **Note:** the LLM completion route was changed from `llm/complete` to `llm/self/complete`.  Documentation, tests, and any bus clients must be updated to call the new `llm/self/complete` path (and other rename diffs if they arise).  This is the route that the LLM subsystem now exposes for self‑generated completions.
 
 ### 7.3 dispatch.rs, control.rs, component_info.rs
 
@@ -166,6 +169,8 @@ All four moved modules are re-exported at the crate root so all `crate::config`,
 | `_TODO_: fine-grained locks` | Medium | L15 | **Necessary:** Document or implement. Coarse locking can hurt concurrency. |
 | Large file (1245 lines) | Medium | — | **Necessary:** Split into submodules (e.g. `agents/state.rs`, `agents/registry.rs`, `agents/routing.rs`). |
 | `AgentsState` holds raw `BusHandle` | — | L49 | Per capabilities: bus is private, only typed methods exposed. Correct. |
+
+The docs agent is wired to leverage the memory subsystem for its internal state. Session data is persisted via the session store, every interaction is appended to the transcript log, and document lookups are performed against the memory-backed docstore index. This coupling provides durable session persistence, a searchable conversation history, and efficient access to stored documentation.
 
 ### 8.5 memory/mod.rs
 

@@ -55,6 +55,8 @@ cargo build --release --locked
 
 The Svelte UI lives in `frontend/svui/` and builds to `frontend/build/`:
 
+> 🛈 The UI version is automatically copied from the Rust package (`crates/araliya-bot/Cargo.toml`) by a small prebuild script. Running `pnpm build` or `pnpm dev` will update `frontend/svui/.env` with the current version.
+
 ```bash
 cd frontend/svui
 pnpm install
@@ -112,6 +114,14 @@ cargo run
 ```
 
 No stdin is read, no stdout is written. All tracing output goes to stderr (journald-compatible). The Unix domain socket at `{work_dir}/araliya.sock` is always active for management.
+
+To write logs to a file instead, pass:
+
+```bash
+./target/debug/araliya-bot --log-file /tmp/araliya.log
+```
+
+The file is opened in append mode.
 
 ### Interactive mode
 

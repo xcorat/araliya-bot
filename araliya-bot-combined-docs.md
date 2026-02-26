@@ -2624,7 +2624,7 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 <- 93 tests source: docs/architecture/subsystems/ui.md -->
 # UI Subsystem
 
-**Status:** v0.1.0 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page.
+**Status:** v0.2.6 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page.
 
 ---
 
@@ -2917,7 +2917,7 @@ See [notes/gpui-plan.md](../../../notes/gpui-plan.md) for the original design no
 cargo test
 ```
 
-## Test Coverage (v0.1)
+## Test Coverage (v0.2.6)
 
 | Module | Tests | Coverage |
 |--------|-------|---------|
@@ -3052,7 +3052,7 @@ Every `v*` tag publishes release assets on GitHub Releases.
 
 ```bash
 # Example version
-VERSION=v0.1.0
+VERSION=v0.2.6
 TIER=default
 
 curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu.tar.gz
@@ -3076,8 +3076,8 @@ Inside the bundle, `config/cfg.toml` points to the tier-specific default:
 To create a release from this repository:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.6
+git push origin v0.2.6
 ```
 
 The GitHub Actions workflow publishes the assets automatically.

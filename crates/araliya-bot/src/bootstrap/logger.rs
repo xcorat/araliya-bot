@@ -2,7 +2,10 @@
 //!
 //! Call [`init`] once at startup, after runtime settings are resolved.
 
+use std::path::Path;
+
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::AppError;
@@ -15,7 +18,7 @@ use crate::error::AppError;
 /// If `prefer_level` is `true`, `level` takes precedence and `RUST_LOG` is only
 /// used as a fallback when `level` is invalid. If `prefer_level` is `false`,
 /// `RUST_LOG` takes precedence and `level` is the fallback.
-pub fn init(level: &str, prefer_level: bool) -> Result<(), AppError> {
+pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<(), AppError> {
     let filter = if prefer_level {
         match EnvFilter::try_new(level) {
             Ok(filter) => filter,
@@ -32,9 +35,25 @@ pub fn init(level: &str, prefer_level: bool) -> Result<(), AppError> {
             .map_err(|e| AppError::Logger(format!("invalid log level '{level}': {e}")))?
     };
 
+    let writer = if let Some(path) = log_file {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|e| {
+                AppError::Logger(format!(
+                    "failed to open log file '{}': {e}",
+                    path.display()
+                ))
+            })?;
+        BoxMakeWriter::new(file)
+    } else {
+        BoxMakeWriter::new(std::io::stderr)
+    };
+
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(std::io::stderr)
+        .with_writer(writer)
         .try_init()
         .map_err(|e| AppError::Logger(format!("failed to set subscriber: {e}")))?;
 
@@ -73,7 +92,7 @@ mod tests {
     #[test]
     fn init_info_succeeds_or_already_init() {
         // May already be set by a prior test run in the same process — both outcomes are fine.
-        let result = init("info", false);
+        let result = init("info", false, None);
         match result {
             Ok(()) => {}
             Err(AppError::Logger(msg)) if msg.contains("set subscriber") => {}

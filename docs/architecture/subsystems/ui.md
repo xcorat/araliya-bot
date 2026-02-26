@@ -1,6 +1,6 @@
 # UI Subsystem
 
-**Status:** v0.1.0 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page.
+**Status:** v0.2.6 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page.
 
 ---
 

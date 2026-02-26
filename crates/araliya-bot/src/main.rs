@@ -25,6 +25,7 @@ pub use bootstrap::{identity, logger};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use supervisor::bus::SupervisorBus;
@@ -78,7 +79,11 @@ async fn run() -> Result<(), error::AppError> {
     let effective_log_level = args.log_level.unwrap_or(config.log_level.as_str());
     let force_cli_level = args.log_level.is_some();
 
-    logger::init(effective_log_level, force_cli_level)?;
+    logger::init(
+        effective_log_level,
+        force_cli_level,
+        args.log_file.as_deref(),
+    )?;
 
     info!(
         bot_name = %config.bot_name,
@@ -484,12 +489,14 @@ struct CliArgs {
     log_level: Option<&'static str>,
     interactive: bool,
     config_path: Option<String>,
+    log_file: Option<PathBuf>,
 }
 
 fn parse_cli_args() -> CliArgs {
     let mut verbosity = 0u8;
     let mut interactive = false;
     let mut config_path = None;
+    let mut log_file = None;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -505,6 +512,7 @@ fn parse_cli_args() -> CliArgs {
                 println!("  -h, --help                 Print help");
                 println!("  -i, --interactive          Run in interactive mode (enables PTY console)");
                 println!("  -f, --config <PATH>        Path to configuration file (default: config/default.toml)");
+                println!("      --log-file <PATH>      Write logs to file (append mode) instead of stderr");
                 println!("  -v, -vv, -vvv, -vvvv       Increase logging verbosity");
                 std::process::exit(0);
             }
@@ -514,6 +522,14 @@ fn parse_cli_args() -> CliArgs {
                     config_path = Some(path);
                 } else {
                     eprintln!("error: -f/--config requires a path argument");
+                    std::process::exit(1);
+                }
+            }
+            "--log-file" => {
+                if let Some(path) = iter.next() {
+                    log_file = Some(PathBuf::from(path));
+                } else {
+                    eprintln!("error: --log-file requires a path argument");
                     std::process::exit(1);
                 }
             }
@@ -538,5 +554,10 @@ fn parse_cli_args() -> CliArgs {
         _ => Some("trace"),
     };
 
-    CliArgs { log_level, interactive, config_path }
+    CliArgs {
+        log_level,
+        interactive,
+        config_path,
+        log_file,
+    }
 }

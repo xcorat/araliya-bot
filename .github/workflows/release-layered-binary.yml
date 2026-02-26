@@ -24,7 +24,7 @@ jobs:
       - name: Ensure workflow runs on tag
         run: |
           if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "This workflow must run against a tag (for example: v0.1.0)."
+            echo "This workflow must run against a tag (for example: v0.2.6)."
             exit 1
           fi
 
