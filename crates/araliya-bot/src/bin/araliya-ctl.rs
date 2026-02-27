@@ -198,8 +198,8 @@ fn print_response(resp: WireResponse) {
                 }
             }
             ControlResponse::ComponentTree { tree_json } => {
-                let pretty =
-                    serde_json::from_str::<serde_json::Value>(&tree_json).and_then(serde_json::to_string_pretty);
+                let pretty = serde_json::from_str::<serde_json::Value>(&tree_json)
+                    .and_then(|value| serde_json::to_string_pretty(&value));
                 match pretty {
                     Ok(s) => println!("{s}"),
                     Err(_) => println!("{tree_json}"),

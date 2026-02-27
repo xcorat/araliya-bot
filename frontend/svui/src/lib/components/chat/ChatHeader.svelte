@@ -28,7 +28,9 @@
 	const statusPath = $derived(basePath ? `${basePath}/status` : '/status');
 	const docsPath = $derived(basePath ? `${basePath}/docs` : '/docs');
 	const isChatRoute = $derived(page.url.pathname === chatPath);
-	const isStatusRoute = $derived(page.url.pathname === statusPath);
+	const isStatusRoute = $derived(
+		page.url.pathname === statusPath || page.url.pathname.startsWith(`${statusPath}/`)
+	);
 	const isDocsRoute = $derived(page.url.pathname === docsPath || page.url.pathname.startsWith(`${docsPath}/`));
 
 	const healthColor = $derived(
@@ -57,7 +59,7 @@
 	}
 
 	function openStatus() {
-		if (page.url.pathname !== statusPath) {
+		if (!isStatusRoute) {
 			void goto(statusPath);
 		}
 	}

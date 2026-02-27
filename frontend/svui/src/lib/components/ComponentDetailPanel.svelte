@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import { MousePointerClick, Box, ChevronDown, ChevronUp, Database, Loader2 } from '@lucide/svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
@@ -91,6 +92,8 @@
 	const selectedAgentMeta = $derived<AgentInfo | undefined>(
 		isAgentChild && node ? agents.find((a) => a.agent_id === node.id) : undefined
 	);
+	const uiBase = $derived(base || '');
+	const inspectorAgentId = $derived(node?.id ?? '');
 
 	const agentMemoryStoreTypes = $derived(
 		Array.from(
@@ -554,6 +557,16 @@
 					{/if}
 					{#if agentsError}
 						<div class="mt-2 text-destructive">{agentsError}</div>
+					{/if}
+					{#if inspectorAgentId}
+						<div class="mt-2">
+							<a
+								href={`${uiBase}/status/${encodeURIComponent(inspectorAgentId)}/memory`}
+								class="text-[10px] text-primary underline"
+							>
+								Open Memory Inspector
+							</a>
+						</div>
 					{/if}
 				</div>
 			</CardContent>

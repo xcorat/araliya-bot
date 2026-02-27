@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import SessionSidebar from '$lib/components/SessionSidebar.svelte';
-	import { ChatHeader, ChatMessages, ChatInput } from '$lib/components/chat';
+	import { ChatMessages, ChatInput } from '$lib/components/chat';
 	import {
 		initBaseUrl,
 		doCheckHealth,
@@ -54,8 +54,7 @@
 	/>
 
 	<Sidebar.SidebarInset>
-		<div class="flex h-dvh flex-col">
-			<ChatHeader />
+		<div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
 			<ChatMessages {messages} />
 			<ChatInput />
 		</div>

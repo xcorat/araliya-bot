@@ -15,7 +15,6 @@
 		Terminal
 	} from '@lucide/svelte';
 	import type { TreeNode } from '$lib/types';
-	import type { ComponentType } from 'svelte';
 	import Self from './ComponentTreeNode.svelte';
 
 	let {
@@ -31,13 +30,21 @@
 	} = $props();
 
 	// Nodes at depth 0 and 1 start expanded; deeper levels start collapsed.
-	let open = $state(depth < 2);
+	let open = $state(false);
+	let openInitialized = $state(false);
+
+	$effect(() => {
+		if (!openInitialized) {
+			open = depth < 2;
+			openInitialized = true;
+		}
+	});
 
 	const hasChildren = $derived(node.children && node.children.length > 0);
 	const isRoot = $derived(depth === 0);
 	const isSelected = $derived(selectedId === node.id);
 
-	function treeNodeIcon(node: TreeNode): ComponentType {
+	function treeNodeIcon(node: TreeNode) {
 		const id = (node.id ?? '').toLowerCase();
 		const name = (node.name ?? '').toLowerCase();
 		if (isRoot) return Cpu;
@@ -152,7 +159,7 @@
 							{open ? 'rotate-90' : ''}"
 					/>
 					<!-- node type icon -->
-					<svelte:component this={NodeIcon} class="size-3.5 shrink-0 text-muted-foreground/80" />
+					<NodeIcon class="size-3.5 shrink-0 text-muted-foreground/80" />
 					<!-- status dot -->
 					<span class={`size-1.5 shrink-0 rounded-full ${stateDotClass(node.state, node.status)}`}></span>
 					<!-- name + id -->
@@ -213,7 +220,7 @@
 				<!-- spacer to align with chevron width -->
 				<span class="size-3 shrink-0"></span>
 				<!-- node type icon -->
-				<svelte:component this={NodeIcon} class="size-3.5 shrink-0 text-muted-foreground/80" />
+				<NodeIcon class="size-3.5 shrink-0 text-muted-foreground/80" />
 				<!-- status dot -->
 				<span class={`size-1.5 shrink-0 rounded-full ${stateDotClass(node.state, node.status)}`}></span>
 				<!-- name + id -->

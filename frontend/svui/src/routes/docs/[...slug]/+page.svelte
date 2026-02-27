@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { ChatHeader } from '$lib/components/chat';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import { parseMarkdownDocument } from '$lib/utils/markdown';
 	import type { PageData } from './$types';
@@ -131,9 +130,7 @@
 	</Sidebar.Sidebar>
 
 	<Sidebar.SidebarInset>
-		<div class="flex h-dvh flex-col">
-			<ChatHeader />
-
+		<div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
 			<main class="flex-1 overflow-y-auto">
 				<div class="mx-auto w-full max-w-4xl px-6 py-8">
 					<div class="mb-3">
