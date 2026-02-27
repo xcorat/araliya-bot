@@ -72,7 +72,7 @@ async fn run_telegram(
                 if let Some(text) = msg.text() {
                     debug!(%channel_id, from = ?msg.from.as_ref().and_then(|u| u.username.as_ref()), "telegram received message");
                     
-                    match state.send_message(&channel_id, text.to_string(), None).await {
+                    match state.send_message(&channel_id, text.to_string(), None, None).await {
                         Ok(reply) => {
                             let mut text = reply.reply;
                             if text.is_empty() {

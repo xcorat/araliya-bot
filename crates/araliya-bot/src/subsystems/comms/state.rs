@@ -59,7 +59,12 @@ impl CommsState {
         channel_id: &str,
         content: String,
         session_id: Option<String>,
+        agent_id: Option<String>,
     ) -> Result<CommsReply, AppError> {
+        let method = match agent_id.as_deref() {
+            Some(agent) if !agent.trim().is_empty() => format!("agents/{agent}"),
+            _ => "agents".to_string(),
+        };
         let payload = BusPayload::CommsMessage {
             channel_id: channel_id.to_string(),
             content,
@@ -67,7 +72,7 @@ impl CommsState {
             usage: None,
         };
 
-        match self.bus.request("agents", payload).await {
+        match self.bus.request(method, payload).await {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!(
                 "agent error {}: {}",
@@ -167,13 +172,14 @@ impl CommsState {
     }
 
     /// Request detail (metadata + transcript) for a specific session.
-    pub async fn request_session_detail(&self, session_id: &str) -> Result<String, AppError> {
+    pub async fn request_session_detail(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
         match self
             .bus
             .request(
                 "agents/sessions/detail",
                 BusPayload::SessionQuery {
                     session_id: session_id.to_string(),
+                    agent_id,
                 },
             )
             .await
@@ -189,13 +195,14 @@ impl CommsState {
     }
 
     /// Request working-memory content for a specific session.
-    pub async fn request_session_memory(&self, session_id: &str) -> Result<String, AppError> {
+    pub async fn request_session_memory(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
         match self
             .bus
             .request(
                 "agents/sessions/memory",
                 BusPayload::SessionQuery {
                     session_id: session_id.to_string(),
+                    agent_id,
                 },
             )
             .await
@@ -211,13 +218,14 @@ impl CommsState {
     }
 
     /// Request session file list for a specific session.
-    pub async fn request_session_files(&self, session_id: &str) -> Result<String, AppError> {
+    pub async fn request_session_files(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
         match self
             .bus
             .request(
                 "agents/sessions/files",
                 BusPayload::SessionQuery {
                     session_id: session_id.to_string(),
+                    agent_id,
                 },
             )
             .await

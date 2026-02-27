@@ -64,7 +64,11 @@ pub enum BusPayload {
     /// Targets an in-flight request for cancellation.
     CancelRequest { id: Uuid },
     /// Query a specific session by ID.
-    SessionQuery { session_id: String },
+    SessionQuery {
+        session_id: String,
+        #[serde(default)]
+        agent_id: Option<String>,
+    },
     /// Generic JSON response from a subsystem query.
     JsonResponse { data: String },
 

@@ -1,7 +1,6 @@
 //! `agent` store — persistent, agent-scoped key-value + text-list storage.
 //!
-//! Each [`AgentStore`] is rooted at the agent's identity directory (e.g.
-//! `memory/agent/news-{pkhash}/store/`) and holds two files:
+//! Each [`AgentStore`] is rooted at the agent's identity directory and holds two files:
 //!
 //! - `kv.json`    — string-keyed scalar map (same format as `basic_session`).
 //! - `texts.json` — ordered `Vec<TextItem>` for longer text payloads.
@@ -324,6 +323,7 @@ impl AgentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subsystems::memory::MemoryConfig;
     use tempfile::TempDir;
 
     fn open_tmp() -> (TempDir, AgentStore) {
@@ -417,5 +417,37 @@ mod tests {
         let store = AgentStore::open(dir.path()).unwrap();
         store.write_raw("data.txt", "hello").unwrap();
         assert!(dir.path().join("store/raw/data.txt").exists());
+    }
+
+    #[test]
+    fn get_or_create_session_reuses_active_session() {
+        let identity_root = TempDir::new().unwrap();
+        let memory = MemorySystem::new(identity_root.path(), MemoryConfig::default()).unwrap();
+
+        let agent_identity = identity_root.path().join("agent-chat");
+        let store = AgentStore::open(&agent_identity).unwrap();
+
+        let first = store.get_or_create_session(&memory, "chat").unwrap();
+        let second = store.get_or_create_session(&memory, "chat").unwrap();
+
+        assert_eq!(first.session_id, second.session_id);
+        assert_eq!(store.kv_get("active_session_id").unwrap(), Some(first.session_id.clone()));
+        assert!(agent_identity.join("sessions").join(&first.session_id).exists());
+    }
+
+    #[test]
+    fn agent_scoped_sessions_do_not_touch_global_index() {
+        let identity_root = TempDir::new().unwrap();
+        let memory = MemorySystem::new(identity_root.path(), MemoryConfig::default()).unwrap();
+
+        let agent_identity = identity_root.path().join("agent-news");
+        let store = AgentStore::open(&agent_identity).unwrap();
+        let _ = store.get_or_create_session(&memory, "news").unwrap();
+
+        let global = memory.list_sessions().unwrap();
+        assert!(global.is_empty());
+
+        let scoped = store.list_agent_sessions().unwrap();
+        assert_eq!(scoped.len(), 1);
     }
 }

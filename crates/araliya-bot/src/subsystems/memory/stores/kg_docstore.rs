@@ -1284,12 +1284,13 @@ static DQUOTE_RE: DquoteFinder = DquoteFinder;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subsystems::memory::AGENTS_DIRNAME;
     use std::collections::HashMap;
     use tempfile::TempDir;
 
     fn make_store() -> (TempDir, IKGDocStore) {
         let temp = TempDir::new().expect("tempdir");
-        let identity_dir = temp.path().join("agent");
+        let identity_dir = temp.path().join(AGENTS_DIRNAME);
         fs::create_dir_all(&identity_dir).expect("create identity dir");
         let store = IKGDocStore::open(&identity_dir).expect("open kgdocstore");
         (temp, store)

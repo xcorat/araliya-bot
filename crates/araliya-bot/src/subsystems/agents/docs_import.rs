@@ -246,12 +246,13 @@ fn collect_text_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subsystems::memory::AGENTS_DIRNAME;
     use std::fs;
     use tempfile::TempDir;
 
     fn make_identity_dir() -> TempDir {
         let tmp = TempDir::new().expect("tempdir");
-        fs::create_dir_all(tmp.path().join("agent")).expect("create identity dir");
+        fs::create_dir_all(tmp.path().join(AGENTS_DIRNAME)).expect("create identity dir");
         tmp
     }
 
@@ -280,7 +281,7 @@ mod tests {
     #[test]
     fn import_copies_text_files_and_indexes() {
         let identity_tmp = make_identity_dir();
-        let identity_dir = identity_tmp.path().join("agent");
+        let identity_dir = identity_tmp.path().join(AGENTS_DIRNAME);
 
         let source_tmp = make_source_dir();
         let source_dir = source_tmp.path();
@@ -308,7 +309,7 @@ mod tests {
     #[test]
     fn import_creates_placeholder_index_when_missing() {
         let identity_tmp = make_identity_dir();
-        let identity_dir = identity_tmp.path().join("agent");
+        let identity_dir = identity_tmp.path().join(AGENTS_DIRNAME);
 
         let source_tmp = TempDir::new().expect("empty source");
         fs::write(source_tmp.path().join("readme.md"), "some content").expect("write");
@@ -328,7 +329,7 @@ mod tests {
     #[test]
     fn import_is_noop_when_docstore_already_populated() {
         let identity_tmp = make_identity_dir();
-        let identity_dir = identity_tmp.path().join("agent");
+        let identity_dir = identity_tmp.path().join(AGENTS_DIRNAME);
 
         let source_tmp = make_source_dir();
 

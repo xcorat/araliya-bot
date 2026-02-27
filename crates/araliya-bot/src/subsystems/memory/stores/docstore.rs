@@ -410,11 +410,12 @@ impl IDocStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subsystems::memory::AGENTS_DIRNAME;
     use tempfile::TempDir;
 
     fn make_store() -> (TempDir, IDocStore) {
         let temp = TempDir::new().expect("tempdir");
-        let identity_dir = temp.path().join("agent");
+        let identity_dir = temp.path().join(AGENTS_DIRNAME);
         fs::create_dir_all(&identity_dir).expect("create identity dir");
         let store = IDocStore::open(&identity_dir).expect("open docstore");
         (temp, store)

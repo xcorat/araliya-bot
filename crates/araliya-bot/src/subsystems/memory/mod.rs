@@ -42,6 +42,9 @@ use crate::error::AppError;
 use handle::SessionHandle;
 use store::SessionStore;
 
+/// Directory name under `{memory_root}/` that stores per-agent identities.
+pub const AGENTS_DIRNAME: &str = "agents";
+
 /// Metadata for a single session, persisted in `sessions.json`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionInfo {
@@ -172,14 +175,14 @@ impl MemorySystem {
 
     /// Spawn the background docstore manager.
     ///
-    /// Scans `{memory_root}/agent/` every 24 hours and automatically
+    /// Scans the per-agent identities root every 24 hours and automatically
     /// indexes unindexed documents and removes orphan content files.
     /// Stops when `shutdown` is cancelled.
     ///
     /// Call this once, before wrapping `MemorySystem` in an `Arc`.
     #[cfg(feature = "idocstore")]
     pub fn start_docstore_manager(&mut self, shutdown: tokio_util::sync::CancellationToken) {
-        let agent_dirs = self.memory_root.join("agent");
+        let agent_dirs = self.memory_root.join(AGENTS_DIRNAME);
         self.docstore_manager = Some(docstore_manager::DocstoreManager::spawn(agent_dirs, shutdown));
         info!("docstore manager initialised");
     }

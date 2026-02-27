@@ -52,7 +52,7 @@ pub(super) struct DocstoreManager {
 impl DocstoreManager {
     /// Spawn the background manager task.
     ///
-    /// `agent_dirs_root` should be `{memory_root}/agent/` — the parent of all
+    /// `agent_dirs_root` should be `{memory_root}/agents/` — the parent of all
     /// per-agent identity directories.
     pub(super) fn spawn(agent_dirs_root: PathBuf, shutdown: CancellationToken) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(32);
@@ -243,6 +243,7 @@ fn cleanup_orphans(store: &IDocStore) -> Result<usize, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::AGENTS_DIRNAME;
     use std::collections::HashMap;
     use std::fs;
     use tempfile::TempDir;
@@ -251,7 +252,7 @@ mod tests {
 
     fn make_store() -> (TempDir, IDocStore) {
         let temp = TempDir::new().unwrap();
-        let dir = temp.path().join("agent");
+        let dir = temp.path().join(AGENTS_DIRNAME);
         fs::create_dir_all(&dir).unwrap();
         let store = IDocStore::open(&dir).unwrap();
         (temp, store)

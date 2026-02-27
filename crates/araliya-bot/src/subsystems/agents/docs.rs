@@ -2,7 +2,7 @@
 //!
 //! On each query:
 //! 1. Opens the agent's session store (when `memory = ["basic_session"]`) and gets or creates
-//!    a session under `memory/agent/docs-{pkhash}/sessions/` for transcript persistence.
+//!    a session under the docs agent identity directory for transcript persistence.
 //! 2. Opens the agent's [`IDocStore`] and performs BM25 full-text search.
 //! 3. If results are found, uses the top-ranked chunk text as context.
 //! 4. If nothing is found (empty docstore or no match), falls back to reading
@@ -73,7 +73,7 @@ impl Agent for DocsAgentPlugin {
                 return;
             }
 
-            // Get or create a session under memory/agent/docs-{pkhash}/sessions/ for transcript persistence.
+            // Get or create a session under the docs agent identity directory for transcript persistence.
             let state_for_session = state.clone();
             let requested_session_id = session_id.clone();
             let session_handle = tokio::task::spawn_blocking(move || {

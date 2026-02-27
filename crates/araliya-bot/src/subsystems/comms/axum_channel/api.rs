@@ -26,6 +26,7 @@ const NO_SESSION_ID: &str = "00000000-0000-0000-0000-000000000000";
 pub(super) struct MessageRequest {
     message: String,
     session_id: Option<String>,
+    agent_id: Option<String>,
     mode: Option<String>,
 }
 
@@ -115,7 +116,9 @@ pub(super) async fn message(
 
     match tokio::time::timeout(
         Duration::from_secs(120),
-        state.comms.send_message(&state.channel_id, req.message.clone(), session_id),
+        state
+            .comms
+            .send_message(&state.channel_id, req.message.clone(), session_id, req.agent_id.clone()),
     )
     .await
     {
@@ -189,7 +192,7 @@ pub(super) async fn session_detail(
 ) -> Response {
     match tokio::time::timeout(
         Duration::from_secs(10),
-        state.comms.request_session_detail(&session_id),
+        state.comms.request_session_detail(&session_id, None),
     )
     .await
     {
@@ -218,7 +221,7 @@ pub(super) async fn session_memory(
 ) -> Response {
     match tokio::time::timeout(
         Duration::from_secs(10),
-        state.comms.request_session_memory(&session_id),
+        state.comms.request_session_memory(&session_id, None),
     )
     .await
     {
@@ -247,7 +250,7 @@ pub(super) async fn session_files(
 ) -> Response {
     match tokio::time::timeout(
         Duration::from_secs(10),
-        state.comms.request_session_files(&session_id),
+        state.comms.request_session_files(&session_id, None),
     )
     .await
     {

@@ -26,7 +26,8 @@ use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
 use crate::identity::{self, Identity};
-use crate::subsystems::memory::MemorySystem;
+use crate::subsystems::memory::{AGENTS_DIRNAME, MemorySystem};
+use crate::subsystems::memory::handle::SessionHandle;
 
 // CHECK: wat?
 pub(crate) mod core;
@@ -119,7 +120,7 @@ impl AgentsState {
     /// Get or create a subagent identity under the parent agent's memory directory.
     ///
     /// Subagents are ephemeral or task-specific workers that operate under their parent's
-    /// identity structure. Their keys are stored in `memory/agent/{agent_name}-{pkhash}/subagents/{subagent_name}-{pkhash}/`.
+    /// identity structure under the shared per-agent identities directory.
     pub fn get_or_create_subagent(&self, agent_id: &str, subagent_name: &str) -> Result<Identity, AppError> {
         let agent_identity = self.agent_identities.get(agent_id).ok_or_else(|| {
             AppError::Identity(format!("agent '{}' not found", agent_id))
@@ -372,7 +373,7 @@ impl AgentsSubsystem {
 
         // Initialize cryptographic identities for all registered agents.
         let mut agent_identities = HashMap::new();
-        let agent_memory_root = memory.memory_root().join("agent");
+        let agent_memory_root = memory.memory_root().join(AGENTS_DIRNAME);
         for agent_id in agents.keys() {
             let identity = identity::setup_named_identity(&agent_memory_root, agent_id)?;
             agent_identities.insert(agent_id.clone(), identity);
@@ -494,6 +495,24 @@ impl AgentsSubsystem {
 
     // ── Session query handlers ─────────────────────────────────────────────
 
+    fn load_scoped_session(
+        &self,
+        session_id: &str,
+        agent_id: Option<&str>,
+    ) -> Result<SessionHandle, AppError> {
+        if let Some(agent) = agent_id {
+            let store = self.state.open_agent_store(agent)?;
+            let sessions_root = store.agent_sessions_dir();
+            let index_path = store.agent_sessions_index();
+            return self
+                .state
+                .memory
+                .load_session_in(&sessions_root, &index_path, session_id, Some(agent));
+        }
+
+        self.state.memory.load_session(session_id, None)
+    }
+
     /// Handle `agents/sessions` — return a JSON list of all sessions.
     fn handle_session_list(&self, reply_tx: oneshot::Sender<BusResult>) {
         let memory = self.state.memory.clone();
@@ -559,8 +578,8 @@ impl AgentsSubsystem {
 
     /// Handle `agents/sessions/detail` — return session metadata + transcript.
     fn handle_session_detail(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
-        let session_id = match payload {
-            BusPayload::SessionQuery { session_id } => session_id,
+        let (session_id, agent_id) = match payload {
+            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
             _ => {
                 let _ = reply_tx.send(Err(BusError::new(
                     -32600,
@@ -570,9 +589,7 @@ impl AgentsSubsystem {
             }
         };
 
-        let memory = self.state.memory.clone();
-
-        let handle = match memory.load_session(&session_id, None) {
+        let handle = match self.load_scoped_session(&session_id, agent_id.as_deref()) {
             Ok(h) => h,
             Err(e) => {
                 let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
@@ -616,6 +633,7 @@ impl AgentsSubsystem {
 
             let body = serde_json::json!({
                 "session_id": session_id,
+                "agent_id": agent_id,
                 "transcript": transcript,
                 "session_usage_totals": session_usage_totals,
             });
@@ -628,8 +646,8 @@ impl AgentsSubsystem {
 
     /// Handle `agents/sessions/memory` — return working memory content.
     fn handle_session_memory(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
-        let session_id = match payload {
-            BusPayload::SessionQuery { session_id } => session_id,
+        let (session_id, agent_id) = match payload {
+            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
             _ => {
                 let _ = reply_tx.send(Err(BusError::new(
                     -32600,
@@ -639,9 +657,7 @@ impl AgentsSubsystem {
             }
         };
 
-        let memory = self.state.memory.clone();
-
-        let handle = match memory.load_session(&session_id, None) {
+        let handle = match self.load_scoped_session(&session_id, agent_id.as_deref()) {
             Ok(h) => h,
             Err(e) => {
                 let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
@@ -663,6 +679,7 @@ impl AgentsSubsystem {
 
             let body = serde_json::json!({
                 "session_id": session_id,
+                "agent_id": agent_id,
                 "content": content,
             });
 
@@ -674,8 +691,8 @@ impl AgentsSubsystem {
 
     /// Handle `agents/sessions/files` — return files in the session directory.
     fn handle_session_files(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
-        let session_id = match payload {
-            BusPayload::SessionQuery { session_id } => session_id,
+        let (session_id, agent_id) = match payload {
+            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
             _ => {
                 let _ = reply_tx.send(Err(BusError::new(
                     -32600,
@@ -685,9 +702,7 @@ impl AgentsSubsystem {
             }
         };
 
-        let memory = self.state.memory.clone();
-
-        let handle = match memory.load_session(&session_id, None) {
+        let handle = match self.load_scoped_session(&session_id, agent_id.as_deref()) {
             Ok(h) => h,
             Err(e) => {
                 let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
@@ -709,6 +724,7 @@ impl AgentsSubsystem {
 
             let body = serde_json::json!({
                 "session_id": session_id,
+                "agent_id": agent_id,
                 "files": files.into_iter().map(|f| serde_json::json!({
                     "name": f.name,
                     "size_bytes": f.size_bytes,

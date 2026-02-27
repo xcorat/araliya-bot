@@ -167,19 +167,27 @@ async fn handle_with_memory(
 
 fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppError> {
     let memory = &state.memory;
-
-    // Look up which stores this agent needs from config.
-    let store_types = state
+    let agent_store = state.open_agent_store("chat")?;
+    let default_store_types = state
         .agent_memory
         .get("chat")
         .map(|v| v.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| vec!["tmp"]);
+        .unwrap_or_else(|| vec!["basic_session"]);
 
-    memory.create_session(&store_types, Some("chat"))
+    if default_store_types.len() == 1 && default_store_types[0] == "basic_session" {
+        return agent_store.get_or_create_session(memory, "chat");
+    }
+
+    let sessions_root = agent_store.agent_sessions_dir();
+    let index_path = agent_store.agent_sessions_index();
+    memory.create_session_in(&sessions_root, &index_path, &default_store_types, Some("chat"))
 }
 
 fn load_session(state: &AgentsState, session_id: &str) -> Result<SessionHandle, crate::error::AppError> {
     let memory = &state.memory;
+    let agent_store = state.open_agent_store("chat")?;
+    let sessions_root = agent_store.agent_sessions_dir();
+    let index_path = agent_store.agent_sessions_index();
 
-    memory.load_session(session_id, Some("chat"))
+    memory.load_session_in(&sessions_root, &index_path, session_id, Some("chat"))
 }
