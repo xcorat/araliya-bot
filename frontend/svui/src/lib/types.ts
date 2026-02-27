@@ -147,3 +147,33 @@ export interface SessionFilesResponse {
 	session_id: string;
 	files: SessionFileInfo[];
 }
+
+// ── Knowledge Graph types ────────────────────────────────────
+
+export type KgEntityKind = 'concept' | 'system' | 'person' | 'term' | 'acronym';
+
+export interface KgEntity {
+	id: string;
+	name: string;
+	kind: KgEntityKind;
+	mention_count: number;
+	source_chunks: string[];
+}
+
+export interface KgRelation {
+	from: string;
+	to: string;
+	label: string;
+	weight: number;
+	source_chunks: string[];
+}
+
+export interface KgGraph {
+	entities: Record<string, KgEntity>;
+	relations: KgRelation[];
+}
+
+export interface AgentKGResponse {
+	agent_id: string;
+	graph: KgGraph;
+}

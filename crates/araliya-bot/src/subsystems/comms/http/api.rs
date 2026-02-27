@@ -342,6 +342,51 @@ pub(super) async fn handle_session_memory(
     }
 }
 
+/// GET /api/agents/{agent_id}/kg
+pub(super) async fn handle_agent_kg(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+    agent_id: &str,
+) -> Result<(), AppError> {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        state.request_agent_kg(agent_id),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(data)) => {
+            super::write_json_response(socket, "200 OK", data.as_bytes()).await
+        }
+        Ok(Err(e)) => {
+            warn!(%channel_id, %agent_id, "agent KG request failed: {e}");
+            let err_body = serde_json::json!({
+                "error": "not_found",
+                "message": format!("{e}")
+            });
+            super::write_json_response(
+                socket,
+                "404 Not Found",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+        Err(_) => {
+            let err_body = serde_json::json!({
+                "error": "timeout",
+                "message": "agent KG request timed out"
+            });
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+    }
+}
+
 /// GET /api/sessions/{session_id}/files
 pub(super) async fn handle_session_files(
     socket: &mut tokio::net::TcpStream,

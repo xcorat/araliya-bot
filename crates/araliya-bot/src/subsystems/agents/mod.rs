@@ -545,6 +545,44 @@ impl AgentsSubsystem {
         }));
     }
 
+    /// Handle `agents/kg_graph` — return the knowledge graph JSON for an agent.
+    fn handle_agent_kg_graph(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        let agent_id = match payload {
+            BusPayload::SessionQuery { agent_id: Some(id), .. } => id,
+            _ => {
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected agent_id in payload")));
+                return;
+            }
+        };
+
+        let identity = match self.state.agent_identities.get(&agent_id) {
+            Some(id) => id.clone(),
+            None => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("agent not found: {agent_id}"))));
+                return;
+            }
+        };
+
+        let kg_path = identity.identity_dir.join("kgdocstore").join("kg").join("graph.json");
+
+        let body = match std::fs::read_to_string(&kg_path) {
+            Ok(json) => {
+                let graph = serde_json::from_str::<serde_json::Value>(&json)
+                    .unwrap_or_else(|_| serde_json::json!({"entities": {}, "relations": []}));
+                serde_json::json!({ "agent_id": agent_id, "graph": graph })
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                serde_json::json!({ "agent_id": agent_id, "graph": { "entities": {}, "relations": [] } })
+            }
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("failed to read KG graph: {e}"))));
+                return;
+            }
+        };
+
+        let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: body.to_string() }));
+    }
+
     /// Handle `agents/list` — return metadata for all registered agents.
     fn handle_agents_list(&self, reply_tx: oneshot::Sender<BusResult>) {
         let identities = &self.state.agent_identities;
@@ -801,6 +839,10 @@ impl BusHandler for AgentsSubsystem {
         // ── Agent metadata queries ─────────────────────────────
         if method == "agents/list" {
             self.handle_agents_list(reply_tx);
+            return;
+        }
+        if method == "agents/kg_graph" {
+            self.handle_agent_kg_graph(payload, reply_tx);
             return;
         }
 

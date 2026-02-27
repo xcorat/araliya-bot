@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import ComponentDetailPanel from '$lib/components/ComponentDetailPanel.svelte';
 	import StatusMemoryInspector from '$lib/components/StatusMemoryInspector.svelte';
+	import StatusKGInspector from '$lib/components/StatusKGInspector.svelte';
 	import { STATUS_ROUTE_CONTEXT, type StatusRouteContext } from '$lib/status-route-context';
 
 	const context = getContext<StatusRouteContext>(STATUS_ROUTE_CONTEXT);
@@ -12,6 +13,7 @@
 	const selectedNode = $derived(context.resolveNodeById(nodeId));
 	const isDetailsPane = $derived(pane === 'details');
 	const isMemoryPane = $derived(pane === 'memory');
+	const isKGPane = $derived(pane === 'kg');
 </script>
 
 <svelte:head>
@@ -31,6 +33,8 @@
 	<ComponentDetailPanel node={selectedNode} serviceInfo={$serviceInfo} />
 {:else if isMemoryPane}
 	<StatusMemoryInspector node={selectedNode} />
+{:else if isKGPane}
+	<StatusKGInspector node={selectedNode} />
 {:else}
 	<div class="flex flex-1 items-center justify-center p-6">
 		<div class="max-w-sm rounded-lg border border-border/60 bg-card p-4 text-center">

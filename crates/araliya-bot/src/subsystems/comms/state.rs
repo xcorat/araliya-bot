@@ -240,6 +240,29 @@ impl CommsState {
         }
     }
 
+    /// Request the knowledge graph for a specific agent (from its kgdocstore).
+    pub async fn request_agent_kg(&self, agent_id: &str) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/kg_graph",
+                BusPayload::SessionQuery {
+                    session_id: String::new(),
+                    agent_id: Some(agent_id.to_string()),
+                },
+            )
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
     /// Report an event to the comms subsystem manager.
     ///
     /// Non-blocking: drops the event and logs a warning if the manager is not

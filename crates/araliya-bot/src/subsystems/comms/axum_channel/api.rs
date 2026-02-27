@@ -185,6 +185,35 @@ pub(super) async fn agents(State(state): State<AxumState>) -> Response {
     }
 }
 
+/// GET /api/agents/{agent_id}/kg — knowledge graph for an agent's kgdocstore.
+pub(super) async fn agent_kg(
+    State(state): State<AxumState>,
+    Path(agent_id): Path<String>,
+) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        state.comms.request_agent_kg(&agent_id),
+    )
+    .await
+    {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, %agent_id, "agent KG request failed: {e}");
+            (StatusCode::NOT_FOUND, json_error("not_found", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "agent KG request timed out"),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/session/{session_id}
 pub(super) async fn session_detail(
     State(state): State<AxumState>,

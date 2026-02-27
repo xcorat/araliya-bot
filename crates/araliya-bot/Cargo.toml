@@ -3,6 +3,7 @@ name = "araliya-bot"
 version = "0.2.6"
 edition = "2024"
 description = "Modular agentic assistant — supervisor bootstrap"
+license = "GPL-3.0-only"
 default-run = "araliya-bot"
 
 [dependencies]

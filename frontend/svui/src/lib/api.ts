@@ -6,6 +6,7 @@ import type {
 	SessionDetailResponse,
 	SessionMemoryResponse,
 	SessionFilesResponse,
+	AgentKGResponse,
 	TreeNode,
 	ApiError,
 	SessionMode
@@ -105,4 +106,10 @@ export async function getSessionFiles(
 	);
 	if (!response.ok) return handleError(response);
 	return readResponse<SessionFilesResponse>(response);
+}
+
+export async function getAgentKG(baseUrl: string, agentId: string): Promise<AgentKGResponse> {
+	const response = await fetch(`${baseUrl}/api/agents/${encodeURIComponent(agentId)}/kg`);
+	if (!response.ok) return handleError(response);
+	return readResponse<AgentKGResponse>(response);
 }

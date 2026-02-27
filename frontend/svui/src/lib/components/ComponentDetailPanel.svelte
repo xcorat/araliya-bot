@@ -559,13 +559,21 @@
 						<div class="mt-2 text-destructive">{agentsError}</div>
 					{/if}
 					{#if inspectorAgentId}
-						<div class="mt-2">
+						<div class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
 							<a
 								href={`${uiBase}/status/${encodeURIComponent(inspectorAgentId)}/memory`}
 								class="text-[10px] text-primary underline"
 							>
 								Open Memory Inspector
 							</a>
+							{#if agentMemoryStoreTypes.includes('kgdocstore')}
+								<a
+									href={`${uiBase}/status/${encodeURIComponent(inspectorAgentId)}/kg`}
+									class="text-[10px] text-primary underline"
+								>
+									Open KG Inspector
+								</a>
+							{/if}
 						</div>
 					{/if}
 				</div>
