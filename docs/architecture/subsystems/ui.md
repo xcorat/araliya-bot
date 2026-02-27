@@ -1,6 +1,6 @@
 # UI Subsystem
 
-**Status:** v0.2.6 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page.
+**Status:** v0.2.6 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page · route-backed Status SPA panes.
 
 ---
 
@@ -29,6 +29,28 @@ Svelte-based web UI backend. Serves static files from a build directory, or a bu
 MIME types are inferred from file extensions (html, css, js, svg, png, woff2, wasm, etc.).
 
 **Source:** `src/subsystems/ui/svui.rs`
+
+### SVUI route model (frontend)
+
+The web UI lives in `frontend/svui` and uses SvelteKit (SPA mode via static adapter fallback). The shell and status area are now split into nested layouts so only the status main pane changes while keeping the status sidebar context.
+
+Current key paths:
+
+| Path | Purpose |
+|------|---------|
+| `/ui/` | Chat page |
+| `/ui/status` | Status overview main pane |
+| `/ui/status/[nodeId]` | Status component detail pane |
+| `/ui/status/[nodeId]/details` | Explicit details pane |
+| `/ui/status/[nodeId]/memory` | Memory inspector pane (MVP) |
+| `/ui/docs/...` | Documentation view |
+
+Status memory inspector MVP notes:
+
+- Displays enabled store types for the selected agent.
+- Displays files grouped by session (session-scoped folders), not a single flattened file list.
+- Opens an inspector card below the lists when selecting a store or file link.
+- File content preview is intentionally deferred; current MVP shows metadata and working-memory preview where available.
 
 ---
 

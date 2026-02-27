@@ -16,6 +16,7 @@ UI notes:
 Deep dives:
 
 - [Architecture Overview](architecture/overview.md)
+- [UI Subsystem](architecture/subsystems/ui.md)
 - [Identity](architecture/identity.md)
 - [Agents](architecture/subsystems/agents.md)
 - [Tools Subsystem](architecture/subsystems/tools.md)
