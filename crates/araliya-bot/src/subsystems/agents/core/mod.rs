@@ -3,4 +3,5 @@
 //! These are internal helpers used by multiple agent plugins —
 //! not agent plugins themselves.
 
+pub mod agentic;
 pub mod prompt;
