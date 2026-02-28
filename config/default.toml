@@ -71,12 +71,15 @@ memory = ["basic_session"]
 enabled = false
 
 [agents.docs]
-# Docs agent — reads a Markdown file and answers questions by forwarding
-# to the configured LLM.
-# By definition has a docstore (idocstore) and a session store; no separate memory config.
+# Docs agent — multi-pass RAG pipeline:
+#   1. Instruction pass: LLM reformulates the user query into an optimal search query.
+#   2. docs_search local tool: BM25 full-text search (or KG-RAG when use_kg = true).
+#   3. Response pass: main LLM answers using retrieved context + conversation history.
+# Requires the idocstore feature and an imported docstore (see docs_import).
 enabled = false
 docsdir = "docs/"
 index = "index.md"
+memory = ["basic_session"]
 
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
