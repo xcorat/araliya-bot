@@ -149,6 +149,112 @@ pub fn populate_docstore_from_source(
     Ok(())
 }
 
+/// Populate an agent's [`IKGDocStore`] from `source_dir` and rebuild the KG.
+///
+/// Feature-gated on `ikgdocstore`.  Called from `init_docs` after the plain
+/// docstore import when `agents.docs.use_kg = true`.
+///
+/// # Behaviour
+/// 1. Opens (or creates) the [`IKGDocStore`] at `{agent_identity_dir}/kgdocstore/`.
+/// 2. If the store already contains at least one document, returns immediately
+///    (same idempotency semantics as [`populate_docstore_from_source`]).
+/// 3. Walks `source_dir`, adding + chunking + indexing every `.md` / `.txt` file.
+/// 4. Calls [`IKGDocStore::rebuild_kg_with_config`] to extract entities/relations
+///    and write `kgdocstore/kg/graph.json`.
+#[cfg(feature = "ikgdocstore")]
+pub fn populate_kgdocstore_from_source(
+    agent_identity_dir: &Path,
+    source_dir: &Path,
+    index_name: &str,
+    kg_cfg: &crate::config::DocsKgConfig,
+) -> Result<(), AppError> {
+    use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
+    use crate::subsystems::memory::stores::docstore_core::Document;
+
+    let store = IKGDocStore::open(agent_identity_dir)?;
+
+    // Idempotency guard — skip if already populated.
+    let existing = store.list_documents()?;
+    if !existing.is_empty() {
+        tracing::debug!(
+            "kgdocstore already populated ({} docs) at {:?}, skipping import",
+            existing.len(),
+            agent_identity_dir
+        );
+        return Ok(());
+    }
+
+    tracing::info!(
+        "importing docs into kgdocstore from {:?} at {:?}",
+        source_dir,
+        agent_identity_dir
+    );
+
+    let mut entries: Vec<(String, String)> = Vec::new();
+    collect_text_files(source_dir, source_dir, &mut entries)?;
+
+    let index_present = entries.iter().any(|(rel, _)| rel == index_name);
+    if !index_present {
+        entries.push((index_name.to_string(), INDEX_PLACEHOLDER.to_string()));
+    }
+
+    let mut added = 0usize;
+    for (rel_path, content) in entries {
+        let doc = Document {
+            id: rel_path.clone(),
+            title: rel_path.clone(),
+            source: source_dir.to_string_lossy().to_string(),
+            content,
+            content_hash: String::new(),
+            created_at: String::new(),
+            metadata: Default::default(),
+        };
+
+        let doc_id = match store.add_document(doc) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!("kgdocstore import: skipping '{}': add_document failed: {}", rel_path, e);
+                continue;
+            }
+        };
+
+        match store.chunk_document(&doc_id, CHUNK_SIZE) {
+            Ok(chunks) => {
+                if let Err(e) = store.index_chunks(chunks) {
+                    tracing::warn!(
+                        "kgdocstore import: failed to index chunks for '{}': {}",
+                        rel_path,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("kgdocstore import: failed to chunk '{}': {}", rel_path, e);
+            }
+        }
+
+        added += 1;
+    }
+
+    tracing::info!(
+        "kgdocstore import complete: {} document(s) added; building knowledge graph…",
+        added
+    );
+
+    let cfg = KgConfig {
+        min_entity_mentions: kg_cfg.min_entity_mentions,
+        bfs_max_depth: kg_cfg.bfs_max_depth,
+        edge_weight_threshold: kg_cfg.edge_weight_threshold,
+        max_chunks: kg_cfg.max_chunks,
+        fts_share: kg_cfg.fts_share,
+        max_seeds: kg_cfg.max_seeds,
+    };
+    store.rebuild_kg_with_config(&cfg, &[])?;
+
+    tracing::info!("knowledge graph built successfully at {:?}", agent_identity_dir);
+    Ok(())
+}
+
 /// Recursively walk `current_dir` (relative to `source_root`) and push
 /// `(relative_path, content)` pairs into `out` for every allowed text file.
 fn collect_text_files(

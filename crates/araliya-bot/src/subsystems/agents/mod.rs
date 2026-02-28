@@ -428,8 +428,25 @@ impl AgentsSubsystem {
             .unwrap_or_else(|| "index.md".to_string());
         let identity_dir = identity.identity_dir.clone();
 
-        tokio::task::spawn_blocking(move || {
-            docs_import::populate_docstore_from_source(&identity_dir, &source_dir, &index_name)
+        #[cfg(feature = "ikgdocstore")]
+        let use_kg = self.state.docs_use_kg;
+        #[cfg(feature = "ikgdocstore")]
+        let kg_cfg = self.state.docs_kg_config.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            docs_import::populate_docstore_from_source(&identity_dir, &source_dir, &index_name)?;
+
+            #[cfg(feature = "ikgdocstore")]
+            if use_kg {
+                docs_import::populate_kgdocstore_from_source(
+                    &identity_dir,
+                    &source_dir,
+                    &index_name,
+                    &kg_cfg,
+                )?;
+            }
+
+            Ok(())
         })
         .await
         .map_err(|e| AppError::Memory(format!("init_docs: spawn_blocking panicked: {e}")))?
