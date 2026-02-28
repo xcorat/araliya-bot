@@ -106,10 +106,7 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
         })
         .unwrap_or_else(|| defaults.label_ids.clone());
 
-    let n_last = args
-        .n_last
-        .unwrap_or(defaults.n_last)
-        .clamp(1, 100);
+    let n_last = args.n_last.unwrap_or(defaults.n_last).clamp(1, 100);
 
     let tsec_last = args
         .t_interval
@@ -133,7 +130,10 @@ fn resolve_config(defaults: NewsmailAggregatorConfig, args_json: &str) -> Resolv
     }
 }
 
-pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<Vec<GmailSummary>, String> {
+pub async fn get(
+    defaults: NewsmailAggregatorConfig,
+    args_json: &str,
+) -> Result<Vec<GmailSummary>, String> {
     debug!(args_json = %args_json, "newsmail: raw args JSON");
     let resolved = resolve_config(defaults, args_json);
     debug!(
@@ -154,7 +154,11 @@ pub async fn get(defaults: NewsmailAggregatorConfig, args_json: &str) -> Result<
 
     if let Some(window_secs) = resolved.tsec_last {
         let cutoff = now_unix().saturating_sub(window_secs);
-        items.retain(|item| item.internal_date_unix.map(|ts| ts >= cutoff).unwrap_or(false));
+        items.retain(|item| {
+            item.internal_date_unix
+                .map(|ts| ts >= cutoff)
+                .unwrap_or(false)
+        });
     }
 
     Ok(items)
@@ -216,11 +220,11 @@ mod tests {
 
     #[test]
     fn resolve_uses_label_array() {
-        let resolved = resolve_config(
-            defaults(),
-            r#"{"label": ["Label_111", "Label_222"]}"#,
+        let resolved = resolve_config(defaults(), r#"{"label": ["Label_111", "Label_222"]}"#);
+        assert_eq!(
+            resolved.labels,
+            vec!["Label_111".to_string(), "Label_222".to_string()]
         );
-        assert_eq!(resolved.labels, vec!["Label_111".to_string(), "Label_222".to_string()]);
     }
 
     #[test]

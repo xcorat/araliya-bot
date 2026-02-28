@@ -20,10 +20,10 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-use crate::error::AppError;
 use super::super::collections::{Block, Doc};
 use super::super::store::{SessionStore, TranscriptEntry};
 use super::super::types::{PrimaryValue, TextFile, Value};
+use crate::error::AppError;
 
 //  TODO: these  should be const  definied top or config.
 /// Default maximum number of k-v entries before FIFO eviction.
@@ -51,7 +51,11 @@ struct KvFile {
 
 impl KvFile {
     fn empty(cap: usize) -> Self {
-        Self { cap, order: Vec::new(), values: HashMap::new() }
+        Self {
+            cap,
+            order: Vec::new(),
+            values: HashMap::new(),
+        }
     }
 
     /// Build a [`Doc`] from the current k-v values.
@@ -80,7 +84,9 @@ impl KvFile {
 
     fn delete(&mut self, key: &str) -> bool {
         let removed = self.values.remove(key).is_some();
-        if removed { self.order.retain(|k| k != key); }
+        if removed {
+            self.order.retain(|k| k != key);
+        }
         removed
     }
 }
@@ -174,7 +180,10 @@ impl BasicSessionStore {
     fn serialise_transcript(entries: &[TranscriptEntry]) -> String {
         let mut out = String::new();
         for e in entries {
-            out.push_str(&format!("### {} — {}\n\n{}\n\n", e.role, e.timestamp, e.content));
+            out.push_str(&format!(
+                "### {} — {}\n\n{}\n\n",
+                e.role, e.timestamp, e.content
+            ));
         }
         out
     }
@@ -206,8 +215,10 @@ impl BasicSessionStore {
             let key = format!("{i:06}");
             let mut tf = TextFile::new(entry.content.clone());
             tf.metadata.insert("role".to_string(), entry.role.clone());
-            tf.metadata.insert("ts".to_string(), entry.timestamp.clone());
-            tf.metadata.insert("mime".to_string(), "text/plain".to_string());
+            tf.metadata
+                .insert("ts".to_string(), entry.timestamp.clone());
+            tf.metadata
+                .insert("mime".to_string(), "text/plain".to_string());
             block.set(key, Value::Text(tf));
         }
         Ok(block)
@@ -288,10 +299,7 @@ impl SessionStore for BasicSessionStore {
         Ok(entries[start..].to_vec())
     }
 
-    fn read_kv_doc(
-        &self,
-        session_dir: &Path,
-    ) -> Result<super::super::collections::Doc, AppError> {
+    fn read_kv_doc(&self, session_dir: &Path) -> Result<super::super::collections::Doc, AppError> {
         self.read_kv_doc(session_dir)
     }
 
@@ -316,18 +324,32 @@ fn secs_to_utc(epoch_secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     let mut yr = 1970u64;
     loop {
         let ydays = if is_leap(yr) { 366 } else { 365 };
-        if days < ydays { break; }
+        if days < ydays {
+            break;
+        }
         days -= ydays;
         yr += 1;
     }
     let leap = is_leap(yr);
     let mdays: [u64; 12] = [
-        31, if leap { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut mon = 1u64;
     for &md in &mdays {
-        if days < md { break; }
+        if days < md {
+            break;
+        }
         days -= md;
         mon += 1;
     }
@@ -373,7 +395,9 @@ mod tests {
         let (dir, store) = setup(); // cap = 5
 
         for i in 0..8 {
-            store.kv_set(dir.path(), &format!("k{i}"), &format!("v{i}")).unwrap();
+            store
+                .kv_set(dir.path(), &format!("k{i}"), &format!("v{i}"))
+                .unwrap();
         }
 
         let kv = BasicSessionStore::read_kv(dir.path()).unwrap();
@@ -399,8 +423,12 @@ mod tests {
     #[test]
     fn transcript_as_block() {
         let (dir, store) = setup();
-        store.transcript_append(dir.path(), "user", "hello").unwrap();
-        store.transcript_append(dir.path(), "assistant", "hi").unwrap();
+        store
+            .transcript_append(dir.path(), "user", "hello")
+            .unwrap();
+        store
+            .transcript_append(dir.path(), "assistant", "hi")
+            .unwrap();
 
         let block = store.read_transcript_block(dir.path()).unwrap();
         assert_eq!(block.len(), 2);
@@ -427,8 +455,12 @@ mod tests {
     fn transcript_append_and_read() {
         let (dir, store) = setup();
 
-        store.transcript_append(dir.path(), "user", "hello").unwrap();
-        store.transcript_append(dir.path(), "assistant", "hi there").unwrap();
+        store
+            .transcript_append(dir.path(), "user", "hello")
+            .unwrap();
+        store
+            .transcript_append(dir.path(), "assistant", "hi there")
+            .unwrap();
 
         let entries = store.transcript_read_last(dir.path(), 10).unwrap();
         assert_eq!(entries.len(), 2);
@@ -443,7 +475,9 @@ mod tests {
         let (dir, store) = setup(); // cap = 3
 
         for i in 0..5 {
-            store.transcript_append(dir.path(), "user", &format!("msg{i}")).unwrap();
+            store
+                .transcript_append(dir.path(), "user", &format!("msg{i}"))
+                .unwrap();
         }
 
         let entries = store.transcript_read_last(dir.path(), 10).unwrap();
@@ -457,7 +491,9 @@ mod tests {
         let (dir, store) = setup();
 
         store.transcript_append(dir.path(), "user", "a").unwrap();
-        store.transcript_append(dir.path(), "assistant", "b").unwrap();
+        store
+            .transcript_append(dir.path(), "assistant", "b")
+            .unwrap();
         store.transcript_append(dir.path(), "user", "c").unwrap();
 
         let entries = store.transcript_read_last(dir.path(), 2).unwrap();

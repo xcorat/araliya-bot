@@ -18,7 +18,10 @@ pub struct ToolsSubsystem {
 
 impl ToolsSubsystem {
     pub fn new(newsmail_defaults: NewsmailAggregatorConfig) -> Self {
-        Self { newsmail_defaults, reporter: None }
+        Self {
+            newsmail_defaults,
+            reporter: None,
+        }
     }
 
     /// Attach a health reporter.  Reports healthy at startup; individual tool
@@ -47,12 +50,19 @@ impl BusHandler for ToolsSubsystem {
         "tools"
     }
 
-    fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+    fn handle_request(
+        &self,
+        method: &str,
+        payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
         if method == "tools/health" {
             let reporter = self.reporter.clone();
             tokio::spawn(async move {
                 let h = match reporter {
-                    Some(r) => r.get_current().await
+                    Some(r) => r
+                        .get_current()
+                        .await
                         .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("tools")),
                     None => crate::supervisor::health::SubsystemHealth::ok("tools"),
                 };
@@ -73,7 +83,9 @@ impl BusHandler for ToolsSubsystem {
                     },
                     None => ComponentStatusResponse::running("tools"),
                 };
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: resp.to_json(),
+                }));
             });
             return;
         }
@@ -87,7 +99,8 @@ impl BusHandler for ToolsSubsystem {
                 available_tools.push("gmail");
                 available_tools.push("newsmail_aggregator");
             }
-            let available_tools: Vec<String> = available_tools.iter().map(|s| s.to_string()).collect();
+            let available_tools: Vec<String> =
+                available_tools.iter().map(|s| s.to_string()).collect();
             tokio::spawn(async move {
                 let base = match reporter {
                     Some(r) => match r.get_current().await {
@@ -103,7 +116,9 @@ impl BusHandler for ToolsSubsystem {
                     "state": base.state,
                     "available_tools": available_tools,
                 });
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: data.to_string(),
+                }));
             });
             return;
         }
@@ -129,7 +144,11 @@ impl BusHandler for ToolsSubsystem {
                     tokio::spawn(async move {
                         let query = serde_json::from_str::<serde_json::Value>(&args_json)
                             .ok()
-                            .and_then(|v| v.get("query").and_then(|q| q.as_str()).map(|s| s.to_string()));
+                            .and_then(|v| {
+                                v.get("query")
+                                    .and_then(|q| q.as_str())
+                                    .map(|s| s.to_string())
+                            });
 
                         match gmail::read_latest(query.as_deref()).await {
                             Ok(summary) => {
@@ -223,10 +242,7 @@ impl BusHandler for ToolsSubsystem {
                 )));
             }
             _ => {
-                let _ = reply_tx.send(Err(BusError::new(
-                    -32600,
-                    "expected ToolRequest payload",
-                )));
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected ToolRequest payload")));
             }
         }
     }
@@ -236,7 +252,10 @@ impl BusHandler for ToolsSubsystem {
         #[cfg(feature = "plugin-gmail-tool")]
         {
             children.push(ComponentInfo::leaf("gmail", "Gmail"));
-            children.push(ComponentInfo::leaf("newsmail_aggregator", "Newsmail Aggregator"));
+            children.push(ComponentInfo::leaf(
+                "newsmail_aggregator",
+                "Newsmail Aggregator",
+            ));
         }
         children.sort_by(|a, b| a.id.cmp(&b.id));
         ComponentInfo::running("tools", "Tools", children)

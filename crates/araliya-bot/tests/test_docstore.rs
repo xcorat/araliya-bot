@@ -9,8 +9,8 @@ use std::fs;
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
-use araliya_bot::subsystems::memory::{MemoryConfig, MemorySystem};
 use araliya_bot::subsystems::memory::stores::docstore::{Document, IDocStore};
+use araliya_bot::subsystems::memory::{MemoryConfig, MemorySystem};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ fn docstore_list_is_ordered_newest_first() {
     let (_tmp, id_dir) = identity_dir();
     let store = IDocStore::open(&id_dir).unwrap();
     store.add_document(doc("Alpha", "content alpha")).unwrap();
-    store.add_document(doc("Beta",  "content beta")).unwrap();
+    store.add_document(doc("Beta", "content beta")).unwrap();
     store.add_document(doc("Gamma", "content gamma")).unwrap();
 
     let docs = store.list_documents().unwrap();
@@ -89,7 +89,9 @@ fn docstore_list_is_ordered_newest_first() {
 fn docstore_delete_removes_all_traces() {
     let (_tmp, id_dir) = identity_dir();
     let store = IDocStore::open(&id_dir).unwrap();
-    let id = store.add_document(doc("ToDelete", "remove this content")).unwrap();
+    let id = store
+        .add_document(doc("ToDelete", "remove this content"))
+        .unwrap();
     let chunks = store.chunk_document(&id, 512).unwrap();
     store.index_chunks(chunks).unwrap();
 
@@ -97,7 +99,10 @@ fn docstore_delete_removes_all_traces() {
 
     assert!(store.list_documents().unwrap().is_empty());
     assert!(store.search_by_text("remove", 5).unwrap().is_empty());
-    let content_file = id_dir.join("docstore").join("docs").join(format!("{id}.txt"));
+    let content_file = id_dir
+        .join("docstore")
+        .join("docs")
+        .join(format!("{id}.txt"));
     assert!(!content_file.exists(), "raw content file should be deleted");
 }
 
@@ -106,7 +111,10 @@ fn docstore_chunk_and_search_bm25() {
     let (_tmp, id_dir) = identity_dir();
     let store = IDocStore::open(&id_dir).unwrap();
     let id = store
-        .add_document(doc("Rust Book", "ownership borrowing lifetimes async await traits"))
+        .add_document(doc(
+            "Rust Book",
+            "ownership borrowing lifetimes async await traits",
+        ))
         .unwrap();
     let chunks = store.chunk_document(&id, 32).unwrap();
     assert!(!chunks.is_empty());
@@ -115,12 +123,18 @@ fn docstore_chunk_and_search_bm25() {
     let results = store.search_by_text("ownership", 5).unwrap();
     assert!(!results.is_empty());
     assert_eq!(results[0].chunk.doc_id, id);
-    assert!(results[0].score >= 0.0, "BM25 score should be non-negative (sign-flipped)");
+    assert!(
+        results[0].score >= 0.0,
+        "BM25 score should be non-negative (sign-flipped)"
+    );
 
     // queries containing FTS5 special characters should not error and
     // simply return no hits when nothing matches.
     let r1 = store.search_by_text("?", 5).unwrap();
-    assert!(r1.is_empty(), "punctuation-only query should round-trip safely");
+    assert!(
+        r1.is_empty(),
+        "punctuation-only query should round-trip safely"
+    );
     let r2 = store.search_by_text("\"", 5).unwrap();
     assert!(r2.is_empty(), "quote-only query should round-trip safely");
 }
@@ -149,7 +163,9 @@ fn docstore_chunk_positions_are_sequential() {
 fn docstore_reindex_is_idempotent() {
     let (_tmp, id_dir) = identity_dir();
     let store = IDocStore::open(&id_dir).unwrap();
-    let id = store.add_document(doc("ReIndex", "reindex test content here")).unwrap();
+    let id = store
+        .add_document(doc("ReIndex", "reindex test content here"))
+        .unwrap();
 
     // Index twice.
     let c1 = store.chunk_document(&id, 256).unwrap();
@@ -197,7 +213,9 @@ async fn memory_system_schedule_docstore_index_for_real_store() {
     // Pre-populate a docstore with an un-indexed document.
     {
         let store = IDocStore::open(&id_dir).unwrap();
-        store.add_document(doc("Scheduled", "content to be indexed by manager")).unwrap();
+        store
+            .add_document(doc("Scheduled", "content to be indexed by manager"))
+            .unwrap();
         // Deliberately do NOT call chunk_document / index_chunks.
     }
 

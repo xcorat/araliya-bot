@@ -42,7 +42,13 @@ impl ManagementSubsystem {
         comms_info: Arc<OnceLock<ComponentInfo>>,
         health: HealthRegistry,
     ) -> Self {
-        Self { control, bus, info, comms_info, health }
+        Self {
+            control,
+            bus,
+            info,
+            comms_info,
+            health,
+        }
     }
 }
 
@@ -70,7 +76,12 @@ impl BusHandler for ManagementSubsystem {
         ComponentInfo::leaf("manage", "Management")
     }
 
-    fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+    fn handle_request(
+        &self,
+        method: &str,
+        payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
         const HTTP_GET: &str = "manage/http/get";
         const HTTP_TREE: &str = "manage/http/tree";
         const TREE: &str = "manage/tree";
@@ -79,7 +90,9 @@ impl BusHandler for ManagementSubsystem {
         // manage/status — management subsystem is always running.
         if method == "manage/status" {
             let resp = ComponentStatusResponse::running("manage");
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: resp.to_json(),
+            }));
             return;
         }
 
@@ -117,17 +130,25 @@ impl BusHandler for ManagementSubsystem {
 
         tokio::spawn(async move {
             let status = match control.request(ControlCommand::Status).await {
-                Ok(Ok(ControlResponse::Status { uptime_ms, handlers })) => (uptime_ms, handlers),
+                Ok(Ok(ControlResponse::Status {
+                    uptime_ms,
+                    handlers,
+                })) => (uptime_ms, handlers),
                 Ok(Ok(_)) => {
-                    let _ = reply_tx.send(Err(control_status_error("unexpected control response for status")));
+                    let _ = reply_tx.send(Err(control_status_error(
+                        "unexpected control response for status",
+                    )));
                     return;
                 }
                 Ok(Err(e)) => {
-                    let _ = reply_tx.send(Err(control_status_error(format!("control error: {e:?}"))));
+                    let _ =
+                        reply_tx.send(Err(control_status_error(format!("control error: {e:?}"))));
                     return;
                 }
                 Err(e) => {
-                    let _ = reply_tx.send(Err(control_status_error(format!("control transport error: {e}"))));
+                    let _ = reply_tx.send(Err(control_status_error(format!(
+                        "control transport error: {e}"
+                    ))));
                     return;
                 }
             };
@@ -139,16 +160,22 @@ impl BusHandler for ManagementSubsystem {
                         // Inject the comms node if available (comms is not a BusHandler,
                         // so the supervisor cannot call component_info() on it directly).
                         if let Some(comms) = comms_info.get() {
-                            if let Ok(mut root) = serde_json::from_str::<serde_json::Value>(&tree_json) {
-                                if let Some(children) = root.get_mut("children").and_then(|c| c.as_array_mut()) {
+                            if let Ok(mut root) =
+                                serde_json::from_str::<serde_json::Value>(&tree_json)
+                            {
+                                if let Some(children) =
+                                    root.get_mut("children").and_then(|c| c.as_array_mut())
+                                {
                                     let has_comms = children.iter().any(|child| {
-                                        child.get("id").and_then(|v| v.as_str()) == Some(comms.id.as_str())
+                                        child.get("id").and_then(|v| v.as_str())
+                                            == Some(comms.id.as_str())
                                     });
                                     if !has_comms {
                                         if let Ok(comms_val) = serde_json::to_value(comms) {
                                             children.push(comms_val);
                                             children.sort_by(|a, b| {
-                                                a.get("id").and_then(|v| v.as_str())
+                                                a.get("id")
+                                                    .and_then(|v| v.as_str())
                                                     .cmp(&b.get("id").and_then(|v| v.as_str()))
                                             });
                                         }
@@ -163,15 +190,18 @@ impl BusHandler for ManagementSubsystem {
                     _ => {
                         // Fallback: build a minimal tree from the status handler list.
                         let (uptime_ms, ref handlers) = status;
-                        let mut children: Vec<serde_json::Value> = handlers.iter().map(|id| {
-                            serde_json::json!({
-                                "id": id,
-                                "name": ComponentInfo::capitalise(id),
-                                "status": "running",
-                                "state": "on",
-                                "children": [],
+                        let mut children: Vec<serde_json::Value> = handlers
+                            .iter()
+                            .map(|id| {
+                                serde_json::json!({
+                                    "id": id,
+                                    "name": ComponentInfo::capitalise(id),
+                                    "status": "running",
+                                    "state": "on",
+                                    "children": [],
+                                })
                             })
-                        }).collect();
+                            .collect();
                         if let Some(comms) = comms_info.get() {
                             let has_comms = children.iter().any(|child| {
                                 child.get("id").and_then(|v| v.as_str()) == Some(comms.id.as_str())
@@ -180,7 +210,8 @@ impl BusHandler for ManagementSubsystem {
                                 if let Ok(v) = serde_json::to_value(comms) {
                                     children.push(v);
                                     children.sort_by(|a, b| {
-                                        a.get("id").and_then(|v| v.as_str())
+                                        a.get("id")
+                                            .and_then(|v| v.as_str())
                                             .cmp(&b.get("id").and_then(|v| v.as_str()))
                                     });
                                 }
@@ -214,7 +245,8 @@ impl BusHandler for ManagementSubsystem {
                         let _ = tokio::time::timeout(
                             std::time::Duration::from_secs(5),
                             bus2.request(method, BusPayload::Empty),
-                        ).await;
+                        )
+                        .await;
                     });
                 }
                 // Wait for all concurrent checks to finish (or time out).

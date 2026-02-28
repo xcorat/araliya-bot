@@ -1,15 +1,15 @@
 mod api;
-mod state;
-mod components;
 mod canvas_scene;
+mod components;
+mod state;
 
 use gpui::*;
 use gpui_component::Root;
 use std::{borrow::Cow, sync::Arc};
 
 use crate::api::ApiClient;
-use crate::state::{AppState, load_layout_prefs};
 use crate::components::AppView;
+use crate::state::{AppState, load_layout_prefs};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct GpuiAssets;
@@ -52,7 +52,9 @@ fn main() {
         gpui_component::init(cx);
 
         let api_client = Arc::new(ApiClient::new("http://127.0.0.1:8080".to_string()));
-        let layout = load_layout_prefs().map(|prefs| prefs.into_layout()).unwrap_or_default();
+        let layout = load_layout_prefs()
+            .map(|prefs| prefs.into_layout())
+            .unwrap_or_default();
         let app_state = AppState::with_layout(api_client, layout);
 
         cx.spawn(async move |cx| {

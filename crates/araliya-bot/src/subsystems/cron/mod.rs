@@ -45,15 +45,15 @@ pub struct CronSubsystem {
 
 impl CronSubsystem {
     /// Create the cron subsystem. Spawns the background timer task immediately.
-    pub fn new(
-        bus: BusHandle,
-        shutdown: tokio_util::sync::CancellationToken,
-    ) -> Self {
+    pub fn new(bus: BusHandle, shutdown: tokio_util::sync::CancellationToken) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let svc = CronService::new(bus, cmd_rx, shutdown);
         tokio::spawn(svc.run());
         debug!("cron subsystem started");
-        Self { cmd_tx, reporter: None }
+        Self {
+            cmd_tx,
+            reporter: None,
+        }
     }
 
     /// Attach a health reporter and mark the subsystem healthy at startup.
@@ -80,7 +80,9 @@ impl BusHandler for CronSubsystem {
             let reporter = self.reporter.clone();
             tokio::spawn(async move {
                 let h = match reporter {
-                    Some(r) => r.get_current().await
+                    Some(r) => r
+                        .get_current()
+                        .await
                         .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("cron")),
                     None => crate::supervisor::health::SubsystemHealth::ok("cron"),
                 };
@@ -92,7 +94,11 @@ impl BusHandler for CronSubsystem {
 
         if method == "cron/status" || method == "cron/timer-service/status" {
             let reporter = self.reporter.clone();
-            let id = if method == "cron/timer-service/status" { "timer-service" } else { "cron" };
+            let id = if method == "cron/timer-service/status" {
+                "timer-service"
+            } else {
+                "cron"
+            };
             let id = id.to_string();
             tokio::spawn(async move {
                 let resp = match reporter {
@@ -103,7 +109,9 @@ impl BusHandler for CronSubsystem {
                     },
                     None => ComponentStatusResponse::running(id),
                 };
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: resp.to_json(),
+                }));
             });
             return;
         }
@@ -123,7 +131,11 @@ impl BusHandler for CronSubsystem {
                 // Ask the service for active schedule count.
                 let active_schedules: usize = {
                     let (list_tx, list_rx) = tokio::sync::oneshot::channel();
-                    if cmd_tx_ds.send(CronCommand::List { reply: list_tx }).await.is_ok() {
+                    if cmd_tx_ds
+                        .send(CronCommand::List { reply: list_tx })
+                        .await
+                        .is_ok()
+                    {
                         list_rx.await.map(|entries| entries.len()).unwrap_or(0)
                     } else {
                         0
@@ -135,7 +147,9 @@ impl BusHandler for CronSubsystem {
                     "state": base.state,
                     "active_schedules": active_schedules,
                 });
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: data.to_string(),
+                }));
             });
             return;
         }
@@ -187,9 +201,8 @@ impl BusHandler for CronSubsystem {
                     }
                     match ack_rx.await {
                         Ok(id) => {
-                            let _ = reply_tx.send(Ok(BusPayload::CronScheduleResult {
-                                schedule_id: id,
-                            }));
+                            let _ = reply_tx
+                                .send(Ok(BusPayload::CronScheduleResult { schedule_id: id }));
                         }
                         Err(_) => {
                             let _ = reply_tx.send(Err(BusError::new(
@@ -283,8 +296,10 @@ impl BusHandler for CronSubsystem {
     }
 
     fn component_info(&self) -> ComponentInfo {
-        ComponentInfo::running("cron", "Cron", vec![
-            ComponentInfo::leaf("timer-service", "Timer Service"),
-        ])
+        ComponentInfo::running(
+            "cron",
+            "Cron",
+            vec![ComponentInfo::leaf("timer-service", "Timer Service")],
+        )
     }
 }

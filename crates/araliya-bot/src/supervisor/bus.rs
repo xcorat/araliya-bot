@@ -44,23 +44,27 @@ pub enum BusPayload {
     /// `channel_id` is threaded through so the LLM subsystem can attach it to
     /// the `CommsMessage` it returns, allowing the caller to re-associate the
     /// reply with the originating channel without extra bookkeeping.
-    LlmRequest { channel_id: String, content: String, system: Option<String> },
-        /// Request tool execution in the tools subsystem.
-        ToolRequest {
-            tool: String,
-            action: String,
-            args_json: String,
-            channel_id: String,
-            session_id: Option<String>,
-        },
-        /// Structured tool execution reply.
-        ToolResponse {
-            tool: String,
-            action: String,
-            ok: bool,
-            data_json: Option<String>,
-            error: Option<String>,
-        },
+    LlmRequest {
+        channel_id: String,
+        content: String,
+        system: Option<String>,
+    },
+    /// Request tool execution in the tools subsystem.
+    ToolRequest {
+        tool: String,
+        action: String,
+        args_json: String,
+        channel_id: String,
+        session_id: Option<String>,
+    },
+    /// Structured tool execution reply.
+    ToolResponse {
+        tool: String,
+        action: String,
+        ok: bool,
+        data_json: Option<String>,
+        error: Option<String>,
+    },
     /// Targets an in-flight request for cancellation.
     CancelRequest { id: Uuid },
     /// Query a specific session by ID.
@@ -73,7 +77,6 @@ pub enum BusPayload {
     JsonResponse { data: String },
 
     // ── Cron ─────────────────────────────────────────────────────────────
-
     /// Schedule a recurring or one-shot event.
     /// Sent to `cron/schedule`. The cron service will emit `target_method`
     /// as a bus notification when the timer fires.
@@ -86,19 +89,13 @@ pub enum BusPayload {
         spec: CronScheduleSpec,
     },
     /// Reply to a successful `cron/schedule` request.
-    CronScheduleResult {
-        schedule_id: String,
-    },
+    CronScheduleResult { schedule_id: String },
     /// Cancel an active schedule by ID.
-    CronCancel {
-        schedule_id: String,
-    },
+    CronCancel { schedule_id: String },
     /// Request a listing of all active schedules.
     CronList,
     /// Reply to `cron/list`.
-    CronListResult {
-        entries: Vec<CronEntryInfo>,
-    },
+    CronListResult { entries: Vec<CronEntryInfo> },
 
     /// No payload — used by notifications whose meaning is in the method alone.
     Empty,
@@ -138,7 +135,10 @@ pub struct BusError {
 
 impl BusError {
     pub fn new(code: i32, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 
@@ -225,7 +225,12 @@ impl BusHandle {
         debug!(%id, %method, "bus: sending request");
         trace!(%id, %method, payload = ?payload, "bus: request payload");
         self.tx
-            .send(BusMessage::Request { id, method, payload, reply_tx })
+            .send(BusMessage::Request {
+                id,
+                method,
+                payload,
+                reply_tx,
+            })
             .await
             .map_err(|_| {
                 warn!(%id, "bus: request send failed — supervisor not running");
@@ -254,7 +259,10 @@ impl BusHandle {
         let method = method.into();
         debug!(%method, "bus: sending notification");
         trace!(%method, payload = ?payload, "bus: notification payload");
-        match self.tx.try_send(BusMessage::Notification { method, payload }) {
+        match self
+            .tx
+            .try_send(BusMessage::Notification { method, payload })
+        {
             Ok(()) => Ok(()),
             Err(tokio::sync::mpsc::error::TrySendError::Full(msg)) => {
                 let method = match msg {
@@ -292,6 +300,9 @@ impl SupervisorBus {
     pub fn new(buffer: usize) -> Self {
         debug!(buffer, "supervisor bus created");
         let (tx, rx) = mpsc::channel(buffer);
-        Self { rx, handle: BusHandle { tx } }
+        Self {
+            rx,
+            handle: BusHandle { tx },
+        }
     }
 }

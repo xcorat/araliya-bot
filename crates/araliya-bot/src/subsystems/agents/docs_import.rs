@@ -118,7 +118,11 @@ pub fn populate_docstore_from_source(
         let doc_id = match docstore.add_document(doc) {
             Ok(id) => id,
             Err(e) => {
-                tracing::warn!("docs_import: skipping '{}': add_document failed: {}", rel_path, e);
+                tracing::warn!(
+                    "docs_import: skipping '{}': add_document failed: {}",
+                    rel_path,
+                    e
+                );
                 continue;
             }
         };
@@ -168,8 +172,8 @@ pub fn populate_kgdocstore_from_source(
     index_name: &str,
     kg_cfg: &crate::config::DocsKgConfig,
 ) -> Result<(), AppError> {
-    use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
     use crate::subsystems::memory::stores::docstore_core::Document;
+    use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 
     let store = IKGDocStore::open(agent_identity_dir)?;
 
@@ -213,7 +217,11 @@ pub fn populate_kgdocstore_from_source(
         let doc_id = match store.add_document(doc) {
             Ok(id) => id,
             Err(e) => {
-                tracing::warn!("kgdocstore import: skipping '{}': add_document failed: {}", rel_path, e);
+                tracing::warn!(
+                    "kgdocstore import: skipping '{}': add_document failed: {}",
+                    rel_path,
+                    e
+                );
                 continue;
             }
         };
@@ -251,7 +259,10 @@ pub fn populate_kgdocstore_from_source(
     };
     store.rebuild_kg_with_config(&cfg, &[])?;
 
-    tracing::info!("knowledge graph built successfully at {:?}", agent_identity_dir);
+    tracing::info!(
+        "knowledge graph built successfully at {:?}",
+        agent_identity_dir
+    );
     Ok(())
 }
 
@@ -262,23 +273,16 @@ fn collect_text_files(
     current_dir: &Path,
     out: &mut Vec<(String, String)>,
 ) -> Result<(), AppError> {
-    let read = fs::read_dir(current_dir).map_err(|e| {
-        AppError::Memory(format!(
-            "docs_import: read_dir {:?}: {}",
-            current_dir, e
-        ))
-    })?;
+    let read = fs::read_dir(current_dir)
+        .map_err(|e| AppError::Memory(format!("docs_import: read_dir {:?}: {}", current_dir, e)))?;
 
     for entry in read {
-        let entry = entry
-            .map_err(|e| AppError::Memory(format!("docs_import: dir entry error: {}", e)))?;
+        let entry =
+            entry.map_err(|e| AppError::Memory(format!("docs_import: dir entry error: {}", e)))?;
         let path = entry.path();
 
         if path.is_dir() {
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if SKIP_DIRS.contains(&dir_name) {
                 tracing::debug!("docs_import: skipping directory '{}'", dir_name);
                 continue;
@@ -335,10 +339,7 @@ fn collect_text_files(
         let rel = path
             .strip_prefix(source_root)
             .map_err(|_| {
-                AppError::Memory(format!(
-                    "docs_import: strip_prefix failed for {:?}",
-                    path
-                ))
+                AppError::Memory(format!("docs_import: strip_prefix failed for {:?}", path))
             })?
             .to_string_lossy()
             .to_string();
@@ -379,7 +380,8 @@ mod tests {
         let img_dir = src.join("images");
         fs::create_dir_all(&img_dir).expect("images dir");
         fs::write(img_dir.join("logo.png"), &[0u8; 4]).expect("logo.png");
-        fs::write(img_dir.join("caption.md"), "this should be skipped").expect("caption.md in images");
+        fs::write(img_dir.join("caption.md"), "this should be skipped")
+            .expect("caption.md in images");
 
         tmp
     }
@@ -399,7 +401,12 @@ mod tests {
         let docs = store.list_documents().expect("list");
 
         // index.md, guide.md, notes.txt, architecture/overview.md = 4 docs.
-        assert_eq!(docs.len(), 4, "expected 4 imported documents, got: {:?}", docs.iter().map(|d| &d.doc_id).collect::<Vec<_>>());
+        assert_eq!(
+            docs.len(),
+            4,
+            "expected 4 imported documents, got: {:?}",
+            docs.iter().map(|d| &d.doc_id).collect::<Vec<_>>()
+        );
 
         // images/caption.md must NOT be in the store.
         assert!(
@@ -409,7 +416,10 @@ mod tests {
 
         // All should have chunks indexed.
         let search = store.search_by_text("guide", 5).expect("search");
-        assert!(!search.is_empty(), "BM25 search should return results after import");
+        assert!(
+            !search.is_empty(),
+            "BM25 search should return results after import"
+        );
     }
 
     #[test]
@@ -427,7 +437,10 @@ mod tests {
         let docs = store.list_documents().expect("list");
 
         let index_doc = docs.iter().find(|d| d.doc_id == "index.md");
-        assert!(index_doc.is_some(), "index.md placeholder should have been created");
+        assert!(
+            index_doc.is_some(),
+            "index.md placeholder should have been created"
+        );
         let doc = store.get_document("index.md").expect("get index.md");
         assert_eq!(doc.content.trim(), "_TODO_");
     }
@@ -440,12 +453,14 @@ mod tests {
         let source_tmp = make_source_dir();
 
         // First import.
-        populate_docstore_from_source(&identity_dir, source_tmp.path(), "index.md").expect("first import");
+        populate_docstore_from_source(&identity_dir, source_tmp.path(), "index.md")
+            .expect("first import");
         let store = IDocStore::open(&identity_dir).expect("open");
         let count_before = store.list_documents().expect("list before").len();
 
         // Second import — must not change count.
-        populate_docstore_from_source(&identity_dir, source_tmp.path(), "index.md").expect("second import");
+        populate_docstore_from_source(&identity_dir, source_tmp.path(), "index.md")
+            .expect("second import");
         let count_after = store.list_documents().expect("list after").len();
 
         assert_eq!(count_before, count_after, "second import must be a no-op");

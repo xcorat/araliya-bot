@@ -60,12 +60,17 @@ fn random_verifier() -> String {
 
 fn code_challenge_s256(verifier: &str) -> String {
     let digest = Sha256::digest(verifier.as_bytes());
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     URL_SAFE_NO_PAD.encode(digest)
 }
 
-fn build_auth_url(client_id: &str, redirect_uri: &str, state: &str, challenge: &str) -> Result<String, String> {
+fn build_auth_url(
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+    challenge: &str,
+) -> Result<String, String> {
     let mut url = Url::parse(AUTH_URL).map_err(|e| format!("invalid auth URL: {e}"))?;
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
@@ -95,7 +100,11 @@ fn write_http_ok(stream: &mut TcpStream, body: &str) -> Result<(), String> {
         .map_err(|e| format!("failed writing callback response: {e}"))
 }
 
-fn receive_auth_code(port: u16, expected_state: &str, expected_path: &str) -> Result<String, String> {
+fn receive_auth_code(
+    port: u16,
+    expected_state: &str,
+    expected_path: &str,
+) -> Result<String, String> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|e| format!("failed to bind callback server on 127.0.0.1:{port}: {e}"))?;
 
@@ -111,7 +120,8 @@ fn receive_auth_code(port: u16, expected_state: &str, expected_path: &str) -> Re
         return Err("empty callback request".to_string());
     }
 
-    let raw = String::from_utf8(buf[..n].to_vec()).map_err(|e| format!("callback request not utf8: {e}"))?;
+    let raw = String::from_utf8(buf[..n].to_vec())
+        .map_err(|e| format!("callback request not utf8: {e}"))?;
     let first = raw
         .lines()
         .next()
@@ -199,7 +209,8 @@ fn save_cache(cache: &TokenCache) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("failed creating token dir: {e}"))?;
     }
-    let data = serde_json::to_vec_pretty(cache).map_err(|e| format!("token serialize failed: {e}"))?;
+    let data =
+        serde_json::to_vec_pretty(cache).map_err(|e| format!("token serialize failed: {e}"))?;
     fs::write(path, data).map_err(|e| format!("token write failed: {e}"))
 }
 
@@ -226,7 +237,10 @@ async fn refresh_token(
         .map_err(|e| format!("refresh request failed: {e}"))?;
 
     if !res.status().is_success() {
-        let body = res.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("refresh failed: {body}"));
     }
 
@@ -262,7 +276,10 @@ async fn exchange_code(
         .map_err(|e| format!("token exchange failed: {e}"))?;
 
     if !res.status().is_success() {
-        let body = res.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("token exchange failed: {body}"));
     }
 
@@ -272,7 +289,8 @@ async fn exchange_code(
 }
 
 async fn ensure_access_token(client: &reqwest::Client) -> Result<String, String> {
-    let client_id = std::env::var("GOOGLE_CLIENT_ID").map_err(|_| "missing GOOGLE_CLIENT_ID".to_string())?;
+    let client_id =
+        std::env::var("GOOGLE_CLIENT_ID").map_err(|_| "missing GOOGLE_CLIENT_ID".to_string())?;
     let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").ok();
 
     if let Some(cache) = load_cache() {
@@ -281,7 +299,8 @@ async fn ensure_access_token(client: &reqwest::Client) -> Result<String, String>
         }
 
         if let Some(refresh) = cache.refresh_token.clone() {
-            let refreshed = refresh_token(client, &client_id, client_secret.as_deref(), &refresh).await?;
+            let refreshed =
+                refresh_token(client, &client_id, client_secret.as_deref(), &refresh).await?;
             let merged = TokenCache {
                 access_token: refreshed.access_token,
                 refresh_token: Some(refresh),
@@ -369,7 +388,10 @@ async fn fetch_message_summary(
         .map_err(|e| format!("gmail get request failed: {e}"))?;
 
     if !get.status().is_success() {
-        let body = get.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = get
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("gmail get failed: {body}"));
     }
 
@@ -386,13 +408,25 @@ async fn fetch_message_summary(
         .unwrap_or_default();
 
     Ok(GmailSummary {
-        id: msg.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
-        thread_id: msg.get("threadId").and_then(Value::as_str).unwrap_or("").to_string(),
+        id: msg
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        thread_id: msg
+            .get("threadId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         internal_date_unix: parse_internal_date_unix(&msg),
         from: header_value(&payload_headers, "From"),
         subject: header_value(&payload_headers, "Subject"),
         date: header_value(&payload_headers, "Date"),
-        snippet: msg.get("snippet").and_then(Value::as_str).unwrap_or("").to_string(),
+        snippet: msg
+            .get("snippet")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
     })
 }
 
@@ -429,7 +463,10 @@ async fn list_messages_with(
         .map_err(|e| format!("gmail list request failed: {e}"))?;
 
     if !list.status().is_success() {
-        let body = list.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = list
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("gmail list failed: {body}"));
     }
 

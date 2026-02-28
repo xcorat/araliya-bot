@@ -16,7 +16,9 @@ const NO_NEWS_MSG: &str = "No new news emails.";
 pub(crate) struct NewsAgentPlugin;
 
 impl Agent for NewsAgentPlugin {
-    fn id(&self) -> &str { "news" }
+    fn id(&self) -> &str {
+        "news"
+    }
 
     fn handle(
         &self,
@@ -61,9 +63,19 @@ impl Agent for NewsAgentPlugin {
                 .await;
 
             let raw_json = match result {
-                Ok(BusPayload::ToolResponse { ok: true, data_json: Some(data), .. }) => data,
-                Ok(BusPayload::ToolResponse { ok: true, data_json: None, .. }) => "[]".to_string(),
-                Ok(BusPayload::ToolResponse { ok: false, error, .. }) => {
+                Ok(BusPayload::ToolResponse {
+                    ok: true,
+                    data_json: Some(data),
+                    ..
+                }) => data,
+                Ok(BusPayload::ToolResponse {
+                    ok: true,
+                    data_json: None,
+                    ..
+                }) => "[]".to_string(),
+                Ok(BusPayload::ToolResponse {
+                    ok: false, error, ..
+                }) => {
                     let _ = reply_tx.send(Err(BusError::new(
                         -32000,
                         format!(
@@ -112,10 +124,13 @@ impl Agent for NewsAgentPlugin {
                             warn!(error = %e, "news: failed to persist texts");
                         }
                         let cached = store.kv_get(&cache_key_clone).unwrap_or(None);
-                        let session = store.get_or_create_session(&memory, "news").map_err(|e| {
-                            warn!(error = %e, "news: failed to open agent session");
-                            e
-                        }).ok();
+                        let session = store
+                            .get_or_create_session(&memory, "news")
+                            .map_err(|e| {
+                                warn!(error = %e, "news: failed to open agent session");
+                                e
+                            })
+                            .ok();
                         (cached, session)
                     }
                 }
@@ -148,7 +163,9 @@ impl Agent for NewsAgentPlugin {
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
             let (system, user_prompt) = build_summary_prompt(&items, &state.enabled_tools);
-            let llm_result = state.complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system)).await;
+            let llm_result = state
+                .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
+                .await;
 
             let (summary, usage) = match llm_result {
                 Ok(BusPayload::CommsMessage { content, usage, .. }) => (content, usage),
@@ -204,16 +221,14 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
     let cache_key = cache_key.to_string();
     let summary = summary.to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    tokio::task::spawn_blocking(move || {
-        match state.open_agent_store("news") {
-            Err(e) => warn!(error = %e, "news: failed to open agent store for summary cache"),
-            Ok(store) => {
-                if let Err(e) = store.kv_set(&cache_key, &summary) {
-                    warn!(error = %e, "news: failed to cache summary");
-                }
-                if let Err(e) = store.kv_set("last_fetched", &now) {
-                    warn!(error = %e, "news: failed to update last_fetched");
-                }
+    tokio::task::spawn_blocking(move || match state.open_agent_store("news") {
+        Err(e) => warn!(error = %e, "news: failed to open agent store for summary cache"),
+        Ok(store) => {
+            if let Err(e) = store.kv_set(&cache_key, &summary) {
+                warn!(error = %e, "news: failed to cache summary");
+            }
+            if let Err(e) = store.kv_set("last_fetched", &now) {
+                warn!(error = %e, "news: failed to update last_fetched");
             }
         }
     })
@@ -228,10 +243,20 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
 fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
-        let subject = item.metadata.get("subject").map(|s| s.as_str()).unwrap_or("(no subject)");
-        let from    = item.metadata.get("from").map(|s| s.as_str()).unwrap_or("");
-        let date    = item.metadata.get("date").map(|s| s.as_str()).unwrap_or("");
-        items_str.push_str(&format!("[{}] {}\n    From: {}  Date: {}\n", i + 1, subject, from, date));
+        let subject = item
+            .metadata
+            .get("subject")
+            .map(|s| s.as_str())
+            .unwrap_or("(no subject)");
+        let from = item.metadata.get("from").map(|s| s.as_str()).unwrap_or("");
+        let date = item.metadata.get("date").map(|s| s.as_str()).unwrap_or("");
+        items_str.push_str(&format!(
+            "[{}] {}\n    From: {}  Date: {}\n",
+            i + 1,
+            subject,
+            from,
+            date
+        ));
     }
 
     let system = super::core::prompt::preamble("config/prompts", tools).build();

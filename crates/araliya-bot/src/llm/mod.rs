@@ -82,7 +82,11 @@ pub enum LlmProvider {
 impl LlmProvider {
     /// Send `content` as the user message (and optional `system` as the system prompt)
     /// to the provider and return the response including token usage.
-    pub async fn complete(&self, content: &str, system: Option<&str>) -> Result<LlmResponse, ProviderError> {
+    pub async fn complete(
+        &self,
+        content: &str,
+        system: Option<&str>,
+    ) -> Result<LlmResponse, ProviderError> {
         match self {
             LlmProvider::Dummy(p) => p.complete(content, system).await,
             LlmProvider::OpenAiCompatible(p) => p.complete(content, system).await,
@@ -123,7 +127,11 @@ mod tests {
 
     #[test]
     fn cost_usd_normal() {
-        let usage = LlmUsage { input_tokens: 1_000_000, output_tokens: 500_000, cached_input_tokens: 0 };
+        let usage = LlmUsage {
+            input_tokens: 1_000_000,
+            output_tokens: 500_000,
+            cached_input_tokens: 0,
+        };
         let rates = ModelRates {
             input_per_million_usd: 1.10,
             output_per_million_usd: 4.40,
@@ -131,12 +139,20 @@ mod tests {
         };
         let expected = 1.10 + 4.40 * 0.5;
         let diff = (usage.cost_usd(&rates) - expected).abs();
-        assert!(diff < 1e-9, "expected {expected}, got {}", usage.cost_usd(&rates));
+        assert!(
+            diff < 1e-9,
+            "expected {expected}, got {}",
+            usage.cost_usd(&rates)
+        );
     }
 
     #[test]
     fn cost_usd_with_cache() {
-        let usage = LlmUsage { input_tokens: 0, output_tokens: 0, cached_input_tokens: 1_000_000 };
+        let usage = LlmUsage {
+            input_tokens: 0,
+            output_tokens: 0,
+            cached_input_tokens: 1_000_000,
+        };
         let rates = ModelRates {
             input_per_million_usd: 0.0,
             output_per_million_usd: 0.0,

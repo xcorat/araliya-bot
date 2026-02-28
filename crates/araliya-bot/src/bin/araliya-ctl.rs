@@ -46,11 +46,22 @@ enum ControlCommand {
 
 #[derive(Debug, serde::Deserialize)]
 enum ControlResponse {
-    Health { uptime_ms: u64 },
-    Status { uptime_ms: u64, handlers: Vec<String> },
-    Subsystems { handlers: Vec<String> },
-    ComponentTree { tree_json: String },
-    Ack { message: String },
+    Health {
+        uptime_ms: u64,
+    },
+    Status {
+        uptime_ms: u64,
+        handlers: Vec<String>,
+    },
+    Subsystems {
+        handlers: Vec<String>,
+    },
+    ComponentTree {
+        tree_json: String,
+    },
+    Ack {
+        message: String,
+    },
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -99,7 +110,11 @@ fn parse_args() -> Args {
         }
     }
 
-    Args { socket, command, rest }
+    Args {
+        socket,
+        command,
+        rest,
+    }
 }
 
 fn print_help() {
@@ -170,7 +185,9 @@ fn build_command(cmd: &str, rest: &[String]) -> Result<ControlCommand, String> {
             let id = rest.first().ok_or("usage: araliya-ctl disable <id>")?;
             Ok(ControlCommand::SubsystemDisable { id: id.clone() })
         }
-        other => Err(format!("unknown command: {other}\n  run 'araliya-ctl --help' for usage")),
+        other => Err(format!(
+            "unknown command: {other}\n  run 'araliya-ctl --help' for usage"
+        )),
     }
 }
 
@@ -182,7 +199,10 @@ fn print_response(resp: WireResponse) {
                 let ms = uptime_ms % 1000;
                 println!("ok  uptime {secs}.{ms:03}s");
             }
-            ControlResponse::Status { uptime_ms, handlers } => {
+            ControlResponse::Status {
+                uptime_ms,
+                handlers,
+            } => {
                 let secs = uptime_ms / 1000;
                 let ms = uptime_ms % 1000;
                 println!("ok  uptime {secs}.{ms:03}s");
@@ -278,8 +298,7 @@ async fn run(socket_path: PathBuf, cmd: ControlCommand) -> Result<(), String> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
 
-    let mut request = serde_json::to_string(&cmd)
-        .map_err(|e| format!("serialise error: {e}"))?;
+    let mut request = serde_json::to_string(&cmd).map_err(|e| format!("serialise error: {e}"))?;
     request.push('\n');
 
     writer
@@ -293,8 +312,8 @@ async fn run(socket_path: PathBuf, cmd: ControlCommand) -> Result<(), String> {
         .map_err(|e| format!("recv error: {e}"))?
         .ok_or_else(|| "daemon closed connection without responding".to_string())?;
 
-    let resp: WireResponse =
-        serde_json::from_str(&line).map_err(|e| format!("parse response error: {e}\n  raw: {line}"))?;
+    let resp: WireResponse = serde_json::from_str(&line)
+        .map_err(|e| format!("parse response error: {e}\n  raw: {line}"))?;
 
     print_response(resp);
     Ok(())

@@ -19,6 +19,7 @@ enabled = true
 
 [agents]
 default = "docs"
+debug_logging = true
 
 [agents.docs]
 enabled = true

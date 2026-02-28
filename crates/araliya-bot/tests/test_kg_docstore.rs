@@ -51,13 +51,18 @@ fn open_creates_required_dirs() {
     assert!(store.root_dir().exists(), "kgdocstore root should exist");
     assert!(store.root_dir().join("docs").exists(), "docs/ should exist");
     assert!(store.root_dir().join("kg").exists(), "kg/ should exist");
-    assert!(store.root_dir().join("chunks.db").exists(), "chunks.db should exist");
+    assert!(
+        store.root_dir().join("chunks.db").exists(),
+        "chunks.db should exist"
+    );
 }
 
 #[test]
 fn add_and_get_document_round_trip() {
     let (_temp, store) = make_store();
-    let doc_id = store.add_document(doc("Hello", "hello world content")).expect("add");
+    let doc_id = store
+        .add_document(doc("Hello", "hello world content"))
+        .expect("add");
     let retrieved = store.get_document(&doc_id).expect("get");
     assert_eq!(retrieved.title, "Hello");
     assert!(retrieved.content.contains("hello world"));
@@ -103,7 +108,9 @@ fn all_chunks_enumerates_every_indexed_chunk() {
 #[test]
 fn get_chunks_by_ids_preserves_request_order() {
     let (_temp, store) = make_store();
-    let doc_id = store.add_document(doc("O", "word1 word2 word3 word4 word5 word6")).expect("add");
+    let doc_id = store
+        .add_document(doc("O", "word1 word2 word3 word4 word5 word6"))
+        .expect("add");
     let chunks = store.chunk_document(&doc_id, 8).expect("chunk");
     store.index_chunks(chunks.clone()).expect("index");
     // Request in reverse order
@@ -207,7 +214,10 @@ fn search_with_kg_uses_kg_when_entity_matched() {
         .search_with_kg("authservice tokenvalidator", &cfg)
         .expect("search");
     // Context must be non-empty regardless of used_kg value
-    assert!(!result.context.is_empty(), "context should contain passages");
+    assert!(
+        !result.context.is_empty(),
+        "context should contain passages"
+    );
 }
 
 #[test]
@@ -227,7 +237,10 @@ fn search_with_kg_seed_cap_applied() {
     };
     // A broad query that could match many entities — should not panic
     let result = store
-        .search_with_kg("alphasystem betasystem gammaservice deltaservice epsilonmodule", &cfg)
+        .search_with_kg(
+            "alphasystem betasystem gammaservice deltaservice epsilonmodule",
+            &cfg,
+        )
         .expect("search with many seeds");
     // Seeds were capped to max_seeds = 2
     assert!(result.seed_entities.len() <= 2);
@@ -242,10 +255,11 @@ fn search_with_kg_context_contains_kg_summary_section() {
     index_doc(&store, "Auth", content);
     store.rebuild_kg().expect("rebuild_kg");
 
-    let cfg = KgConfig { min_entity_mentions: 1, ..KgConfig::default() };
-    let result = store
-        .search_with_kg("authservice", &cfg)
-        .expect("search");
+    let cfg = KgConfig {
+        min_entity_mentions: 1,
+        ..KgConfig::default()
+    };
+    let result = store.search_with_kg("authservice", &cfg).expect("search");
 
     if result.used_kg {
         assert!(

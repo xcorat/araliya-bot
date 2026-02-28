@@ -1,16 +1,16 @@
 //! Telegram comms channel — receives messages via Telegram API, sends to supervisor,
 //! and replies back to the user.
 
-use std::sync::Arc;
 use std::env;
+use std::sync::Arc;
 
 use teloxide::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use super::state::CommsState;
 use crate::error::AppError;
 use crate::subsystems::runtime::{Component, ComponentFuture};
-use super::state::CommsState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,10 @@ pub struct TelegramChannel {
 
 impl TelegramChannel {
     pub fn new(channel_id: impl Into<String>, state: Arc<CommsState>) -> Self {
-        Self { channel_id: channel_id.into(), state }
+        Self {
+            channel_id: channel_id.into(),
+            state,
+        }
     }
 }
 
@@ -60,10 +63,10 @@ async fn run_telegram(
     info!(%channel_id, "telegram channel starting");
 
     let bot = Bot::new(token);
-    
+
     let state_clone = state.clone();
     let channel_id_clone = channel_id.clone();
-    
+
     let handler = Update::filter_message().endpoint(
         move |bot: Bot, msg: Message| {
             let state = state_clone.clone();

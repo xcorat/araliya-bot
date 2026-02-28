@@ -51,10 +51,10 @@ pub enum PrimaryValue {
 impl PartialEq for PrimaryValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Bool(a),  Self::Bool(b))  => a == b,
-            (Self::Int(a),   Self::Int(b))   => a == b,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Int(a), Self::Int(b)) => a == b,
             (Self::Float(a), Self::Float(b)) => a.to_bits() == b.to_bits(),
-            (Self::Str(a),   Self::Str(b))   => a == b,
+            (Self::Str(a), Self::Str(b)) => a == b,
             _ => false,
         }
     }
@@ -65,10 +65,22 @@ impl Eq for PrimaryValue {}
 impl Hash for PrimaryValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Bool(b)  => { 0u8.hash(state); b.hash(state); }
-            Self::Int(i)   => { 1u8.hash(state); i.hash(state); }
-            Self::Float(f) => { 2u8.hash(state); f.to_bits().hash(state); }
-            Self::Str(s)   => { 3u8.hash(state); s.hash(state); }
+            Self::Bool(b) => {
+                0u8.hash(state);
+                b.hash(state);
+            }
+            Self::Int(i) => {
+                1u8.hash(state);
+                i.hash(state);
+            }
+            Self::Float(f) => {
+                2u8.hash(state);
+                f.to_bits().hash(state);
+            }
+            Self::Str(s) => {
+                3u8.hash(state);
+                s.hash(state);
+            }
         }
     }
 }
@@ -77,18 +89,38 @@ impl fmt::Display for PrimaryValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bool(b) => write!(f, "{b}"),
-            Self::Int(i)  => write!(f, "{i}"),
+            Self::Int(i) => write!(f, "{i}"),
             Self::Float(v) => write!(f, "{v}"),
-            Self::Str(s)  => write!(f, "{s}"),
+            Self::Str(s) => write!(f, "{s}"),
         }
     }
 }
 
-impl From<bool>   for PrimaryValue { fn from(v: bool)   -> Self { Self::Bool(v) } }
-impl From<i64>    for PrimaryValue { fn from(v: i64)    -> Self { Self::Int(v) } }
-impl From<f64>    for PrimaryValue { fn from(v: f64)    -> Self { Self::Float(v) } }
-impl From<String> for PrimaryValue { fn from(v: String) -> Self { Self::Str(v) } }
-impl From<&str>   for PrimaryValue { fn from(v: &str)   -> Self { Self::Str(v.to_string()) } }
+impl From<bool> for PrimaryValue {
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+impl From<i64> for PrimaryValue {
+    fn from(v: i64) -> Self {
+        Self::Int(v)
+    }
+}
+impl From<f64> for PrimaryValue {
+    fn from(v: f64) -> Self {
+        Self::Float(v)
+    }
+}
+impl From<String> for PrimaryValue {
+    fn from(v: String) -> Self {
+        Self::Str(v)
+    }
+}
+impl From<&str> for PrimaryValue {
+    fn from(v: &str) -> Self {
+        Self::Str(v.to_string())
+    }
+}
 
 // ── Obj ──────────────────────────────────────────────────────────────────────
 
@@ -107,14 +139,21 @@ pub struct Obj {
 impl Obj {
     /// Create a new `Obj` with the given binary payload and empty metadata.
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data, metadata: HashMap::new() }
+        Self {
+            data,
+            metadata: HashMap::new(),
+        }
     }
 
     /// Byte length of the payload.
-    pub fn len(&self) -> usize { self.data.len() }
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 
     /// `true` when the payload is empty.
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
 // ── TextFile ──────────────────────────────────────────────────────────────────
@@ -151,26 +190,46 @@ pub struct TextFile {
 impl TextFile {
     /// Create a new `TextFile` with the given content and empty metadata.
     pub fn new(content: String) -> Self {
-        Self { content, metadata: HashMap::new() }
+        Self {
+            content,
+            metadata: HashMap::new(),
+        }
     }
 
     /// Byte length of the content (`content.len()`).
-    pub fn len(&self) -> usize { self.content.len() }
+    pub fn len(&self) -> usize {
+        self.content.len()
+    }
 
     /// `true` when the content is empty.
-    pub fn is_empty(&self) -> bool { self.content.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
+    }
 
     /// Byte slice of the content.
-    pub fn as_bytes(&self) -> &[u8] { self.content.as_bytes() }
+    pub fn as_bytes(&self) -> &[u8] {
+        self.content.as_bytes()
+    }
 
     /// MIME type from metadata, defaulting to `"text/plain"`.
     pub fn mime(&self) -> &str {
-        self.metadata.get("mime").map(|s| s.as_str()).unwrap_or("text/plain")
+        self.metadata
+            .get("mime")
+            .map(|s| s.as_str())
+            .unwrap_or("text/plain")
     }
 }
 
-impl From<String> for TextFile { fn from(s: String) -> Self { Self::new(s) } }
-impl From<&str>   for TextFile { fn from(s: &str)   -> Self { Self::new(s.to_string()) } }
+impl From<String> for TextFile {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+impl From<&str> for TextFile {
+    fn from(s: &str) -> Self {
+        Self::new(s.to_string())
+    }
+}
 
 // ── Value ─────────────────────────────────────────────────────────────────────
 // TODO: This is not necessaryly either. We can just use the underlying types directly, with some interface?
@@ -193,20 +252,52 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Primary(p) => write!(f, "{p}"),
-            Self::Text(t)    => write!(f, "<Text {} bytes [{}]>", t.len(), t.mime()),
-            Self::Obj(o)     => write!(f, "<Obj {} bytes>", o.len()),
+            Self::Text(t) => write!(f, "<Text {} bytes [{}]>", t.len(), t.mime()),
+            Self::Obj(o) => write!(f, "<Obj {} bytes>", o.len()),
         }
     }
 }
 
-impl From<PrimaryValue> for Value { fn from(p: PrimaryValue) -> Self { Self::Primary(p) } }
-impl From<TextFile>     for Value { fn from(t: TextFile)     -> Self { Self::Text(t) } }
-impl From<Obj>          for Value { fn from(o: Obj)          -> Self { Self::Obj(o) } }
-impl From<bool>   for Value { fn from(v: bool)   -> Self { Self::Primary(PrimaryValue::Bool(v)) } }
-impl From<i64>    for Value { fn from(v: i64)    -> Self { Self::Primary(PrimaryValue::Int(v)) } }
-impl From<f64>    for Value { fn from(v: f64)    -> Self { Self::Primary(PrimaryValue::Float(v)) } }
-impl From<String> for Value { fn from(v: String) -> Self { Self::Primary(PrimaryValue::Str(v)) } }
-impl From<&str>   for Value { fn from(v: &str)   -> Self { Self::Primary(PrimaryValue::Str(v.to_string())) } }
+impl From<PrimaryValue> for Value {
+    fn from(p: PrimaryValue) -> Self {
+        Self::Primary(p)
+    }
+}
+impl From<TextFile> for Value {
+    fn from(t: TextFile) -> Self {
+        Self::Text(t)
+    }
+}
+impl From<Obj> for Value {
+    fn from(o: Obj) -> Self {
+        Self::Obj(o)
+    }
+}
+impl From<bool> for Value {
+    fn from(v: bool) -> Self {
+        Self::Primary(PrimaryValue::Bool(v))
+    }
+}
+impl From<i64> for Value {
+    fn from(v: i64) -> Self {
+        Self::Primary(PrimaryValue::Int(v))
+    }
+}
+impl From<f64> for Value {
+    fn from(v: f64) -> Self {
+        Self::Primary(PrimaryValue::Float(v))
+    }
+}
+impl From<String> for Value {
+    fn from(v: String) -> Self {
+        Self::Primary(PrimaryValue::Str(v))
+    }
+}
+impl From<&str> for Value {
+    fn from(v: &str) -> Self {
+        Self::Primary(PrimaryValue::Str(v.to_string()))
+    }
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -263,7 +354,7 @@ mod tests {
         let mut tf2 = TextFile::new("# Hello\nWorld".into());
         assert_eq!(tf2.len(), 13);
         assert!(!tf2.is_empty());
-        assert_eq!(tf2.mime(), "text/plain");  // default
+        assert_eq!(tf2.mime(), "text/plain"); // default
         tf2.metadata.insert("mime".into(), "text/markdown".into());
         assert_eq!(tf2.mime(), "text/markdown");
     }
@@ -290,10 +381,22 @@ mod tests {
 
     #[test]
     fn value_from_conversions() {
-        assert!(matches!(Value::from(true), Value::Primary(PrimaryValue::Bool(true))));
-        assert!(matches!(Value::from(42i64), Value::Primary(PrimaryValue::Int(42))));
-        assert!(matches!(Value::from("hi"), Value::Primary(PrimaryValue::Str(_))));
-        assert!(matches!(Value::from(TextFile::new("doc".into())), Value::Text(_)));
+        assert!(matches!(
+            Value::from(true),
+            Value::Primary(PrimaryValue::Bool(true))
+        ));
+        assert!(matches!(
+            Value::from(42i64),
+            Value::Primary(PrimaryValue::Int(42))
+        ));
+        assert!(matches!(
+            Value::from("hi"),
+            Value::Primary(PrimaryValue::Str(_))
+        ));
+        assert!(matches!(
+            Value::from(TextFile::new("doc".into())),
+            Value::Text(_)
+        ));
         assert!(matches!(Value::from(Obj::new(vec![])), Value::Obj(_)));
     }
 }

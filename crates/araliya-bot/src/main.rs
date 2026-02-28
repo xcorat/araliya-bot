@@ -13,14 +13,14 @@
 //!   9. Run comms subsystem (drives console until shutdown)
 //!  10. Cancel token + join supervisor
 
-mod core;
 mod bootstrap;
+mod core;
 mod llm;
-mod supervisor;
 mod subsystems;
+mod supervisor;
 
-pub use core::{config, error};
 pub use bootstrap::{identity, logger};
+pub use core::{config, error};
 
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -49,10 +49,10 @@ use subsystems::cron::CronSubsystem;
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
-use subsystems::management::ManagementSubsystem;
-use subsystems::management::ManagementInfo;
 #[cfg(feature = "subsystem-comms")]
 use subsystems::comms::CommsStatusHandler;
+use subsystems::management::ManagementInfo;
+use subsystems::management::ManagementSubsystem;
 
 #[tokio::main]
 async fn main() {
@@ -189,9 +189,10 @@ async fn run() -> Result<(), error::AppError> {
             output_per_million_usd: config.llm.openai.output_per_million_usd,
             cached_input_per_million_usd: config.llm.openai.cached_input_per_million_usd,
         };
-        let agents = AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
-            .with_llm_rates(rates)
-            .with_health_reporter(health_registry.reporter("agents"));
+        let agents =
+            AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
+                .with_llm_rates(rates)
+                .with_health_reporter(health_registry.reporter("agents"));
         #[cfg(feature = "plugin-docs")]
         agents.init_docs().await?;
         handlers.push(Box::new(agents));
@@ -233,12 +234,7 @@ async fn run() -> Result<(), error::AppError> {
         socket_path,
     );
 
-    print_startup_summary(
-        &config,
-        &identity,
-        args.interactive,
-        &configured_handlers,
-    );
+    print_startup_summary(&config, &identity, args.interactive, &configured_handlers);
 
     // Start comms channels as independent concurrent tasks.
     #[cfg(feature = "subsystem-comms")]
@@ -258,7 +254,7 @@ async fn run() -> Result<(), error::AppError> {
         comms.join().await?;
     }
 
-    // CHECK: We had exited after this if there are no comms active, removed that. 
+    // CHECK: We had exited after this if there are no comms active, removed that.
 
     // If comms exited due to EOF (not Ctrl-C), still signal everything to stop.
     shutdown.cancel();
@@ -273,7 +269,10 @@ async fn run() -> Result<(), error::AppError> {
         println!("\nBye :) ...");
         let _ = std::io::stdout().flush();
     }
-    let _ = { use std::io::Write as _; std::io::stderr().flush() };
+    let _ = {
+        use std::io::Write as _;
+        std::io::stderr().flush()
+    };
 
     Ok(())
 }
@@ -510,9 +509,15 @@ fn parse_cli_args() -> CliArgs {
                 println!("");
                 println!("Options:");
                 println!("  -h, --help                 Print help");
-                println!("  -i, --interactive          Run in interactive mode (enables PTY console)");
-                println!("  -f, --config <PATH>        Path to configuration file (default: config/default.toml)");
-                println!("      --log-file <PATH>      Write logs to file (append mode) instead of stderr");
+                println!(
+                    "  -i, --interactive          Run in interactive mode (enables PTY console)"
+                );
+                println!(
+                    "  -f, --config <PATH>        Path to configuration file (default: config/default.toml)"
+                );
+                println!(
+                    "      --log-file <PATH>      Write logs to file (append mode) instead of stderr"
+                );
                 println!("  -v, -vv, -vvv, -vvvv       Increase logging verbosity");
                 std::process::exit(0);
             }

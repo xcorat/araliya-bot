@@ -9,8 +9,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -96,7 +96,11 @@ fn parse_request_target(raw: &str) -> Result<String, String> {
     Ok(parts[1].to_string())
 }
 
-fn receive_auth_code(port: u16, expected_state: &str, expected_path: &str) -> Result<String, String> {
+fn receive_auth_code(
+    port: u16,
+    expected_state: &str,
+    expected_path: &str,
+) -> Result<String, String> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|e| format!("failed to bind callback server on 127.0.0.1:{port}: {e}"))?;
     println!("Listening callback at http://127.0.0.1:{port}{expected_path}");
@@ -115,7 +119,10 @@ fn receive_auth_code(port: u16, expected_state: &str, expected_path: &str) -> Re
             &mut stream,
             "<html><body><h1>Wrong callback path</h1><p>Return to terminal.</p></body></html>",
         );
-        return Err(format!("received callback on unexpected path: {}", parsed.path()));
+        return Err(format!(
+            "received callback on unexpected path: {}",
+            parsed.path()
+        ));
     }
 
     let mut code: Option<String> = None;
@@ -225,7 +232,8 @@ async fn refresh_token(
             return Err(format!(
                 "refresh failed: {} ({})",
                 err.error,
-                err.error_description.unwrap_or_else(|| "no description".to_string())
+                err.error_description
+                    .unwrap_or_else(|| "no description".to_string())
             ));
         }
         return Err(format!("refresh failed: {body}"));
@@ -254,8 +262,8 @@ fn save_token_cache(cache: &TokenCache) -> Result<(), String> {
 
 fn code_challenge_s256(verifier: &str) -> String {
     let digest = Sha256::digest(verifier.as_bytes());
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     URL_SAFE_NO_PAD.encode(digest)
 }
 
@@ -279,7 +287,12 @@ fn parse_loopback_redirect_uri(uri: &str) -> Result<(u16, String), String> {
     Ok((port, path))
 }
 
-fn build_auth_url(client_id: &str, redirect_uri: &str, state: &str, code_challenge: &str) -> Result<String, String> {
+fn build_auth_url(
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+    code_challenge: &str,
+) -> Result<String, String> {
     let mut url = Url::parse(AUTH_URL).map_err(|e| format!("invalid auth URL: {e}"))?;
     url.query_pairs_mut()
         .append_pair("client_id", client_id)
@@ -392,7 +405,11 @@ fn header_value(headers: &[Value], key: &str) -> String {
     String::new()
 }
 
-async fn read_one_email(client: &reqwest::Client, access_token: &str, query: &str) -> Result<(), String> {
+async fn read_one_email(
+    client: &reqwest::Client,
+    access_token: &str,
+    query: &str,
+) -> Result<(), String> {
     let list = client
         .get(format!("{GMAIL_BASE}/messages"))
         .bearer_auth(access_token)
@@ -402,7 +419,10 @@ async fn read_one_email(client: &reqwest::Client, access_token: &str, query: &st
         .map_err(|e| format!("gmail list request failed: {e}"))?;
 
     if !list.status().is_success() {
-        let body = list.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = list
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("gmail list failed: {body}"));
     }
 
@@ -438,7 +458,10 @@ async fn read_one_email(client: &reqwest::Client, access_token: &str, query: &st
         .map_err(|e| format!("gmail get request failed: {e}"))?;
 
     if !get.status().is_success() {
-        let body = get.text().await.unwrap_or_else(|_| "<unreadable body>".to_string());
+        let body = get
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable body>".to_string());
         return Err(format!("gmail get failed: {body}"));
     }
 
@@ -455,7 +478,10 @@ async fn read_one_email(client: &reqwest::Client, access_token: &str, query: &st
         .unwrap_or_default();
 
     println!("\n=== Read One Message ===");
-    println!("id: {}", msg.get("id").and_then(Value::as_str).unwrap_or(""));
+    println!(
+        "id: {}",
+        msg.get("id").and_then(Value::as_str).unwrap_or("")
+    );
     println!(
         "threadId: {}",
         msg.get("threadId").and_then(Value::as_str).unwrap_or("")

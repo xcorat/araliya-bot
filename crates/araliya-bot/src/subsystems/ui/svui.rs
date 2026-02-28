@@ -62,9 +62,7 @@ pub struct SvuiBackend {
 
 impl SvuiBackend {
     pub fn new(static_dir: Option<String>, base_path: Option<String>) -> Self {
-        let resolved = static_dir
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir());
+        let resolved = static_dir.map(PathBuf::from).filter(|p| p.is_dir());
 
         if let Some(ref dir) = resolved {
             tracing::info!(dir = %dir.display(), "svui: serving static files from disk");
@@ -77,7 +75,10 @@ impl SvuiBackend {
             .trim_end_matches('/')
             .to_owned();
 
-        Self { static_dir: resolved, base_path: base }
+        Self {
+            static_dir: resolved,
+            base_path: base,
+        }
     }
 
     /// Strip the base path prefix from the request path.
@@ -134,7 +135,11 @@ impl UiServe for SvuiBackend {
 /// - `/` maps to `index.html`.
 /// - If the exact file isn't found, falls back to `index.html` (SPA routing).
 fn serve_static(root: &Path, path: &str) -> ServeResponse {
-    let relative = if path == "/" { "index.html" } else { path.trim_start_matches('/') };
+    let relative = if path == "/" {
+        "index.html"
+    } else {
+        path.trim_start_matches('/')
+    };
     let file_path = root.join(relative);
 
     // Try exact file first.

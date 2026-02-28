@@ -13,9 +13,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use super::state::{CommsEvent, CommsState};
 use crate::error::AppError;
 use crate::subsystems::runtime::{Component, ComponentFuture};
-use super::state::{CommsEvent, CommsState};
 
 // ── PtyChannel ───────────────────────────────────────────────────────────────
 
@@ -29,7 +29,10 @@ pub struct PtyChannel {
 
 impl PtyChannel {
     pub fn new(channel_id: impl Into<String>, state: Arc<CommsState>) -> Self {
-        Self { channel_id: channel_id.into(), state }
+        Self {
+            channel_id: channel_id.into(),
+            state,
+        }
     }
 }
 

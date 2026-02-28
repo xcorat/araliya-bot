@@ -6,13 +6,13 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tracing::{info, warn};
 
-use crate::supervisor::bus::{BusPayload, BusResult};
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
 use crate::subsystems::agents::core::prompt::PromptBuilder;
+use crate::supervisor::bus::{BusPayload, BusResult};
 
 use crate::subsystems::memory::handle::SessionHandle;
 
@@ -33,7 +33,9 @@ impl SessionChatPlugin {
 }
 
 impl Agent for SessionChatPlugin {
-    fn id(&self) -> &str { "chat" }
+    fn id(&self) -> &str {
+        "chat"
+    }
 
     fn handle(
         &self,
@@ -52,7 +54,8 @@ impl Agent for SessionChatPlugin {
                 &channel_id,
                 &content,
                 session_id.as_deref(),
-            ).await;
+            )
+            .await;
             let _ = reply_tx.send(result);
         });
     }
@@ -129,10 +132,13 @@ async fn handle_with_memory(
     };
 
     // Build system preamble (identity layers) and user message separately.
-    let system = crate::subsystems::agents::core::prompt::preamble("config/prompts", &state.enabled_tools).build();
+    let system =
+        crate::subsystems::agents::core::prompt::preamble("config/prompts", &state.enabled_tools)
+            .build();
 
-    let body = std::fs::read_to_string("config/prompts/chat_context.txt")
-        .unwrap_or_else(|_| "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string());
+    let body = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
+        "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
+    });
     let prompt = PromptBuilder::new("config/prompts")
         .append(body)
         .var("history", &context)
@@ -140,10 +146,17 @@ async fn handle_with_memory(
         .build();
 
     // Get LLM completion with identity in system role.
-    let result = state.complete_via_llm_with_system(channel_id, &prompt, Some(&system)).await;
+    let result = state
+        .complete_via_llm_with_system(channel_id, &prompt, Some(&system))
+        .await;
 
     // Record assistant reply in transcript + accumulate token spend.
-    if let Ok(BusPayload::CommsMessage { content: ref reply, ref usage, .. }) = result {
+    if let Ok(BusPayload::CommsMessage {
+        content: ref reply,
+        ref usage,
+        ..
+    }) = result
+    {
         if let Err(e) = handle.transcript_append("assistant", reply).await {
             warn!("session_chat: transcript_append(assistant) failed: {e}");
         }
@@ -155,7 +168,12 @@ async fn handle_with_memory(
     }
 
     match result {
-        Ok(BusPayload::CommsMessage { channel_id, content, usage, .. }) => Ok(BusPayload::CommsMessage {
+        Ok(BusPayload::CommsMessage {
+            channel_id,
+            content,
+            usage,
+            ..
+        }) => Ok(BusPayload::CommsMessage {
             channel_id,
             content,
             session_id: Some(handle.session_id.clone()),
@@ -180,10 +198,18 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
 
     let sessions_root = agent_store.agent_sessions_dir();
     let index_path = agent_store.agent_sessions_index();
-    memory.create_session_in(&sessions_root, &index_path, &default_store_types, Some("chat"))
+    memory.create_session_in(
+        &sessions_root,
+        &index_path,
+        &default_store_types,
+        Some("chat"),
+    )
 }
 
-fn load_session(state: &AgentsState, session_id: &str) -> Result<SessionHandle, crate::error::AppError> {
+fn load_session(
+    state: &AgentsState,
+    session_id: &str,
+) -> Result<SessionHandle, crate::error::AppError> {
     let memory = &state.memory;
     let agent_store = state.open_agent_store("chat")?;
     let sessions_root = agent_store.agent_sessions_dir();

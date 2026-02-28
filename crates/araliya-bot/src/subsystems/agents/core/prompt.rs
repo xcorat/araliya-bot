@@ -88,9 +88,8 @@ impl PromptBuilder {
         self.vars.insert("tools".to_string(), tools_str.clone());
 
         let path = self.prompts_dir.join("tools.ms");
-        let text = fs::read_to_string(&path).unwrap_or_else(|_| {
-            "You have access to the following tools: {{tools}}".to_string()
-        });
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|_| "You have access to the following tools: {{tools}}".to_string());
         let rendered = text.trim().replace("{{tools}}", &tools_str);
         if !rendered.is_empty() {
             self.parts.push(rendered);
@@ -159,8 +158,7 @@ mod tests {
     use super::*;
 
     fn prompts_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../config/prompts")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/prompts")
     }
 
     #[test]
@@ -199,9 +197,7 @@ mod tests {
     #[test]
     fn builder_with_tools_rendered() {
         let tools = vec!["newsmail_aggregator".to_string(), "gmail".to_string()];
-        let result = PromptBuilder::new(prompts_dir())
-            .with_tools(&tools)
-            .build();
+        let result = PromptBuilder::new(prompts_dir()).with_tools(&tools).build();
         assert!(result.contains("newsmail_aggregator"));
         assert!(result.contains("gmail"));
         assert!(!result.contains("{{tools}}"));
@@ -209,9 +205,7 @@ mod tests {
 
     #[test]
     fn builder_with_empty_tools_renders_none() {
-        let result = PromptBuilder::new(prompts_dir())
-            .with_tools(&[])
-            .build();
+        let result = PromptBuilder::new(prompts_dir()).with_tools(&[]).build();
         assert!(result.contains("none"));
     }
 

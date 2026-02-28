@@ -17,13 +17,13 @@
 //! ```
 
 pub mod collections;
+#[cfg(feature = "idocstore")]
+mod docstore_manager;
 pub mod handle;
 pub mod rw;
 pub mod store;
 pub mod stores;
 pub mod types;
-#[cfg(feature = "idocstore")]
-mod docstore_manager;
 
 // Re-export the core type vocabulary so callers can write
 // `memory::PrimaryValue` etc. without spelling out the sub-module.
@@ -125,8 +125,9 @@ impl MemorySystem {
         let memory_root = identity_dir.join("memory");
         let sessions_dir = memory_root.join("sessions");
 
-        fs::create_dir_all(&sessions_dir)
-            .map_err(|e| AppError::Memory(format!("cannot create {}: {e}", sessions_dir.display())))?;
+        fs::create_dir_all(&sessions_dir).map_err(|e| {
+            AppError::Memory(format!("cannot create {}: {e}", sessions_dir.display()))
+        })?;
 
         // Ensure index file exists.
         let index_path = memory_root.join("sessions.json");
@@ -134,8 +135,9 @@ impl MemorySystem {
             let idx = SessionIndex::default();
             let data = serde_json::to_string_pretty(&idx)
                 .map_err(|e| AppError::Memory(format!("serialise index: {e}")))?;
-            fs::write(&index_path, data)
-                .map_err(|e| AppError::Memory(format!("cannot write {}: {e}", index_path.display())))?;
+            fs::write(&index_path, data).map_err(|e| {
+                AppError::Memory(format!("cannot write {}: {e}", index_path.display()))
+            })?;
         }
 
         // Register built-in stores.
@@ -146,7 +148,10 @@ impl MemorySystem {
         ));
         stores.insert(basic.store_type().to_string(), basic);
         let tmp = Arc::new(stores::tmp::TmpStore::new());
-        stores.insert(tmp.store_type().to_string(), tmp.clone() as Arc<dyn SessionStore>);
+        stores.insert(
+            tmp.store_type().to_string(),
+            tmp.clone() as Arc<dyn SessionStore>,
+        );
 
         info!(
             memory_root = %memory_root.display(),
@@ -183,7 +188,9 @@ impl MemorySystem {
     #[cfg(feature = "idocstore")]
     pub fn start_docstore_manager(&mut self, shutdown: tokio_util::sync::CancellationToken) {
         let agent_dirs = self.memory_root.join(AGENTS_DIRNAME);
-        self.docstore_manager = Some(docstore_manager::DocstoreManager::spawn(agent_dirs, shutdown));
+        self.docstore_manager = Some(docstore_manager::DocstoreManager::spawn(
+            agent_dirs, shutdown,
+        ));
         info!("docstore manager initialised");
     }
 
@@ -208,9 +215,10 @@ impl MemorySystem {
         // Validate that all requested stores are registered.
         let mut session_stores = Vec::new();
         for &st in store_types {
-            let store = self.stores.get(st).ok_or_else(|| {
-                AppError::Memory(format!("unknown store type: {st}"))
-            })?;
+            let store = self
+                .stores
+                .get(st)
+                .ok_or_else(|| AppError::Memory(format!("unknown store type: {st}")))?;
             session_stores.push(store.clone());
         }
 
@@ -221,11 +229,12 @@ impl MemorySystem {
         // Skip disk I/O for purely in-memory sessions.
         let all_tmp = store_types.iter().all(|&s| s == "tmp");
         if !all_tmp {
-            fs::create_dir_all(&session_dir)
-                .map_err(|e| AppError::Memory(format!(
+            fs::create_dir_all(&session_dir).map_err(|e| {
+                AppError::Memory(format!(
                     "cannot create session dir {}: {e}",
                     session_dir.display()
-                )))?;
+                ))
+            })?;
         }
 
         // Initialise each store's files (no-op for TmpStore).
@@ -247,9 +256,7 @@ impl MemorySystem {
         })?;
 
         // Attach the typed TmpStore reference when the session uses it.
-        let tmp_store = store_types
-            .contains(&"tmp")
-            .then(|| self.tmp_store.clone());
+        let tmp_store = store_types.contains(&"tmp").then(|| self.tmp_store.clone());
 
         info!(
             session_id = %session_id,
@@ -258,7 +265,12 @@ impl MemorySystem {
             "session created"
         );
 
-        Ok(SessionHandle::new(session_id, session_dir, session_stores, tmp_store))
+        Ok(SessionHandle::new(
+            session_id,
+            session_dir,
+            session_stores,
+            tmp_store,
+        ))
     }
 
     /// Load an existing session by ID.
@@ -271,9 +283,10 @@ impl MemorySystem {
     ) -> Result<SessionHandle, AppError> {
         // Read index first — the session must be registered regardless of type.
         let idx = self.read_index()?;
-        let info = idx.sessions.get(session_id).ok_or_else(|| {
-            AppError::Memory(format!("session not found: {session_id}"))
-        })?;
+        let info = idx
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::Memory(format!("session not found: {session_id}")))?;
 
         let session_dir = self.sessions_dir.join(session_id);
 
@@ -354,9 +367,10 @@ impl MemorySystem {
     ) -> Result<SessionHandle, AppError> {
         let mut session_stores = Vec::new();
         for &st in store_types {
-            let store = self.stores.get(st).ok_or_else(|| {
-                AppError::Memory(format!("unknown store type: {st}"))
-            })?;
+            let store = self
+                .stores
+                .get(st)
+                .ok_or_else(|| AppError::Memory(format!("unknown store type: {st}")))?;
             session_stores.push(store.clone());
         }
 
@@ -365,11 +379,12 @@ impl MemorySystem {
 
         let all_tmp = store_types.iter().all(|&s| s == "tmp");
         if !all_tmp {
-            fs::create_dir_all(&session_dir)
-                .map_err(|e| AppError::Memory(format!(
+            fs::create_dir_all(&session_dir).map_err(|e| {
+                AppError::Memory(format!(
                     "cannot create session dir {}: {e}",
                     session_dir.display()
-                )))?;
+                ))
+            })?;
         }
 
         for store in &session_stores {
@@ -388,9 +403,7 @@ impl MemorySystem {
             idx.sessions.insert(session_id.clone(), info);
         })?;
 
-        let tmp_store = store_types
-            .contains(&"tmp")
-            .then(|| self.tmp_store.clone());
+        let tmp_store = store_types.contains(&"tmp").then(|| self.tmp_store.clone());
 
         info!(
             session_id = %session_id,
@@ -399,7 +412,12 @@ impl MemorySystem {
             "agent-scoped session created"
         );
 
-        Ok(SessionHandle::new(session_id, session_dir, session_stores, tmp_store))
+        Ok(SessionHandle::new(
+            session_id,
+            session_dir,
+            session_stores,
+            tmp_store,
+        ))
     }
 
     /// Load an existing session from `sessions_root`, indexed at `index_path`.
@@ -411,9 +429,10 @@ impl MemorySystem {
         agent_id: Option<&str>,
     ) -> Result<SessionHandle, AppError> {
         let idx = Self::read_index_at(index_path)?;
-        let info = idx.sessions.get(session_id).ok_or_else(|| {
-            AppError::Memory(format!("session not found: {session_id}"))
-        })?;
+        let info = idx
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| AppError::Memory(format!("session not found: {session_id}")))?;
 
         let session_dir = sessions_root.join(session_id);
         let all_tmp = info.store_types.iter().all(|s| s == "tmp");
@@ -522,16 +541,37 @@ fn now_iso8601() -> String {
 
     let mut yr = 1970u64;
     loop {
-        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) { 366 } else { 365 };
-        if days < ydays { break; }
+        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if days < ydays {
+            break;
+        }
         days -= ydays;
         yr += 1;
     }
     let leap = yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0);
-    let mdays: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mdays: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut mon = 1u64;
     for &md in &mdays {
-        if days < md { break; }
+        if days < md {
+            break;
+        }
         days -= md;
         mon += 1;
     }
@@ -553,7 +593,9 @@ mod tests {
     #[test]
     fn create_session_creates_dir_and_files() {
         let (_dir, mem) = setup();
-        let handle = mem.create_session(&["basic_session"], Some("chat")).unwrap();
+        let handle = mem
+            .create_session(&["basic_session"], Some("chat"))
+            .unwrap();
 
         let session_dir = mem.sessions_dir.join(&handle.session_id);
         assert!(session_dir.exists());
@@ -564,7 +606,9 @@ mod tests {
     #[test]
     fn create_session_updates_index() {
         let (_dir, mem) = setup();
-        let handle = mem.create_session(&["basic_session"], Some("chat")).unwrap();
+        let handle = mem
+            .create_session(&["basic_session"], Some("chat"))
+            .unwrap();
 
         let sessions = mem.list_sessions().unwrap();
         assert_eq!(sessions.len(), 1);
@@ -575,7 +619,9 @@ mod tests {
     #[test]
     fn load_session_works() {
         let (_dir, mem) = setup();
-        let handle = mem.create_session(&["basic_session"], Some("chat")).unwrap();
+        let handle = mem
+            .create_session(&["basic_session"], Some("chat"))
+            .unwrap();
         let sid = handle.session_id.clone();
 
         let loaded = mem.load_session(&sid, Some("observer")).unwrap();
@@ -595,7 +641,12 @@ mod tests {
         let (_dir, mem) = setup();
         let result = mem.create_session(&["nonexistent_store"], None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown store type"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown store type")
+        );
     }
 
     #[test]
@@ -673,6 +724,9 @@ mod tests {
         ts.set_doc(d).unwrap();
         // A second call gives another independent store.
         let ts2 = mem.create_tmp_store();
-        assert!(ts2.doc().unwrap().is_empty(), "new standalone store should be empty");
+        assert!(
+            ts2.doc().unwrap().is_empty(),
+            "new standalone store should be empty"
+        );
     }
 }

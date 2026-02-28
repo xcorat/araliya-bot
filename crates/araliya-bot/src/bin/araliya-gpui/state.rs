@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::{ApiClient, SessionInfo, SessionTranscriptMessage, HealthResponse, UsageInfo};
+use crate::api::{ApiClient, HealthResponse, SessionInfo, SessionTranscriptMessage, UsageInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivitySection {

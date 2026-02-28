@@ -11,8 +11,7 @@ use tracing::warn;
 use crate::error::AppError;
 
 use super::docstore_core::{
-    DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn,
-    sha256_hex,
+    DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn, sha256_hex,
 };
 
 // Re-export shared types so external callers see them under this module path
@@ -34,7 +33,10 @@ impl IDocStore {
         let dir = agent_identity_dir.join(DOCSTORE_DIR);
         let docs_dir = dir.join(DOCS_DIR);
         fs::create_dir_all(&docs_dir).map_err(|e| {
-            AppError::Memory(format!("docstore: cannot create {}: {e}", docs_dir.display()))
+            AppError::Memory(format!(
+                "docstore: cannot create {}: {e}",
+                docs_dir.display()
+            ))
         })?;
 
         let db_path = dir.join(DB_FILENAME);
@@ -98,7 +100,10 @@ impl IDocStore {
         }
 
         fs::write(&content_path, doc.content).map_err(|e| {
-            AppError::Memory(format!("docstore: write document content for {}: {e}", doc.id))
+            AppError::Memory(format!(
+                "docstore: write document content for {}: {e}",
+                doc.id
+            ))
         })?;
 
         Ok(doc.id)
@@ -170,7 +175,9 @@ impl IDocStore {
         let mut docs = Vec::new();
         for row in rows {
             docs.push(
-                row.map_err(|e| AppError::Memory(format!("docstore: map list_documents row: {e}")))?,
+                row.map_err(|e| {
+                    AppError::Memory(format!("docstore: map list_documents row: {e}"))
+                })?,
             );
         }
         Ok(docs)
@@ -185,8 +192,11 @@ impl IDocStore {
         tx.execute("DELETE FROM chunks WHERE doc_id = ?1", params![doc_id])
             .map_err(|e| AppError::Memory(format!("docstore: delete chunks for {doc_id}: {e}")))?;
 
-        tx.execute("DELETE FROM doc_metadata WHERE doc_id = ?1", params![doc_id])
-            .map_err(|e| AppError::Memory(format!("docstore: delete metadata for {doc_id}: {e}")))?;
+        tx.execute(
+            "DELETE FROM doc_metadata WHERE doc_id = ?1",
+            params![doc_id],
+        )
+        .map_err(|e| AppError::Memory(format!("docstore: delete metadata for {doc_id}: {e}")))?;
 
         tx.commit()
             .map_err(|e| AppError::Memory(format!("docstore: commit delete tx: {e}")))?;
@@ -202,7 +212,9 @@ impl IDocStore {
 
     pub fn chunk_document(&self, doc_id: &str, chunk_size: usize) -> Result<Vec<Chunk>, AppError> {
         if chunk_size == 0 {
-            return Err(AppError::Memory("docstore: chunk_size must be > 0".to_string()));
+            return Err(AppError::Memory(
+                "docstore: chunk_size must be > 0".to_string(),
+            ));
         }
 
         let content = fs::read_to_string(self.doc_content_path(doc_id)).map_err(|e| {
@@ -243,13 +255,16 @@ impl IDocStore {
         for doc_id in &doc_ids {
             tx.execute("DELETE FROM chunks WHERE doc_id = ?1", params![doc_id])
                 .map_err(|e| {
-                    AppError::Memory(format!("docstore: clear chunks for {doc_id} before reindex: {e}"))
+                    AppError::Memory(format!(
+                        "docstore: clear chunks for {doc_id} before reindex: {e}"
+                    ))
                 })?;
         }
 
         for chunk in chunks {
-            let metadata_json = serde_json::to_string(&chunk.metadata)
-                .map_err(|e| AppError::Memory(format!("docstore: serialize chunk metadata: {e}")))?;
+            let metadata_json = serde_json::to_string(&chunk.metadata).map_err(|e| {
+                AppError::Memory(format!("docstore: serialize chunk metadata: {e}"))
+            })?;
             tx.execute(
                 "INSERT INTO chunks (id, doc_id, text, position, metadata) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![chunk.id, chunk.doc_id, chunk.text, chunk.position as i64, metadata_json],
@@ -346,9 +361,8 @@ impl IDocStore {
 
         let mut results = Vec::new();
         for row in rows {
-            results.push(
-                row.map_err(|e| AppError::Memory(format!("docstore: map search row: {e}")))?,
-            );
+            results
+                .push(row.map_err(|e| AppError::Memory(format!("docstore: map search row: {e}")))?);
         }
         Ok(results)
     }
@@ -503,7 +517,9 @@ mod tests {
         let docs = store.list_documents().expect("list docs");
         assert!(docs.is_empty());
 
-        let results = store.search_by_text("delete", 5).expect("search after delete");
+        let results = store
+            .search_by_text("delete", 5)
+            .expect("search after delete");
         assert!(results.is_empty());
     }
 }

@@ -18,11 +18,11 @@
 //! [`start`] is synchronous — it returns a [`SubsystemHandle`] as soon as
 //! the tasks are spawned.  The caller decides when (or whether) to await it.
 
-mod state;
-pub mod pty;
-pub mod http;
 #[cfg(feature = "channel-axum")]
 pub mod axum_channel;
+pub mod http;
+pub mod pty;
+mod state;
 #[cfg(feature = "channel-telegram")]
 pub mod telegram;
 
@@ -38,10 +38,10 @@ use tracing::{debug, info};
 use crate::subsystems::ui::UiServeHandle;
 
 use crate::config::Config;
+use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
-use crate::subsystems::runtime::{Component, SubsystemHandle, spawn_components};
 
 // ── CommsStatusHandler ───────────────────────────────────────────────────────
 
@@ -83,7 +83,9 @@ impl BusHandler for CommsStatusHandler {
     ) {
         if method == "comms/status" {
             let resp = ComponentStatusResponse::running("comms");
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: resp.to_json(),
+            }));
             return;
         }
 
@@ -99,14 +101,17 @@ impl BusHandler for CommsStatusHandler {
                 "state": "on",
                 "channels": channel_ids,
             });
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: data.to_string(),
+            }));
             return;
         }
 
         // comms/{channel_id}/status
-        if let Some(channel_id) = method.strip_prefix("comms/").and_then(|rest| {
-            rest.strip_suffix("/status")
-        }) {
+        if let Some(channel_id) = method
+            .strip_prefix("comms/")
+            .and_then(|rest| rest.strip_suffix("/status"))
+        {
             let exists = self
                 .comms_info
                 .get()
@@ -117,7 +122,9 @@ impl BusHandler for CommsStatusHandler {
             } else {
                 ComponentStatusResponse::error(channel_id, "not found")
             };
-            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: resp.to_json(),
+            }));
             return;
         }
 
@@ -168,7 +175,9 @@ pub fn start(
             info!("loading pty channel");
             components.push(Box::new(pty::PtyChannel::new("pty0", state.clone())));
         } else if pty_requested && stdio_managed {
-            info!("pty channel disabled: stdio management adapter is active (virtual /chat route enabled)");
+            info!(
+                "pty channel disabled: stdio management adapter is active (virtual /chat route enabled)"
+            );
         }
     }
 
@@ -176,7 +185,10 @@ pub fn start(
     {
         if config.comms_telegram_should_load() {
             info!("loading telegram channel");
-            components.push(Box::new(telegram::TelegramChannel::new("telegram0", state.clone())));
+            components.push(Box::new(telegram::TelegramChannel::new(
+                "telegram0",
+                state.clone(),
+            )));
         }
     }
 

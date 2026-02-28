@@ -7,7 +7,11 @@ use crate::llm::{LlmResponse, ProviderError};
 pub struct DummyProvider;
 
 impl DummyProvider {
-    pub async fn complete(&self, content: &str, _system: Option<&str>) -> Result<LlmResponse, ProviderError> {
+    pub async fn complete(
+        &self,
+        content: &str,
+        _system: Option<&str>,
+    ) -> Result<LlmResponse, ProviderError> {
         Ok(LlmResponse {
             text: format!("[echo] {content}"),
             usage: None,
@@ -22,7 +26,10 @@ mod tests {
     #[tokio::test]
     async fn complete_prefixes_echo() {
         let p = DummyProvider;
-        assert_eq!(p.complete("hello", None).await.unwrap().text, "[echo] hello");
+        assert_eq!(
+            p.complete("hello", None).await.unwrap().text,
+            "[echo] hello"
+        );
     }
 
     #[tokio::test]

@@ -22,8 +22,8 @@
 //! runtime because the event type is subsystem-specific; subsystems wire it
 //! up in their own `start()` function before calling [`spawn_components`].
 
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -34,8 +34,7 @@ use crate::error::AppError;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /// A boxed, owned future returned by [`Component::run`].
-pub type ComponentFuture =
-    Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>>;
+pub type ComponentFuture = Pin<Box<dyn Future<Output = Result<(), AppError>> + Send + 'static>>;
 
 /// A self-contained, concurrently-runnable unit owned by a subsystem.
 ///
@@ -120,9 +119,8 @@ pub fn spawn_components(
                 Err(e) => {
                     error!("component panicked: {e}");
                     shutdown.cancel();
-                    first_err.get_or_insert_with(|| {
-                        AppError::Comms(format!("component panicked: {e}"))
-                    });
+                    first_err
+                        .get_or_insert_with(|| AppError::Comms(format!("component panicked: {e}")));
                 }
                 // Component returned an error.
                 Ok(Err(e)) => {

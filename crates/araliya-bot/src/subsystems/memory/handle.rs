@@ -9,12 +9,12 @@ use std::sync::Arc;
 use crate::error::AppError;
 use crate::llm::{LlmUsage, ModelRates};
 
+use super::SessionSpend;
 use super::collections::{Block, Doc};
 pub use super::rw::SessionFileInfo;
 use super::rw::SessionRw;
 use super::store::{SessionStore, TranscriptEntry};
 use super::stores::tmp::TmpStore;
-use super::SessionSpend;
 
 #[derive(Clone)]
 pub struct SessionHandle {
@@ -100,11 +100,9 @@ impl SessionHandle {
         let session_dir = self.rw.session_dir().to_path_buf();
         let usage = usage.clone();
         let rates = rates.clone();
-        tokio::task::spawn_blocking(move || {
-            accumulate_spend_blocking(&session_dir, &usage, &rates)
-        })
-        .await
-        .map_err(|e| AppError::Memory(format!("spend spawn_blocking: {e}")))?
+        tokio::task::spawn_blocking(move || accumulate_spend_blocking(&session_dir, &usage, &rates))
+            .await
+            .map_err(|e| AppError::Memory(format!("spend spawn_blocking: {e}")))?
     }
 
     /// Read aggregate spend totals from `spend.json` for this session.
@@ -191,7 +189,20 @@ fn epoch_to_ymd_hms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
         year += 1;
     }
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days_in_month = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let days_in_month = [
+        31u64,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut month = 0u32;
     for &dim in &days_in_month {
         if remaining < dim {
@@ -200,7 +211,14 @@ fn epoch_to_ymd_hms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
         remaining -= dim;
         month += 1;
     }
-    (year, month + 1, (remaining + 1) as u32, h as u32, m as u32, s as u32)
+    (
+        year,
+        month + 1,
+        (remaining + 1) as u32,
+        h as u32,
+        m as u32,
+        s as u32,
+    )
 }
 
 impl std::fmt::Debug for SessionHandle {

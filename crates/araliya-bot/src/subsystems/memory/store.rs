@@ -91,10 +91,7 @@ pub trait SessionStore: Send + Sync {
     ///
     /// Default implementation returns an error; override in stores that
     /// have a doc-backed k-v layer (e.g. `BasicSessionStore`).
-    fn read_kv_doc(
-        &self,
-        _session_dir: &Path,
-    ) -> Result<super::collections::Doc, AppError> {
+    fn read_kv_doc(&self, _session_dir: &Path) -> Result<super::collections::Doc, AppError> {
         Err(AppError::Memory(format!(
             "store '{}' does not support read_kv_doc",
             self.store_type()
@@ -147,7 +144,9 @@ pub struct Store {
 impl Store {
     /// Create an empty store with no collections.
     pub fn new() -> Self {
-        Self { collections: RwLock::new(HashMap::new()) }
+        Self {
+            collections: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Retrieve a *clone* of the collection stored under `label`, or `None`.
@@ -159,7 +158,8 @@ impl Store {
         &self,
         label: &str,
     ) -> Result<Option<super::collections::Collection>, AppError> {
-        let guard = self.collections
+        let guard = self
+            .collections
             .read()
             .map_err(|_| AppError::Memory("Store RwLock poisoned (read)".into()))?;
         Ok(guard.get(label).cloned())
@@ -171,7 +171,8 @@ impl Store {
         label: String,
         collection: super::collections::Collection,
     ) -> Result<(), AppError> {
-        let mut guard = self.collections
+        let mut guard = self
+            .collections
             .write()
             .map_err(|_| AppError::Memory("Store RwLock poisoned (write)".into()))?;
         guard.insert(label, collection);
@@ -181,7 +182,8 @@ impl Store {
     /// Remove the collection stored under `label`.  Returns `true` if it
     /// was present.
     pub fn remove_collection(&self, label: &str) -> Result<bool, AppError> {
-        let mut guard = self.collections
+        let mut guard = self
+            .collections
             .write()
             .map_err(|_| AppError::Memory("Store RwLock poisoned (write)".into()))?;
         Ok(guard.remove(label).is_some())
@@ -189,7 +191,8 @@ impl Store {
 
     /// All labels present in the store, in arbitrary order.
     pub fn labels(&self) -> Result<Vec<String>, AppError> {
-        let guard = self.collections
+        let guard = self
+            .collections
             .read()
             .map_err(|_| AppError::Memory("Store RwLock poisoned (read)".into()))?;
         Ok(guard.keys().cloned().collect())
@@ -197,7 +200,8 @@ impl Store {
 
     /// Number of collections currently in the store.
     pub fn len(&self) -> Result<usize, AppError> {
-        let guard = self.collections
+        let guard = self
+            .collections
             .read()
             .map_err(|_| AppError::Memory("Store RwLock poisoned (read)".into()))?;
         Ok(guard.len())
@@ -210,23 +214,27 @@ impl Store {
 }
 
 impl Default for Store {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::collections::{Collection, Doc, Block};
+    use super::super::collections::{Block, Collection, Doc};
     use super::super::types::PrimaryValue;
+    use super::*;
 
     #[test]
     fn insert_and_get() {
         let store = Store::new();
         let mut doc = Doc::default();
         doc.set("k".into(), PrimaryValue::Int(1));
-        store.insert_collection("meta".into(), Collection::Doc(doc)).unwrap();
+        store
+            .insert_collection("meta".into(), Collection::Doc(doc))
+            .unwrap();
 
         let c = store.get_collection("meta").unwrap().unwrap();
         assert_eq!(c.as_doc().unwrap().get("k"), Some(&PrimaryValue::Int(1)));
@@ -241,7 +249,9 @@ mod tests {
     #[test]
     fn remove_returns_presence() {
         let store = Store::new();
-        store.insert_collection("x".into(), Collection::Block(Block::default())).unwrap();
+        store
+            .insert_collection("x".into(), Collection::Block(Block::default()))
+            .unwrap();
         assert!(store.remove_collection("x").unwrap());
         assert!(!store.remove_collection("x").unwrap());
     }
@@ -250,8 +260,12 @@ mod tests {
     fn labels_and_len() {
         let store = Store::new();
         assert!(store.is_empty().unwrap());
-        store.insert_collection("a".into(), Collection::Doc(Doc::default())).unwrap();
-        store.insert_collection("b".into(), Collection::Block(Block::default())).unwrap();
+        store
+            .insert_collection("a".into(), Collection::Doc(Doc::default()))
+            .unwrap();
+        store
+            .insert_collection("b".into(), Collection::Block(Block::default()))
+            .unwrap();
         assert_eq!(store.len().unwrap(), 2);
         let mut lbls = store.labels().unwrap();
         lbls.sort();
@@ -261,10 +275,17 @@ mod tests {
     #[test]
     fn overwrite_collection() {
         let store = Store::new();
-        store.insert_collection("c".into(), Collection::Doc(Doc::default())).unwrap();
-        store.insert_collection("c".into(), Collection::Block(Block::default())).unwrap();
+        store
+            .insert_collection("c".into(), Collection::Doc(Doc::default()))
+            .unwrap();
+        store
+            .insert_collection("c".into(), Collection::Block(Block::default()))
+            .unwrap();
         let c = store.get_collection("c").unwrap().unwrap();
-        assert!(c.as_block().is_some(), "should have been overwritten with Block");
+        assert!(
+            c.as_block().is_some(),
+            "should have been overwritten with Block"
+        );
     }
 
     #[test]
@@ -273,7 +294,9 @@ mod tests {
         use std::thread;
 
         let store = Arc::new(Store::new());
-        store.insert_collection("shared".into(), Collection::Doc(Doc::default())).unwrap();
+        store
+            .insert_collection("shared".into(), Collection::Doc(Doc::default()))
+            .unwrap();
 
         let handles: Vec<_> = (0..8)
             .map(|_| {
@@ -285,6 +308,8 @@ mod tests {
             })
             .collect();
 
-        for h in handles { h.join().unwrap(); }
+        for h in handles {
+            h.join().unwrap();
+        }
     }
 }

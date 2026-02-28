@@ -5,8 +5,8 @@
 use std::path::Path;
 
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
 use crate::error::AppError;
 
@@ -22,12 +22,11 @@ pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<
     let filter = if prefer_level {
         match EnvFilter::try_new(level) {
             Ok(filter) => filter,
-            Err(level_err) => EnvFilter::try_from_default_env()
-                .map_err(|env_err| {
-                    AppError::Logger(format!(
-                        "invalid log level '{level}': {level_err}; RUST_LOG parse failed: {env_err}"
-                    ))
-                })?,
+            Err(level_err) => EnvFilter::try_from_default_env().map_err(|env_err| {
+                AppError::Logger(format!(
+                    "invalid log level '{level}': {level_err}; RUST_LOG parse failed: {env_err}"
+                ))
+            })?,
         }
     } else {
         EnvFilter::try_from_default_env()
@@ -41,10 +40,7 @@ pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<
             .append(true)
             .open(path)
             .map_err(|e| {
-                AppError::Logger(format!(
-                    "failed to open log file '{}': {e}",
-                    path.display()
-                ))
+                AppError::Logger(format!("failed to open log file '{}': {e}", path.display()))
             })?;
         BoxMakeWriter::new(file)
     } else {

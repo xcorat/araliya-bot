@@ -45,7 +45,14 @@ impl OpenAiCompatibleProvider {
             .build()
             .map_err(|e| ProviderError::Request(format!("failed to build HTTP client: {e}")))?;
 
-        Ok(Self { client, api_base_url, model, temperature, timeout_seconds, api_key })
+        Ok(Self {
+            client,
+            api_base_url,
+            model,
+            temperature,
+            timeout_seconds,
+            api_key,
+        })
     }
 
     /// Lightweight reachability probe.
@@ -74,7 +81,11 @@ impl OpenAiCompatibleProvider {
     ///
     /// History management and tool-call loops are intentionally the agent's
     /// responsibility — this method is one round-trip only.
-    pub async fn complete(&self, content: &str, system: Option<&str>) -> Result<LlmResponse, ProviderError> {
+    pub async fn complete(
+        &self,
+        content: &str,
+        system: Option<&str>,
+    ) -> Result<LlmResponse, ProviderError> {
         // Some models (gpt-5 family) do not accept a temperature parameter.
         let temperature = if self.model.starts_with("gpt-5") {
             None
@@ -84,9 +95,15 @@ impl OpenAiCompatibleProvider {
 
         let mut messages = Vec::new();
         if let Some(sys) = system {
-            messages.push(Message { role: "system".to_string(), content: sys.to_string() });
+            messages.push(Message {
+                role: "system".to_string(),
+                content: sys.to_string(),
+            });
         }
-        messages.push(Message { role: "user".to_string(), content: content.to_string() });
+        messages.push(Message {
+            role: "user".to_string(),
+            content: content.to_string(),
+        });
 
         let payload = ChatCompletionRequest {
             model: self.model.clone(),
@@ -112,13 +129,23 @@ impl OpenAiCompatibleProvider {
         }
 
         // #region agent log
-        if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("/data/araliya/project/araliya-bot/.cursor/debug.log")
+        {
             use std::io::Write;
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
-            let line = format!("{{\"location\":\"openai_compatible.rs:complete\",\"message\":\"llm request start\",\"data\":{{\"url\":\"{}\",\"model\":\"{}\",\"timeout_seconds\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+            let line = format!(
+                "{{\"location\":\"openai_compatible.rs:complete\",\"message\":\"llm request start\",\"data\":{{\"url\":\"{}\",\"model\":\"{}\",\"timeout_seconds\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
                 self.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
                 self.model.replace('\\', "\\\\").replace('"', "\\\""),
-                self.timeout_seconds, ts);
+                self.timeout_seconds,
+                ts
+            );
             let _ = f.write_all(line.as_bytes());
         }
         // #endregion
@@ -142,10 +169,13 @@ impl OpenAiCompatibleProvider {
 
         let response = check_status(response).await?;
 
-        let parsed = response.json::<ChatCompletionResponse>().await.map_err(|e| {
-            error!(error = %e, "failed to deserialize LLM response");
-            ProviderError::Request(format!("failed to parse response body: {e}"))
-        })?;
+        let parsed = response
+            .json::<ChatCompletionResponse>()
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to deserialize LLM response");
+                ProviderError::Request(format!("failed to parse response body: {e}"))
+            })?;
 
         debug!(choices = parsed.choices.len(), "received LLM response");
         if tracing::enabled!(tracing::Level::TRACE) {
@@ -166,7 +196,8 @@ impl OpenAiCompatibleProvider {
         let usage = parsed.usage.map(|u| LlmUsage {
             input_tokens: u.prompt_tokens,
             output_tokens: u.completion_tokens,
-            cached_input_tokens: u.prompt_tokens_details
+            cached_input_tokens: u
+                .prompt_tokens_details
                 .map(|d| d.cached_tokens)
                 .unwrap_or(0),
         });
@@ -249,10 +280,14 @@ async fn check_status(response: reqwest::Response) -> Result<reqwest::Response, 
         .unwrap_or_else(|_| "<failed to read error body>".to_string());
 
     let message = if let Ok(env) = serde_json::from_str::<ErrorEnvelope>(&body) {
-        let code = env.error.code.map(|v| match v {
-            serde_json::Value::String(s) => format!(" [code={s}]"),
-            other => format!(" [code={other}]"),
-        }).unwrap_or_default();
+        let code = env
+            .error
+            .code
+            .map(|v| match v {
+                serde_json::Value::String(s) => format!(" [code={s}]"),
+                other => format!(" [code={other}]"),
+            })
+            .unwrap_or_default();
         format!("HTTP {status}{code}: {}", env.error.message)
     } else {
         format!("HTTP {status}: {body}")

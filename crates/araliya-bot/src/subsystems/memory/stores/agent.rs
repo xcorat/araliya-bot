@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::AppError;
 use super::super::collections::Doc;
+use super::super::handle::SessionHandle;
 use super::super::types::PrimaryValue;
 use super::super::{MemorySystem, SessionInfo};
-use super::super::handle::SessionHandle;
+use crate::error::AppError;
 
 const KV_FILENAME: &str = "kv.json";
 const TEXTS_FILENAME: &str = "texts.json";
@@ -38,7 +38,11 @@ struct KvFile {
 
 impl KvFile {
     fn empty(cap: usize) -> Self {
-        Self { cap, order: Vec::new(), values: HashMap::new() }
+        Self {
+            cap,
+            order: Vec::new(),
+            values: HashMap::new(),
+        }
     }
 
     fn get(&self, key: &str) -> Option<&str> {
@@ -114,8 +118,9 @@ impl AgentStore {
     /// Open (or create) the store directory and initialise missing files.
     pub fn open(agent_identity_dir: &Path) -> Result<Self, AppError> {
         let dir = agent_identity_dir.join("store");
-        fs::create_dir_all(&dir)
-            .map_err(|e| AppError::Memory(format!("agent store: cannot create {}: {e}", dir.display())))?;
+        fs::create_dir_all(&dir).map_err(|e| {
+            AppError::Memory(format!("agent store: cannot create {}: {e}", dir.display()))
+        })?;
 
         let kv_path = dir.join(KV_FILENAME);
         if !kv_path.exists() {
@@ -125,38 +130,53 @@ impl AgentStore {
 
         let texts_path = dir.join(TEXTS_FILENAME);
         if !texts_path.exists() {
-            fs::write(&texts_path, "[]")
-                .map_err(|e| AppError::Memory(format!("agent store: cannot create {}: {e}", texts_path.display())))?;
+            fs::write(&texts_path, "[]").map_err(|e| {
+                AppError::Memory(format!(
+                    "agent store: cannot create {}: {e}",
+                    texts_path.display()
+                ))
+            })?;
         }
 
         // Ensure a sessions index exists so agent sessions can be created later.
         let sessions_index = agent_identity_dir.join("sessions.json");
         if !sessions_index.exists() {
-            fs::write(&sessions_index, "{\"sessions\":{}}")
-                .map_err(|e| AppError::Memory(format!("agent store: cannot create sessions.json: {e}")))?;
+            fs::write(&sessions_index, "{\"sessions\":{}}").map_err(|e| {
+                AppError::Memory(format!("agent store: cannot create sessions.json: {e}"))
+            })?;
         }
 
-        Ok(Self { dir, identity_dir: agent_identity_dir.to_path_buf() })
+        Ok(Self {
+            dir,
+            identity_dir: agent_identity_dir.to_path_buf(),
+        })
     }
 
     // ── KV helpers ────────────────────────────────────────────────────
 
-    fn kv_path(&self) -> PathBuf { self.dir.join(KV_FILENAME) }
-    fn texts_path(&self) -> PathBuf { self.dir.join(TEXTS_FILENAME) }
+    fn kv_path(&self) -> PathBuf {
+        self.dir.join(KV_FILENAME)
+    }
+    fn texts_path(&self) -> PathBuf {
+        self.dir.join(TEXTS_FILENAME)
+    }
 
     fn read_kv_file(&self) -> Result<KvFile, AppError> {
         let path = self.kv_path();
-        let data = fs::read_to_string(&path)
-            .map_err(|e| AppError::Memory(format!("agent store: cannot read {}: {e}", path.display())))?;
-        serde_json::from_str(&data)
-            .map_err(|e| AppError::Memory(format!("agent store: malformed {}: {e}", path.display())))
+        let data = fs::read_to_string(&path).map_err(|e| {
+            AppError::Memory(format!("agent store: cannot read {}: {e}", path.display()))
+        })?;
+        serde_json::from_str(&data).map_err(|e| {
+            AppError::Memory(format!("agent store: malformed {}: {e}", path.display()))
+        })
     }
 
     fn write_kv_file(path: &Path, kv: &KvFile) -> Result<(), AppError> {
         let data = serde_json::to_string_pretty(kv)
             .map_err(|e| AppError::Memory(format!("agent store: serialise kv: {e}")))?;
-        fs::write(path, data)
-            .map_err(|e| AppError::Memory(format!("agent store: cannot write {}: {e}", path.display())))
+        fs::write(path, data).map_err(|e| {
+            AppError::Memory(format!("agent store: cannot write {}: {e}", path.display()))
+        })
     }
 
     // ── KV API ────────────────────────────────────────────────────────
@@ -193,18 +213,21 @@ impl AgentStore {
 
     fn read_texts_file(&self) -> Result<Vec<TextItem>, AppError> {
         let path = self.texts_path();
-        let data = fs::read_to_string(&path)
-            .map_err(|e| AppError::Memory(format!("agent store: cannot read {}: {e}", path.display())))?;
-        serde_json::from_str(&data)
-            .map_err(|e| AppError::Memory(format!("agent store: malformed {}: {e}", path.display())))
+        let data = fs::read_to_string(&path).map_err(|e| {
+            AppError::Memory(format!("agent store: cannot read {}: {e}", path.display()))
+        })?;
+        serde_json::from_str(&data).map_err(|e| {
+            AppError::Memory(format!("agent store: malformed {}: {e}", path.display()))
+        })
     }
 
     fn write_texts_file(&self, items: &[TextItem]) -> Result<(), AppError> {
         let path = self.texts_path();
         let data = serde_json::to_string_pretty(items)
             .map_err(|e| AppError::Memory(format!("agent store: serialise texts: {e}")))?;
-        fs::write(&path, data)
-            .map_err(|e| AppError::Memory(format!("agent store: cannot write {}: {e}", path.display())))
+        fs::write(&path, data).map_err(|e| {
+            AppError::Memory(format!("agent store: cannot write {}: {e}", path.display()))
+        })
     }
 
     // ── Text-list API ─────────────────────────────────────────────────
@@ -235,7 +258,9 @@ impl AgentStore {
 
     // ── Raw file API ──────────────────────────────────────────────────
 
-    fn raw_dir(&self) -> PathBuf { self.dir.join("raw") }
+    fn raw_dir(&self) -> PathBuf {
+        self.dir.join("raw")
+    }
 
     /// Write raw UTF-8 content to `store/raw/{name}`.
     ///
@@ -258,7 +283,9 @@ impl AgentStore {
         match fs::read_to_string(&path) {
             Ok(s) => Ok(Some(s)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(AppError::Memory(format!("agent store: cannot read raw/{name}: {e}"))),
+            Err(e) => Err(AppError::Memory(format!(
+                "agent store: cannot read raw/{name}: {e}"
+            ))),
         }
     }
 
@@ -367,7 +394,9 @@ mod tests {
     fn texts_push_list_clear() {
         let (_dir, store) = open_tmp();
         assert!(store.texts_list().unwrap().is_empty());
-        let id = store.texts_push(TextItem::new("hello".into(), HashMap::new())).unwrap();
+        let id = store
+            .texts_push(TextItem::new("hello".into(), HashMap::new()))
+            .unwrap();
         let items = store.texts_list().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, id);
@@ -379,7 +408,9 @@ mod tests {
     #[test]
     fn texts_replace_all() {
         let (_dir, store) = open_tmp();
-        store.texts_push(TextItem::new("old".into(), HashMap::new())).unwrap();
+        store
+            .texts_push(TextItem::new("old".into(), HashMap::new()))
+            .unwrap();
         let new_items = vec![
             TextItem::new("a".into(), HashMap::new()),
             TextItem::new("b".into(), HashMap::new()),
@@ -405,7 +436,10 @@ mod tests {
         let (_dir, store) = open_tmp();
         assert_eq!(store.read_raw("a.json").unwrap(), None);
         store.write_raw("a.json", "[{\"x\":1}]").unwrap();
-        assert_eq!(store.read_raw("a.json").unwrap(), Some("[{\"x\":1}]".to_string()));
+        assert_eq!(
+            store.read_raw("a.json").unwrap(),
+            Some("[{\"x\":1}]".to_string())
+        );
         // Overwrite
         store.write_raw("a.json", "[]").unwrap();
         assert_eq!(store.read_raw("a.json").unwrap(), Some("[]".to_string()));
@@ -431,8 +465,16 @@ mod tests {
         let second = store.get_or_create_session(&memory, "chat").unwrap();
 
         assert_eq!(first.session_id, second.session_id);
-        assert_eq!(store.kv_get("active_session_id").unwrap(), Some(first.session_id.clone()));
-        assert!(agent_identity.join("sessions").join(&first.session_id).exists());
+        assert_eq!(
+            store.kv_get("active_session_id").unwrap(),
+            Some(first.session_id.clone())
+        );
+        assert!(
+            agent_identity
+                .join("sessions")
+                .join(&first.session_id)
+                .exists()
+        );
     }
 
     #[test]

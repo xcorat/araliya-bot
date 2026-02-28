@@ -24,7 +24,7 @@ enabled = false # *DO NOT CHANGE*
 
 [agents]
 # Route unrouted prompts to the news agent for newsletter workflow testing.
-default = "docs"
+default = "agentic-chat"
 
 [agents.echo]
 enabled = false
@@ -33,7 +33,12 @@ enabled = false
 enabled = false
 
 [agents.chat]
+enabled = false
+
+[agents.agentic-chat]
 enabled = true
+memory = ["basic_session"]
+use_instruction_llm = false
 
 [agents.docs]
 # Optional docs agent for side-by-side LLM sanity checks.

@@ -17,20 +17,35 @@ pub enum ControlCommand {
     SubsystemsList,
     /// Request a JSON component tree (same shape as manage/tree bus response).
     ComponentTree,
-    SubsystemEnable { id: String },
-    SubsystemDisable { id: String },
+    SubsystemEnable {
+        id: String,
+    },
+    SubsystemDisable {
+        id: String,
+    },
     Shutdown,
 }
 
 /// Control plane response payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ControlResponse {
-    Health { uptime_ms: u64 },
-    Status { uptime_ms: u64, handlers: Vec<String> },
-    Subsystems { handlers: Vec<String> },
+    Health {
+        uptime_ms: u64,
+    },
+    Status {
+        uptime_ms: u64,
+        handlers: Vec<String>,
+    },
+    Subsystems {
+        handlers: Vec<String>,
+    },
     /// JSON string of the full component tree (id, name, status, state, children).
-    ComponentTree { tree_json: String },
-    Ack { message: String },
+    ComponentTree {
+        tree_json: String,
+    },
+    Ack {
+        message: String,
+    },
 }
 
 /// Control plane error payload.
@@ -65,7 +80,10 @@ impl ControlHandle {
         Self { tx }
     }
 
-    pub async fn request(&self, command: ControlCommand) -> Result<ControlResult, ControlCallError> {
+    pub async fn request(
+        &self,
+        command: ControlCommand,
+    ) -> Result<ControlResult, ControlCallError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
             .send(ControlMessage::Request { command, reply_tx })
@@ -113,7 +131,9 @@ impl fmt::Display for ControlCallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ControlCallError::Send => write!(f, "control send failed: supervisor is not running"),
-            ControlCallError::Recv => write!(f, "control recv failed: supervisor dropped reply sender"),
+            ControlCallError::Recv => {
+                write!(f, "control recv failed: supervisor dropped reply sender")
+            }
             ControlCallError::Full => write!(f, "control queue full"),
         }
     }

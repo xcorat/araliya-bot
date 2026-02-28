@@ -47,9 +47,7 @@ const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// GET / | /index.html — root welcome page.
-pub(super) async fn handle_root(
-    socket: &mut tokio::net::TcpStream,
-) -> Result<(), AppError> {
+pub(super) async fn handle_root(socket: &mut tokio::net::TcpStream) -> Result<(), AppError> {
     super::write_response(
         socket,
         "200 OK",
@@ -78,9 +76,7 @@ pub(super) async fn handle_ui_path(
 }
 
 /// Catch-all 404 response.
-pub(super) async fn handle_not_found(
-    socket: &mut tokio::net::TcpStream,
-) -> Result<(), AppError> {
+pub(super) async fn handle_not_found(socket: &mut tokio::net::TcpStream) -> Result<(), AppError> {
     super::write_response(
         socket,
         "404 Not Found",

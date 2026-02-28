@@ -1,4 +1,3 @@
-
 //! Unix-domain-socket client — mirrors the wire protocol in `araliya-ctl`.
 //!
 //! All types are inlined so this binary has no dependency on internal crate
@@ -19,10 +18,19 @@ pub enum Command {
 
 #[derive(Debug, serde::Deserialize)]
 pub enum ControlResponse {
-    Health { uptime_ms: u64 },
-    Status { uptime_ms: u64, handlers: Vec<String> },
-    Subsystems { handlers: Vec<String> },
-    Ack { message: String },
+    Health {
+        uptime_ms: u64,
+    },
+    Status {
+        uptime_ms: u64,
+        handlers: Vec<String>,
+    },
+    Subsystems {
+        handlers: Vec<String>,
+    },
+    Ack {
+        message: String,
+    },
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -68,14 +76,13 @@ pub async fn send_command(cmd: Command) -> Result<String, String> {
         use tokio::net::UnixStream;
 
         let path = socket_path();
-        let stream = UnixStream::connect(&path).await.map_err(|e| {
-            format!("connect {}: {e}\n  is the daemon running?", path.display())
-        })?;
+        let stream = UnixStream::connect(&path)
+            .await
+            .map_err(|e| format!("connect {}: {e}\n  is the daemon running?", path.display()))?;
 
         let (reader, mut writer) = stream.into_split();
 
-        let mut request =
-            serde_json::to_string(&cmd).map_err(|e| format!("serialise: {e}"))?;
+        let mut request = serde_json::to_string(&cmd).map_err(|e| format!("serialise: {e}"))?;
         request.push('\n');
         writer
             .write_all(request.as_bytes())
@@ -110,7 +117,10 @@ fn format_response(resp: WireResponse) -> String {
                 let ms = uptime_ms % 1000;
                 format!("ok  uptime {s}.{ms:03}s")
             }
-            ControlResponse::Status { uptime_ms, handlers } => {
+            ControlResponse::Status {
+                uptime_ms,
+                handlers,
+            } => {
                 let s = uptime_ms / 1000;
                 let ms = uptime_ms % 1000;
                 format!("ok  uptime {s}.{ms:03}s  handlers: {}", handlers.join(", "))

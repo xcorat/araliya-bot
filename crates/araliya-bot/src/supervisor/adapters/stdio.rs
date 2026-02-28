@@ -33,14 +33,18 @@ pub fn start(
 
     if interactive_tty && !interactive_enabled {
         set_stdio_control_active(false);
-        info!("supervisor stdio adapter: interactive tty detected; adapter disabled by config, PTY remains active");
+        info!(
+            "supervisor stdio adapter: interactive tty detected; adapter disabled by config, PTY remains active"
+        );
         return;
     }
 
     if interactive_tty {
         info!("supervisor stdio adapter: interactive management forced by config");
     } else {
-        info!("supervisor stdio adapter: non-interactive stdio detected; enabling management adapter");
+        info!(
+            "supervisor stdio adapter: non-interactive stdio detected; enabling management adapter"
+        );
     }
 
     set_stdio_control_active(true);
@@ -180,7 +184,9 @@ fn parse_tty_protocol(line: &str) -> Result<Option<StdioFrame>, String> {
     };
 
     if ch != '/' {
-        return Err("expected slash command (first non-whitespace character must be '/')".to_string());
+        return Err(
+            "expected slash command (first non-whitespace character must be '/')".to_string(),
+        );
     }
 
     let cmdline = &line[start + ch.len_utf8()..];

@@ -8,8 +8,8 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{header, Response, StatusCode},
-  response::{Html, IntoResponse},
+    http::{Response, StatusCode, header},
+    response::{Html, IntoResponse},
 };
 
 use super::AxumState;

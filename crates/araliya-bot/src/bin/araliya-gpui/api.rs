@@ -121,14 +121,21 @@ impl ApiClient {
             .json()
     }
 
-    pub fn get_session_by_id(&self, session_id: &str) -> Result<SessionDetailResponse, reqwest::Error> {
+    pub fn get_session_by_id(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionDetailResponse, reqwest::Error> {
         self.client
             .get(&format!("{}/api/session/{}", self.base_url, session_id))
             .send()?
             .json()
     }
 
-    pub fn send_message(&self, message: String, session_id: Option<String>) -> Result<MessageResponse, reqwest::Error> {
+    pub fn send_message(
+        &self,
+        message: String,
+        session_id: Option<String>,
+    ) -> Result<MessageResponse, reqwest::Error> {
         let req = MessageRequest {
             message,
             session_id,

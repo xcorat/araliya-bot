@@ -71,10 +71,14 @@ impl Doc {
     }
 
     /// Number of entries.
-    pub fn len(&self) -> usize { self.entries.len() }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 
     /// `true` when there are no entries.
-    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 // ── Block ─────────────────────────────────────────────────────────────────────
@@ -120,10 +124,14 @@ impl Block {
     }
 
     /// Number of entries.
-    pub fn len(&self) -> usize { self.entries.len() }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 
     /// `true` when there are no entries.
-    pub fn is_empty(&self) -> bool { self.entries.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 // ── Collection ────────────────────────────────────────────────────────────────
@@ -168,36 +176,60 @@ impl Collection {
 
     /// Return `Some(&Doc)` if this is a `Doc` collection, else `None`.
     pub fn as_doc(&self) -> Option<&Doc> {
-        if let Collection::Doc(d) = self { Some(d) } else { None }
+        if let Collection::Doc(d) = self {
+            Some(d)
+        } else {
+            None
+        }
     }
 
     /// Return `Some(&mut Doc)` if this is a `Doc` collection, else `None`.
     pub fn as_doc_mut(&mut self) -> Option<&mut Doc> {
-        if let Collection::Doc(d) = self { Some(d) } else { None }
+        if let Collection::Doc(d) = self {
+            Some(d)
+        } else {
+            None
+        }
     }
 
     // ── Block accessors ───────────────────────────────────────────────
 
     /// Return `Some(&Block)` if this is a `Block` collection, else `None`.
     pub fn as_block(&self) -> Option<&Block> {
-        if let Collection::Block(b) = self { Some(b) } else { None }
+        if let Collection::Block(b) = self {
+            Some(b)
+        } else {
+            None
+        }
     }
 
     /// Return `Some(&mut Block)` if this is a `Block` collection, else `None`.
     pub fn as_block_mut(&mut self) -> Option<&mut Block> {
-        if let Collection::Block(b) = self { Some(b) } else { None }
+        if let Collection::Block(b) = self {
+            Some(b)
+        } else {
+            None
+        }
     }
 
     // ── Consuming accessors ───────────────────────────────────────────
 
     /// Consume `self` and return the inner [`Doc`], or `None`.
     pub fn into_doc(self) -> Option<Doc> {
-        if let Collection::Doc(d) = self { Some(d) } else { None }
+        if let Collection::Doc(d) = self {
+            Some(d)
+        } else {
+            None
+        }
     }
 
     /// Consume `self` and return the inner [`Block`], or `None`.
     pub fn into_block(self) -> Option<Block> {
-        if let Collection::Block(b) = self { Some(b) } else { None }
+        if let Collection::Block(b) = self {
+            Some(b)
+        } else {
+            None
+        }
     }
 
     // ── Stub accessors (panic, not silently wrong) ─────────────────────
@@ -293,7 +325,10 @@ mod tests {
     fn block_set_get_scalar() {
         let mut block = Block::default();
         block.set("score".into(), Value::from(99i64));
-        assert_eq!(block.get("score"), Some(&Value::Primary(PrimaryValue::Int(99))));
+        assert_eq!(
+            block.get("score"),
+            Some(&Value::Primary(PrimaryValue::Int(99)))
+        );
     }
 
     #[test]
@@ -320,16 +355,26 @@ mod tests {
     #[test]
     fn collection_as_doc() {
         let mut c = Collection::Doc(Doc::default());
-        c.as_doc_mut().unwrap().set("a".into(), PrimaryValue::Bool(true));
-        assert_eq!(c.as_doc().unwrap().get("a"), Some(&PrimaryValue::Bool(true)));
+        c.as_doc_mut()
+            .unwrap()
+            .set("a".into(), PrimaryValue::Bool(true));
+        assert_eq!(
+            c.as_doc().unwrap().get("a"),
+            Some(&PrimaryValue::Bool(true))
+        );
         assert_eq!(c.variant_name(), "Doc");
     }
 
     #[test]
     fn collection_as_block() {
         let mut c = Collection::Block(Block::default());
-        c.as_block_mut().unwrap().set("val".into(), Value::from("hello"));
-        assert_eq!(c.as_block().unwrap().get("val"), Some(&Value::from("hello")));
+        c.as_block_mut()
+            .unwrap()
+            .set("val".into(), Value::from("hello"));
+        assert_eq!(
+            c.as_block().unwrap().get("val"),
+            Some(&Value::from("hello"))
+        );
         assert_eq!(c.variant_name(), "Block");
     }
 

@@ -71,7 +71,9 @@ impl DocstoreManager {
     ///
     /// Non-blocking — the work is queued and processed in the background task.
     pub(super) fn schedule_index(&self, agent_identity_dir: PathBuf) {
-        let _ = self.cmd_tx.try_send(ManagerCmd::IndexNow { agent_identity_dir });
+        let _ = self
+            .cmd_tx
+            .try_send(ManagerCmd::IndexNow { agent_identity_dir });
     }
 }
 
@@ -231,7 +233,9 @@ fn cleanup_orphans(store: &IDocStore) -> Result<usize, AppError> {
                 removed += 1;
                 debug!(%doc_id, "docstore manager: orphan content file removed");
             }
-            Err(e) => warn!(path = %p.display(), error = %e, "docstore manager: remove orphan failed"),
+            Err(e) => {
+                warn!(path = %p.display(), error = %e, "docstore manager: remove orphan failed")
+            }
         }
     }
 
@@ -242,8 +246,8 @@ fn cleanup_orphans(store: &IDocStore) -> Result<usize, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::AGENTS_DIRNAME;
+    use super::*;
     use std::collections::HashMap;
     use std::fs;
     use tempfile::TempDir;
@@ -273,7 +277,9 @@ mod tests {
     #[test]
     fn index_unindexed_chunks_new_doc() {
         let (_t, store) = make_store();
-        let _id = store.add_document(doc("hello world from the manager test")).unwrap();
+        let _id = store
+            .add_document(doc("hello world from the manager test"))
+            .unwrap();
 
         let indexed = index_unindexed(&store).unwrap();
         assert_eq!(indexed, 1);
@@ -286,7 +292,9 @@ mod tests {
     #[test]
     fn index_unindexed_skips_already_indexed() {
         let (_t, store) = make_store();
-        let id = store.add_document(doc("already indexed content here")).unwrap();
+        let id = store
+            .add_document(doc("already indexed content here"))
+            .unwrap();
         let chunks = store.chunk_document(&id, 2048).unwrap();
         store.index_chunks(chunks).unwrap();
 

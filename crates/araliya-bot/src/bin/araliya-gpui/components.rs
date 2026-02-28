@@ -1,18 +1,19 @@
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
+    h_flex,
     input::{Input, InputEvent, InputState},
-    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
-    Icon, IconName,
-    ActiveTheme, h_flex, v_flex, Disableable, Sizable,
     scroll::ScrollableElement,
+    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
+    v_flex,
 };
 
-use crate::state::{
-    ActivitySection, AppState, LayoutMode, SurfaceMode, DESKTOP_BREAKPOINT_PX, TABLET_BREAKPOINT_PX,
-    save_layout_prefs,
-};
 use crate::canvas_scene::CanvasGeometry;
+use crate::state::{
+    ActivitySection, AppState, DESKTOP_BREAKPOINT_PX, LayoutMode, SurfaceMode,
+    TABLET_BREAKPOINT_PX, save_layout_prefs,
+};
 
 pub struct AppView {
     state: AppState,
@@ -22,29 +23,25 @@ pub struct AppView {
 
 impl AppView {
     pub fn new(state: AppState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input_state = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Type a message...")
-        });
+        let input_state = cx.new(|cx| InputState::new(window, cx).placeholder("Type a message..."));
 
-        let _subscriptions = vec![
-            cx.subscribe_in(&input_state, window, {
-                let input_state = input_state.clone();
-                move |_this, _, ev: &InputEvent, _window, cx| match ev {
-                    InputEvent::Change => {
-                        let value = input_state.read(cx).value();
-                        _this.state.input_text = value.to_string();
-                        cx.notify();
-                    }
-                    InputEvent::PressEnter { .. } => {
-                        _this.send_message(cx);
-                        input_state.update(cx, |i, cx| {
-                            i.set_value("", _window, cx);
-                        });
-                    }
-                    _ => {}
+        let _subscriptions = vec![cx.subscribe_in(&input_state, window, {
+            let input_state = input_state.clone();
+            move |_this, _, ev: &InputEvent, _window, cx| match ev {
+                InputEvent::Change => {
+                    let value = input_state.read(cx).value();
+                    _this.state.input_text = value.to_string();
+                    cx.notify();
                 }
-            }),
-        ];
+                InputEvent::PressEnter { .. } => {
+                    _this.send_message(cx);
+                    input_state.update(cx, |i, cx| {
+                        i.set_value("", _window, cx);
+                    });
+                }
+                _ => {}
+            }
+        })];
 
         let mut view = Self {
             state,
@@ -235,13 +232,15 @@ impl AppView {
 
         self.state.is_sending_message = true;
         self.state.input_text.clear();
-        self.state.messages.push(crate::api::SessionTranscriptMessage {
-            role: "user".to_string(),
-            content: text.clone(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            tool_call_id: None,
-            tool_calls: None,
-        });
+        self.state
+            .messages
+            .push(crate::api::SessionTranscriptMessage {
+                role: "user".to_string(),
+                content: text.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool_call_id: None,
+                tool_calls: None,
+            });
         cx.notify();
 
         let client = self.state.api_client.clone();
@@ -259,25 +258,29 @@ impl AppView {
                             this.fetch_sessions(cx);
                         }
                         this.state.session_usage_totals = res.session_usage_totals;
-                        this.state.messages.push(crate::api::SessionTranscriptMessage {
-                            role: "assistant".to_string(),
-                            content: res.reply,
-                            timestamp: chrono::Utc::now().to_rfc3339(),
-                            tool_call_id: None,
-                            tool_calls: None,
-                        });
+                        this.state
+                            .messages
+                            .push(crate::api::SessionTranscriptMessage {
+                                role: "assistant".to_string(),
+                                content: res.reply,
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                                tool_call_id: None,
+                                tool_calls: None,
+                            });
 
                         if this.state.session_usage_totals.is_none() {
                             this.refresh_session_usage_totals(res.session_id, cx);
                         }
                     } else {
-                        this.state.messages.push(crate::api::SessionTranscriptMessage {
-                            role: "error".to_string(),
-                            content: "Failed to send message".to_string(),
-                            timestamp: chrono::Utc::now().to_rfc3339(),
-                            tool_call_id: None,
-                            tool_calls: None,
-                        });
+                        this.state
+                            .messages
+                            .push(crate::api::SessionTranscriptMessage {
+                                role: "error".to_string(),
+                                content: "Failed to send message".to_string(),
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                                tool_call_id: None,
+                                tool_calls: None,
+                            });
                     }
                     cx.notify();
                 })
@@ -304,22 +307,23 @@ impl AppView {
             let short_id: String = session.session_id.chars().take(8).collect();
             let label = format!("Session {}", short_id);
 
-            sidebar_menu = sidebar_menu.child(
-                SidebarMenuItem::new(label)
-                    .active(is_active)
-                    .on_click(move |_, _, cx| {
+            sidebar_menu =
+                sidebar_menu.child(SidebarMenuItem::new(label).active(is_active).on_click(
+                    move |_, _, cx| {
                         view.update(cx, |this, cx| {
                             this.select_session(session_id.clone(), cx);
                         })
                         .ok();
-                    }),
-            );
+                    },
+                ));
         }
 
-        let mut header_row = h_flex()
-            .justify_between()
-            .items_center()
-            .child(div().text_sm().font_weight(FontWeight::BOLD).child("Sessions"));
+        let mut header_row = h_flex().justify_between().items_center().child(
+            div()
+                .text_sm()
+                .font_weight(FontWeight::BOLD)
+                .child("Sessions"),
+        );
         if is_drawer {
             header_row = header_row.child(
                 Button::new("close-sessions-drawer")
@@ -341,19 +345,16 @@ impl AppView {
             .h_full()
             .header(
                 SidebarHeader::new().child(
-                    v_flex()
-                        .gap_1()
-                        .child(header_row)
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(if state.is_loading_sessions {
-                                    "Loading..."
-                                } else {
-                                    "Active list"
-                                }),
-                        ),
+                    v_flex().gap_1().child(header_row).child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(if state.is_loading_sessions {
+                                "Loading..."
+                            } else {
+                                "Active list"
+                            }),
+                    ),
                 ),
             )
             .footer(
@@ -406,15 +407,17 @@ impl AppView {
                     msg_container = msg_container.items_start();
                 }
 
-                messages_view = messages_view.child(msg_container.child(
-                    div()
-                        .max_w(message_max_width)
-                        .p_3()
-                        .rounded_lg()
-                        .bg(bg_color)
-                        .text_color(text_color)
-                        .child(msg.content.clone()),
-                ));
+                messages_view = messages_view.child(
+                    msg_container.child(
+                        div()
+                            .max_w(message_max_width)
+                            .p_3()
+                            .rounded_lg()
+                            .bg(bg_color)
+                            .text_color(text_color)
+                            .child(msg.content.clone()),
+                    ),
+                );
             }
         }
 
@@ -539,7 +542,12 @@ impl AppView {
             .size_full()
             .child(
                 canvas(
-                    |bounds, _, _| CanvasGeometry::from_size(f32::from(bounds.size.width), f32::from(bounds.size.height)),
+                    |bounds, _, _| {
+                        CanvasGeometry::from_size(
+                            f32::from(bounds.size.width),
+                            f32::from(bounds.size.height),
+                        )
+                    },
                     move |bounds, geometry: CanvasGeometry, window, _| {
                         let to_point = |x: f32, y: f32| {
                             point(
@@ -567,7 +575,8 @@ impl AppView {
                                 (x - nx * 3.0, y - ny * 3.0)
                             })
                             .collect();
-                        let mut inner_hex = Path::new(to_point(inset_vertices[0].0, inset_vertices[0].1));
+                        let mut inner_hex =
+                            Path::new(to_point(inset_vertices[0].0, inset_vertices[0].1));
                         for &(x, y) in &inset_vertices[1..] {
                             inner_hex.line_to(to_point(x, y));
                         }
@@ -588,7 +597,8 @@ impl AppView {
                             icon_path.line_to(to_point(x, y));
                         }
                         icon_path.line_to(to_point(icon_points[0].0, icon_points[0].1));
-                        let icon_visible = geometry.icon_contains(geometry.center_x, geometry.center_y);
+                        let icon_visible =
+                            geometry.icon_contains(geometry.center_x, geometry.center_y);
                         if icon_visible {
                             window.paint_path(icon_path, icon_fill);
                         }
@@ -597,10 +607,22 @@ impl AppView {
                         let bar_thickness = (geometry.icon_radius * 0.24).max(3.0);
 
                         let h_bar = [
-                            (geometry.center_x - glyph_half, geometry.center_y - bar_thickness * 0.5),
-                            (geometry.center_x + glyph_half, geometry.center_y - bar_thickness * 0.5),
-                            (geometry.center_x + glyph_half, geometry.center_y + bar_thickness * 0.5),
-                            (geometry.center_x - glyph_half, geometry.center_y + bar_thickness * 0.5),
+                            (
+                                geometry.center_x - glyph_half,
+                                geometry.center_y - bar_thickness * 0.5,
+                            ),
+                            (
+                                geometry.center_x + glyph_half,
+                                geometry.center_y - bar_thickness * 0.5,
+                            ),
+                            (
+                                geometry.center_x + glyph_half,
+                                geometry.center_y + bar_thickness * 0.5,
+                            ),
+                            (
+                                geometry.center_x - glyph_half,
+                                geometry.center_y + bar_thickness * 0.5,
+                            ),
                         ];
                         let mut h_path = Path::new(to_point(h_bar[0].0, h_bar[0].1));
                         for &(x, y) in &h_bar[1..] {
@@ -611,10 +633,22 @@ impl AppView {
 
                         if !right_open {
                             let v_bar = [
-                                (geometry.center_x - bar_thickness * 0.5, geometry.center_y - glyph_half),
-                                (geometry.center_x + bar_thickness * 0.5, geometry.center_y - glyph_half),
-                                (geometry.center_x + bar_thickness * 0.5, geometry.center_y + glyph_half),
-                                (geometry.center_x - bar_thickness * 0.5, geometry.center_y + glyph_half),
+                                (
+                                    geometry.center_x - bar_thickness * 0.5,
+                                    geometry.center_y - glyph_half,
+                                ),
+                                (
+                                    geometry.center_x + bar_thickness * 0.5,
+                                    geometry.center_y - glyph_half,
+                                ),
+                                (
+                                    geometry.center_x + bar_thickness * 0.5,
+                                    geometry.center_y + glyph_half,
+                                ),
+                                (
+                                    geometry.center_x - bar_thickness * 0.5,
+                                    geometry.center_y + glyph_half,
+                                ),
                             ];
                             let mut v_path = Path::new(to_point(v_bar[0].0, v_bar[0].1));
                             for &(x, y) in &v_bar[1..] {
@@ -673,7 +707,10 @@ impl AppView {
                                         move |_, _, cx| {
                                             view.update(cx, |this, cx| {
                                                 this.toggle_right_panel(cx);
-                                                this.set_active_section(ActivitySection::Status, cx);
+                                                this.set_active_section(
+                                                    ActivitySection::Status,
+                                                    cx,
+                                                );
                                             })
                                             .ok();
                                         }
@@ -703,16 +740,15 @@ impl AppView {
 
         if is_drawer {
             let view = cx.entity().downgrade();
-            title_row = title_row.child(
-                Button::new("close-context-drawer")
-                    .label("Close")
-                    .on_click(move |_, _, cx| {
+            title_row =
+                title_row.child(Button::new("close-context-drawer").label("Close").on_click(
+                    move |_, _, cx| {
                         view.update(cx, |this, cx| {
                             this.toggle_right_panel(cx);
                         })
                         .ok();
-                    }),
-            );
+                    },
+                ));
         }
 
         let mut panel = v_flex()
@@ -732,26 +768,51 @@ impl AppView {
                         tool_calls_count += calls.len();
                     }
                 }
-                panel = panel
-                    .child(div().text_sm().child(format!("Tool calls in transcript: {}", tool_calls_count)))
-                    .child(div().text_sm().child(match self.state.session_usage_totals.as_ref() {
-                        Some(usage) => format!(
-                            "Session total tokens: {}",
-                            Self::format_token_count(usage.total_tokens)
-                        ),
-                        None => "Session total tokens: Unavailable".to_string(),
-                    }))
-                    .child(div().text_sm().child(match self.state.session_usage_totals.as_ref() {
-                        Some(usage) => format!("Session total spend (USD): ${:.4}", usage.estimated_cost_usd),
-                        None => "Session total spend (USD): Unavailable".to_string(),
-                    }))
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Detailed tool trace view is the next step."));
+                panel =
+                    panel
+                        .child(
+                            div()
+                                .text_sm()
+                                .child(format!("Tool calls in transcript: {}", tool_calls_count)),
+                        )
+                        .child(div().text_sm().child(
+                            match self.state.session_usage_totals.as_ref() {
+                                Some(usage) => format!(
+                                    "Session total tokens: {}",
+                                    Self::format_token_count(usage.total_tokens)
+                                ),
+                                None => "Session total tokens: Unavailable".to_string(),
+                            },
+                        ))
+                        .child(div().text_sm().child(
+                            match self.state.session_usage_totals.as_ref() {
+                                Some(usage) => format!(
+                                    "Session total spend (USD): ${:.4}",
+                                    usage.estimated_cost_usd
+                                ),
+                                None => "Session total spend (USD): Unavailable".to_string(),
+                            },
+                        ))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Detailed tool trace view is the next step."),
+                        );
             }
             ActivitySection::Status => {
-                panel = panel.child(div().text_sm().child("Subsystem status expansion can render here."));
+                panel = panel.child(
+                    div()
+                        .text_sm()
+                        .child("Subsystem status expansion can render here."),
+                );
             }
             _ => {
-                panel = panel.child(div().text_sm().child("Panel-specific controls will appear here."));
+                panel = panel.child(
+                    div()
+                        .text_sm()
+                        .child("Panel-specific controls will appear here."),
+                );
             }
         }
 
@@ -770,14 +831,30 @@ impl AppView {
             .items_center()
             .gap_2()
             .child(div().text_xs().child(format!("Session: {}", session_short)))
-            .child(div().text_xs().child(format!("Messages: {}", self.state.messages.len())));
+            .child(
+                div()
+                    .text_xs()
+                    .child(format!("Messages: {}", self.state.messages.len())),
+            );
 
         let right_group = h_flex()
             .items_center()
             .gap_2()
-            .child(div().text_xs().child(format!("Section: {}", self.state.active_section.label())))
-            .child(div().text_xs().child(format!("Mode: {}", self.state.layout.mode.label())))
-            .child(div().text_xs().child(format!("Surface: {}", self.state.surface_mode.label())));
+            .child(
+                div()
+                    .text_xs()
+                    .child(format!("Section: {}", self.state.active_section.label())),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .child(format!("Mode: {}", self.state.layout.mode.label())),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .child(format!("Surface: {}", self.state.surface_mode.label())),
+            );
 
         h_flex()
             .w_full()
@@ -852,10 +929,25 @@ impl Render for AppView {
             .border_color(border)
             .items_center()
             .child(div().font_weight(FontWeight::BOLD).child("Araliya"))
-            .child(div().text_sm().text_color(muted_foreground).child(self.state.active_section.label()))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(muted_foreground)
+                    .child(self.state.active_section.label()),
+            )
             .child(div().flex_1())
-            .child(div().text_sm().text_color(muted_foreground).child(self.state.layout.mode.label()))
-            .child(div().text_sm().text_color(muted_foreground).child(health_text))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(muted_foreground)
+                    .child(self.state.layout.mode.label()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(muted_foreground)
+                    .child(health_text),
+            )
             .child(
                 Button::new("toggle-surface")
                     .label(match self.state.surface_mode {
@@ -874,7 +966,11 @@ impl Render for AppView {
             )
             .child(
                 Button::new("toggle-left")
-                    .label(if self.state.layout.left_panel_open { "Hide Sessions" } else { "Show Sessions" })
+                    .label(if self.state.layout.left_panel_open {
+                        "Hide Sessions"
+                    } else {
+                        "Show Sessions"
+                    })
                     .on_click({
                         let view = cx.entity().downgrade();
                         move |_, _, cx| {
@@ -887,7 +983,11 @@ impl Render for AppView {
             )
             .child(
                 Button::new("toggle-right")
-                    .label(if self.state.layout.right_panel_open { "Hide Context" } else { "Show Context" })
+                    .label(if self.state.layout.right_panel_open {
+                        "Hide Context"
+                    } else {
+                        "Show Context"
+                    })
                     .on_click({
                         let view = cx.entity().downgrade();
                         move |_, _, cx| {
@@ -901,12 +1001,11 @@ impl Render for AppView {
 
         let mut panel_row = h_flex().flex_1().w_full().h_full();
         if show_right_drawer {
-            panel_row = panel_row.child(
-                v_flex()
-                    .w_full()
-                    .h_full()
-                    .child(self.render_right_panel(cx, right_panel_width, true)),
-            );
+            panel_row = panel_row.child(v_flex().w_full().h_full().child(self.render_right_panel(
+                cx,
+                right_panel_width,
+                true,
+            )));
         } else if show_left_drawer {
             panel_row = panel_row.child(
                 v_flex()
@@ -916,10 +1015,12 @@ impl Render for AppView {
             );
         } else {
             if show_left_inline {
-                panel_row = panel_row.child(self.render_sessions_sidebar(cx, left_panel_width, false));
+                panel_row =
+                    panel_row.child(self.render_sessions_sidebar(cx, left_panel_width, false));
             }
 
-            panel_row = panel_row.child(v_flex().flex_1().h_full().child(self.render_main_panel(cx)));
+            panel_row =
+                panel_row.child(v_flex().flex_1().h_full().child(self.render_main_panel(cx)));
 
             if show_right_inline {
                 panel_row = panel_row.child(self.render_right_panel(cx, right_panel_width, false));
@@ -938,7 +1039,7 @@ impl Render for AppView {
                     .h_full()
                     .child(header)
                     .child(panel_row)
-                    .child(self.render_status_bar(cx))
+                    .child(self.render_status_bar(cx)),
             )
     }
 }

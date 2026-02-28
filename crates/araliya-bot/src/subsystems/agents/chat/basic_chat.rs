@@ -6,14 +6,16 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::supervisor::bus::BusResult;
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
+use crate::supervisor::bus::BusResult;
 
 pub(crate) struct BasicChatPlugin;
 
 impl Agent for BasicChatPlugin {
-    fn id(&self) -> &str { "basic_chat" }
+    fn id(&self) -> &str {
+        "basic_chat"
+    }
 
     fn handle(
         &self,

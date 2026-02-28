@@ -198,8 +198,7 @@ impl CronService {
 fn spec_to_instant(spec: &CronScheduleSpec) -> Instant {
     match spec {
         CronScheduleSpec::Once { at_unix_ms } => {
-            let target = std::time::UNIX_EPOCH
-                + std::time::Duration::from_millis(*at_unix_ms);
+            let target = std::time::UNIX_EPOCH + std::time::Duration::from_millis(*at_unix_ms);
             let now_sys = std::time::SystemTime::now();
             let now_inst = Instant::now();
             match target.duration_since(now_sys) {
@@ -241,7 +240,9 @@ fn instant_to_unix_ms(instant: Instant) -> u64 {
         (unix_now + delta).as_millis() as u64
     } else {
         let delta = now_inst - instant;
-        unix_now.checked_sub(delta).map_or(0, |d| d.as_millis() as u64)
+        unix_now
+            .checked_sub(delta)
+            .map_or(0, |d| d.as_millis() as u64)
     }
 }
 
@@ -278,13 +279,17 @@ mod tests {
             payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
             spec: CronScheduleSpec::Interval { every_secs: 3600 },
             reply: reply_tx,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         let id = reply_rx.await.unwrap();
         assert!(!id.is_empty());
 
         // List should contain exactly that entry.
         let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        tx.send(CronCommand::List { reply: reply_tx })
+            .await
+            .unwrap();
         let entries = reply_rx.await.unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].schedule_id, id);
@@ -304,22 +309,36 @@ mod tests {
             payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
             spec: CronScheduleSpec::Interval { every_secs: 60 },
             reply: reply_tx,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         let id = reply_rx.await.unwrap();
 
         // Cancel existing → true.
         let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(CronCommand::Cancel { schedule_id: id, reply: reply_tx }).await.unwrap();
+        tx.send(CronCommand::Cancel {
+            schedule_id: id,
+            reply: reply_tx,
+        })
+        .await
+        .unwrap();
         assert!(reply_rx.await.unwrap());
 
         // Cancel unknown → false.
         let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(CronCommand::Cancel { schedule_id: "bogus".into(), reply: reply_tx }).await.unwrap();
+        tx.send(CronCommand::Cancel {
+            schedule_id: "bogus".into(),
+            reply: reply_tx,
+        })
+        .await
+        .unwrap();
         assert!(!reply_rx.await.unwrap());
 
         // List should be empty now.
         let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        tx.send(CronCommand::List { reply: reply_tx })
+            .await
+            .unwrap();
         assert!(reply_rx.await.unwrap().is_empty());
 
         shutdown.cancel();
@@ -338,7 +357,9 @@ mod tests {
             payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
             spec: CronScheduleSpec::Interval { every_secs: 1 },
             reply: reply_tx,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         reply_rx.await.unwrap();
 
         // Advance time past the deadline.
@@ -373,7 +394,9 @@ mod tests {
             payload_json: serde_json::to_string(&BusPayload::Empty).unwrap(),
             spec: CronScheduleSpec::Once { at_unix_ms: 0 },
             reply: reply_tx,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         reply_rx.await.unwrap();
 
         // Advance enough for it to fire.
@@ -393,7 +416,9 @@ mod tests {
 
         // List should be empty — one-shot is not re-enqueued.
         let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(CronCommand::List { reply: reply_tx }).await.unwrap();
+        tx.send(CronCommand::List { reply: reply_tx })
+            .await
+            .unwrap();
         assert!(reply_rx.await.unwrap().is_empty());
 
         shutdown.cancel();

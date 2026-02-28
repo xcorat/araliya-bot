@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use crate::supervisor::bus::BusResult;
 use crate::subsystems::agents::AgentsState;
+use crate::supervisor::bus::BusResult;
 
 /// Reusable core for chat-family plugins.
 ///

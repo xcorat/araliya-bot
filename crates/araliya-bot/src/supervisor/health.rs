@@ -41,11 +41,21 @@ pub struct SubsystemHealth {
 
 impl SubsystemHealth {
     pub fn ok(id: impl Into<String>) -> Self {
-        Self { id: id.into(), healthy: true, message: "ok".into(), details: None }
+        Self {
+            id: id.into(),
+            healthy: true,
+            message: "ok".into(),
+            details: None,
+        }
     }
 
     pub fn degraded(id: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { id: id.into(), healthy: false, message: message.into(), details: None }
+        Self {
+            id: id.into(),
+            healthy: false,
+            message: message.into(),
+            details: None,
+        }
     }
 
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
@@ -73,7 +83,10 @@ impl HealthRegistry {
     ///
     /// The reporter writes into this registry under the given `id`.
     pub fn reporter(&self, id: impl Into<String>) -> HealthReporter {
-        HealthReporter { id: id.into(), registry: self.clone() }
+        HealthReporter {
+            id: id.into(),
+            registry: self.clone(),
+        }
     }
 
     /// Snapshot all current health states, sorted by id.
@@ -125,7 +138,8 @@ impl HealthReporter {
 
     /// Mark the subsystem as unhealthy with a reason message.
     pub async fn set_unhealthy(&self, message: impl Into<String>) {
-        self.write(SubsystemHealth::degraded(&self.id, message)).await;
+        self.write(SubsystemHealth::degraded(&self.id, message))
+            .await;
     }
 
     /// Mark as unhealthy with a reason and optional structured details.
@@ -197,7 +211,10 @@ mod tests {
     async fn all_healthy_false_when_one_degraded() {
         let registry = HealthRegistry::new();
         registry.reporter("llm").set_healthy().await;
-        registry.reporter("agents").set_unhealthy("agents down").await;
+        registry
+            .reporter("agents")
+            .set_unhealthy("agents down")
+            .await;
 
         assert!(!registry.all_healthy().await);
     }
@@ -209,7 +226,12 @@ mod tests {
         registry.reporter("agents").set_healthy().await;
         registry.reporter("cron").set_healthy().await;
 
-        let ids: Vec<_> = registry.snapshot().await.into_iter().map(|h| h.id).collect();
+        let ids: Vec<_> = registry
+            .snapshot()
+            .await
+            .into_iter()
+            .map(|h| h.id)
+            .collect();
         assert_eq!(ids, vec!["agents", "cron", "tools"]);
     }
 
@@ -267,10 +289,12 @@ mod tests {
         let registry = HealthRegistry::new();
         let reporter = registry.reporter("llm");
 
-        reporter.set_healthy_with(
-            "ok",
-            Some(serde_json::json!({ "model": "gpt-4", "latency_ms": 120 })),
-        ).await;
+        reporter
+            .set_healthy_with(
+                "ok",
+                Some(serde_json::json!({ "model": "gpt-4", "latency_ms": 120 })),
+            )
+            .await;
 
         let h = reporter.get_current().await.unwrap();
         assert!(h.healthy);

@@ -15,10 +15,10 @@
 
 use std::path::Path;
 
-use crate::error::AppError;
 use super::super::collections::{Block, Collection, Doc};
 use super::super::store::{SessionStore, Store};
 use super::super::types::PrimaryValue;
+use crate::error::AppError;
 
 /// Ephemeral, typed in-memory store backed by a [`Store`].
 ///
@@ -70,12 +70,14 @@ impl TmpStore {
 
     /// Replace the `"doc"` collection with a modified snapshot.
     pub fn set_doc(&self, doc: Doc) -> Result<(), AppError> {
-        self.store.insert_collection("doc".into(), Collection::Doc(doc))
+        self.store
+            .insert_collection("doc".into(), Collection::Doc(doc))
     }
 
     /// Replace the `"block"` collection with a modified snapshot.
     pub fn set_block(&self, block: Block) -> Result<(), AppError> {
-        self.store.insert_collection("block".into(), Collection::Block(block))
+        self.store
+            .insert_collection("block".into(), Collection::Block(block))
     }
 
     /// Direct access to the underlying [`Store`] for label inspection or
@@ -96,7 +98,9 @@ impl TmpStore {
 }
 
 impl Default for TmpStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SessionStore for TmpStore {

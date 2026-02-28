@@ -33,7 +33,11 @@ impl SessionRw {
         stores: Vec<Arc<dyn SessionStore>>,
         tmp_store: Option<Arc<TmpStore>>,
     ) -> Self {
-        Self { session_dir, stores, tmp_store }
+        Self {
+            session_dir,
+            stores,
+            tmp_store,
+        }
     }
 
     pub fn session_dir(&self) -> &Path {
@@ -41,7 +45,10 @@ impl SessionRw {
     }
 
     pub fn store_types(&self) -> Vec<String> {
-        self.stores.iter().map(|s| s.store_type().to_string()).collect()
+        self.stores
+            .iter()
+            .map(|s| s.store_type().to_string())
+            .collect()
     }
 
     pub fn has_tmp_store(&self) -> bool {
@@ -134,17 +141,15 @@ impl SessionRw {
     }
 
     pub fn set_tmp_doc(&self, doc: Doc) -> Result<(), AppError> {
-        self.tmp_store()?.inner().insert_collection(
-            self.tmp_label("doc"),
-            Collection::Doc(doc),
-        )
+        self.tmp_store()?
+            .inner()
+            .insert_collection(self.tmp_label("doc"), Collection::Doc(doc))
     }
 
     pub fn set_tmp_block(&self, block: Block) -> Result<(), AppError> {
-        self.tmp_store()?.inner().insert_collection(
-            self.tmp_label("block"),
-            Collection::Block(block),
-        )
+        self.tmp_store()?
+            .inner()
+            .insert_collection(self.tmp_label("block"), Collection::Block(block))
     }
 
     pub async fn list_files(&self) -> Result<Vec<SessionFileInfo>, AppError> {
@@ -188,9 +193,9 @@ impl SessionRw {
     }
 
     fn tmp_store(&self) -> Result<&Arc<TmpStore>, AppError> {
-        self.tmp_store
-            .as_ref()
-            .ok_or_else(|| AppError::Memory("session has no tmp store (not a 'tmp' session)".into()))
+        self.tmp_store.as_ref().ok_or_else(|| {
+            AppError::Memory("session has no tmp store (not a 'tmp' session)".into())
+        })
     }
 
     fn tmp_label(&self, kind: &str) -> String {
@@ -208,7 +213,11 @@ fn epoch_to_iso8601(epoch_secs: u64) -> String {
 
     let mut yr = 1970u64;
     loop {
-        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) { 366 } else { 365 };
+        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) {
+            366
+        } else {
+            365
+        };
         if days < ydays {
             break;
         }
@@ -217,7 +226,20 @@ fn epoch_to_iso8601(epoch_secs: u64) -> String {
     }
 
     let leap = yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0);
-    let mdays: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mdays: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut mon = 1u64;
     for &md in &mdays {
         if days < md {

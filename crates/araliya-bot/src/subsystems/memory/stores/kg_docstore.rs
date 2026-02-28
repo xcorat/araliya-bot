@@ -37,8 +37,7 @@ use tracing::warn;
 use crate::error::AppError;
 
 use super::docstore_core::{
-    DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn,
-    sha256_hex,
+    DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn, sha256_hex,
 };
 
 // Re-export the shared types so callers can use a single import.
@@ -221,14 +220,25 @@ impl IKGDocStore {
         let docs_dir = dir.join(DOCS_DIR);
         let kg_dir = dir.join(KG_DIR);
         fs::create_dir_all(&docs_dir).map_err(|e| {
-            AppError::Memory(format!("kgdocstore: cannot create {}: {e}", docs_dir.display()))
+            AppError::Memory(format!(
+                "kgdocstore: cannot create {}: {e}",
+                docs_dir.display()
+            ))
         })?;
         fs::create_dir_all(&kg_dir).map_err(|e| {
-            AppError::Memory(format!("kgdocstore: cannot create {}: {e}", kg_dir.display()))
+            AppError::Memory(format!(
+                "kgdocstore: cannot create {}: {e}",
+                kg_dir.display()
+            ))
         })?;
 
         let db_path = dir.join(DB_FILENAME);
-        let store = Self { dir, docs_dir, kg_dir, db_path };
+        let store = Self {
+            dir,
+            docs_dir,
+            kg_dir,
+            db_path,
+        };
         store.init_db()?;
         Ok(store)
     }
@@ -289,7 +299,10 @@ impl IKGDocStore {
         let content_path = self.doc_content_path(&doc.id);
         if let Some(parent) = content_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                AppError::Memory(format!("kgdocstore: create parent dirs {}: {e}", parent.display()))
+                AppError::Memory(format!(
+                    "kgdocstore: create parent dirs {}: {e}",
+                    parent.display()
+                ))
             })?;
         }
         fs::write(&content_path, doc.content).map_err(|e| {
@@ -319,9 +332,8 @@ impl IKGDocStore {
             })
             .map_err(|e| AppError::Memory(format!("kgdocstore: get_document {doc_id}: {e}")))?;
 
-        let content = fs::read_to_string(self.doc_content_path(doc_id)).map_err(|e| {
-            AppError::Memory(format!("kgdocstore: read content for {doc_id}: {e}"))
-        })?;
+        let content = fs::read_to_string(self.doc_content_path(doc_id))
+            .map_err(|e| AppError::Memory(format!("kgdocstore: read content for {doc_id}: {e}")))?;
 
         Ok(Document {
             id: doc_id.to_string(),
@@ -357,8 +369,10 @@ impl IKGDocStore {
             })
             .map_err(|e| AppError::Memory(format!("kgdocstore: query list_documents: {e}")))?;
 
-        rows.map(|r| r.map_err(|e| AppError::Memory(format!("kgdocstore: list_documents row: {e}"))))
-            .collect()
+        rows.map(|r| {
+            r.map_err(|e| AppError::Memory(format!("kgdocstore: list_documents row: {e}")))
+        })
+        .collect()
     }
 
     /// Remove a document, its chunks, and its content file.
@@ -372,16 +386,24 @@ impl IKGDocStore {
             .map_err(|e| AppError::Memory(format!("kgdocstore: begin delete tx: {e}")))?;
 
         tx.execute("DELETE FROM chunks WHERE doc_id = ?1", params![doc_id])
-            .map_err(|e| AppError::Memory(format!("kgdocstore: delete chunks for {doc_id}: {e}")))?;
-        tx.execute("DELETE FROM doc_metadata WHERE doc_id = ?1", params![doc_id])
-            .map_err(|e| AppError::Memory(format!("kgdocstore: delete metadata for {doc_id}: {e}")))?;
+            .map_err(|e| {
+                AppError::Memory(format!("kgdocstore: delete chunks for {doc_id}: {e}"))
+            })?;
+        tx.execute(
+            "DELETE FROM doc_metadata WHERE doc_id = ?1",
+            params![doc_id],
+        )
+        .map_err(|e| AppError::Memory(format!("kgdocstore: delete metadata for {doc_id}: {e}")))?;
         tx.commit()
             .map_err(|e| AppError::Memory(format!("kgdocstore: commit delete: {e}")))?;
 
         let content_path = self.doc_content_path(doc_id);
         if content_path.exists() {
             fs::remove_file(&content_path).map_err(|e| {
-                AppError::Memory(format!("kgdocstore: remove {}: {e}", content_path.display()))
+                AppError::Memory(format!(
+                    "kgdocstore: remove {}: {e}",
+                    content_path.display()
+                ))
             })?;
         }
         Ok(())
@@ -395,11 +417,12 @@ impl IKGDocStore {
     /// Returns the chunks but does **not** index them — call `index_chunks` next.
     pub fn chunk_document(&self, doc_id: &str, chunk_size: usize) -> Result<Vec<Chunk>, AppError> {
         if chunk_size == 0 {
-            return Err(AppError::Memory("kgdocstore: chunk_size must be > 0".to_string()));
+            return Err(AppError::Memory(
+                "kgdocstore: chunk_size must be > 0".to_string(),
+            ));
         }
-        let content = fs::read_to_string(self.doc_content_path(doc_id)).map_err(|e| {
-            AppError::Memory(format!("kgdocstore: read content for {doc_id}: {e}"))
-        })?;
+        let content = fs::read_to_string(self.doc_content_path(doc_id))
+            .map_err(|e| AppError::Memory(format!("kgdocstore: read content for {doc_id}: {e}")))?;
         let splitter = MarkdownSplitter::new(chunk_size);
         Ok(splitter
             .chunk_indices(&content)
@@ -428,7 +451,9 @@ impl IKGDocStore {
         let doc_ids: HashSet<String> = chunks.iter().map(|c| c.doc_id.clone()).collect();
         for doc_id in &doc_ids {
             tx.execute("DELETE FROM chunks WHERE doc_id = ?1", params![doc_id])
-                .map_err(|e| AppError::Memory(format!("kgdocstore: clear chunks for {doc_id}: {e}")))?;
+                .map_err(|e| {
+                    AppError::Memory(format!("kgdocstore: clear chunks for {doc_id}: {e}"))
+                })?;
         }
         for chunk in chunks {
             let meta_json = serde_json::to_string(&chunk.metadata)
@@ -476,7 +501,10 @@ impl IKGDocStore {
                 serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default();
             let doc_meta_map: HashMap<String, String> =
                 serde_json::from_str(&row.get::<_, String>(11)?).unwrap_or_default();
-            let score = { let s: f64 = row.get(5)?; (-s) as f32 };
+            let score = {
+                let s: f64 = row.get(5)?;
+                (-s) as f32
+            };
             Ok(SearchResult {
                 chunk: Chunk {
                     id: row.get(0)?,
@@ -506,7 +534,9 @@ impl IKGDocStore {
                     warn!(error=%msg, "kgdocstore: FTS5 syntax error, returning empty results");
                     return Ok(Vec::new());
                 }
-                return Err(AppError::Memory(format!("kgdocstore: execute search_by_text: {e}")));
+                return Err(AppError::Memory(format!(
+                    "kgdocstore: execute search_by_text: {e}"
+                )));
             }
         };
 
@@ -550,14 +580,23 @@ impl IKGDocStore {
         }
         // Build a map first, then re-order by ids to preserve caller order.
         let conn = open_conn(&self.db_path)?;
-        let placeholders = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect::<Vec<_>>().join(", ");
-        let sql = format!("SELECT id, doc_id, text, position, metadata FROM chunks WHERE id IN ({placeholders})");
+        let placeholders = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT id, doc_id, text, position, metadata FROM chunks WHERE id IN ({placeholders})"
+        );
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| AppError::Memory(format!("kgdocstore: prepare get_chunks_by_ids: {e}")))?;
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
-            ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> = ids
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
 
         let rows = stmt
             .query_map(params_ref.as_slice(), |row| {
@@ -624,7 +663,9 @@ impl IKGDocStore {
                 // Count actual occurrences in the chunk text (not just +1 per chunk)
                 // so that a term repeated N times in one chunk accrues N mentions.
                 let occurrences = count_occurrences(&text_lower, &norm_name).max(1);
-                let entry = candidates.entry(norm_name).or_insert((kind, 0, HashSet::new()));
+                let entry = candidates
+                    .entry(norm_name)
+                    .or_insert((kind, 0, HashSet::new()));
                 entry.1 += occurrences;
                 entry.2.insert(chunk.id.clone());
             }
@@ -714,7 +755,10 @@ impl IKGDocStore {
             .collect();
 
         // ── Persist ───────────────────────────────────────────────────────
-        let graph = KgGraph { entities: confirmed, relations };
+        let graph = KgGraph {
+            entities: confirmed,
+            relations,
+        };
         self.write_graph(&graph)?;
         Ok(())
     }
@@ -722,11 +766,7 @@ impl IKGDocStore {
     // ── KG query pipeline ─────────────────────────────────────────────────
 
     /// Search using the KG+FTS pipeline. Falls back to pure FTS if no graph is available.
-    pub fn search_with_kg(
-        &self,
-        query: &str,
-        cfg: &KgConfig,
-    ) -> Result<KgSearchResult, AppError> {
+    pub fn search_with_kg(&self, query: &str, cfg: &KgConfig) -> Result<KgSearchResult, AppError> {
         let graph = self.load_graph()?;
 
         if graph.is_empty() {
@@ -760,12 +800,16 @@ impl IKGDocStore {
         let mut adj: HashMap<&str, Vec<(&str, f32, &str)>> = HashMap::new();
         for rel in &graph.relations {
             if rel.weight >= cfg.edge_weight_threshold {
-                adj.entry(rel.from.as_str())
-                    .or_default()
-                    .push((rel.to.as_str(), rel.weight, rel.label.as_str()));
-                adj.entry(rel.to.as_str())
-                    .or_default()
-                    .push((rel.from.as_str(), rel.weight, rel.label.as_str()));
+                adj.entry(rel.from.as_str()).or_default().push((
+                    rel.to.as_str(),
+                    rel.weight,
+                    rel.label.as_str(),
+                ));
+                adj.entry(rel.to.as_str()).or_default().push((
+                    rel.from.as_str(),
+                    rel.weight,
+                    rel.label.as_str(),
+                ));
             }
         }
 
@@ -859,7 +903,8 @@ impl IKGDocStore {
         };
 
         // Keep original scored order
-        let score_map: HashMap<&str, f32> = scored.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+        let score_map: HashMap<&str, f32> =
+            scored.iter().map(|(id, s)| (id.as_str(), *s)).collect();
         fetched.sort_by(|a, b| {
             let sa = score_map.get(a.id.as_str()).cloned().unwrap_or(0.0);
             let sb = score_map.get(b.id.as_str()).cloned().unwrap_or(0.0);
@@ -957,7 +1002,9 @@ impl IKGDocStore {
             .query(params![hash])
             .map_err(|e| AppError::Memory(format!("kgdocstore: query find by hash: {e}")))?;
         if let Some(row) = rows.next().map_err(|e| AppError::Memory(e.to_string()))? {
-            return Ok(Some(row.get(0).map_err(|e| AppError::Memory(e.to_string()))?));
+            return Ok(Some(
+                row.get(0).map_err(|e| AppError::Memory(e.to_string()))?,
+            ));
         }
         Ok(None)
     }
@@ -1010,7 +1057,11 @@ impl IKGDocStore {
                 r.chunk.id, r.doc_metadata.title, r.chunk.text
             ));
         }
-        Ok(KgSearchResult { context, used_kg: false, seed_entities: Vec::new() })
+        Ok(KgSearchResult {
+            context,
+            used_kg: false,
+            seed_entities: Vec::new(),
+        })
     }
 }
 
@@ -1067,10 +1118,7 @@ fn extract_entities_from_text(
     // 5. Acronyms: 2-5 uppercase letters
     for tok in text.split_whitespace() {
         let tok = tok.trim_matches(|c: char| !c.is_alphabetic());
-        if tok.len() >= 2
-            && tok.len() <= 5
-            && tok.chars().all(|c| c.is_uppercase())
-        {
+        if tok.len() >= 2 && tok.len() <= 5 && tok.chars().all(|c| c.is_uppercase()) {
             add(tok.to_lowercase(), EntityKind::Acronym);
         }
     }
@@ -1319,7 +1367,9 @@ mod tests {
     #[test]
     fn base_api_round_trip() {
         let (_temp, store) = make_store();
-        let doc_id = store.add_document(make_doc("T", "hello world")).expect("add");
+        let doc_id = store
+            .add_document(make_doc("T", "hello world"))
+            .expect("add");
         let chunks = store.chunk_document(&doc_id, 20).expect("chunk");
         assert!(!chunks.is_empty());
         store.index_chunks(chunks).expect("index");
@@ -1331,15 +1381,21 @@ mod tests {
     #[test]
     fn dedup_by_hash() {
         let (_temp, store) = make_store();
-        let id1 = store.add_document(make_doc("A", "same content")).expect("add first");
-        let id2 = store.add_document(make_doc("B", "same content")).expect("dedup");
+        let id1 = store
+            .add_document(make_doc("A", "same content"))
+            .expect("add first");
+        let id2 = store
+            .add_document(make_doc("B", "same content"))
+            .expect("dedup");
         assert_eq!(id1, id2);
     }
 
     #[test]
     fn all_chunks_returns_indexed() {
         let (_temp, store) = make_store();
-        let doc_id = store.add_document(make_doc("X", "alpha beta gamma delta")).expect("add");
+        let doc_id = store
+            .add_document(make_doc("X", "alpha beta gamma delta"))
+            .expect("add");
         let chunks = store.chunk_document(&doc_id, 10).expect("chunk");
         let n = chunks.len();
         store.index_chunks(chunks).expect("index");
@@ -1350,7 +1406,9 @@ mod tests {
     #[test]
     fn get_chunks_by_ids_ordered() {
         let (_temp, store) = make_store();
-        let doc_id = store.add_document(make_doc("Y", "one two three four five six")).expect("add");
+        let doc_id = store
+            .add_document(make_doc("Y", "one two three four five six"))
+            .expect("add");
         let chunks = store.chunk_document(&doc_id, 5).expect("chunk");
         store.index_chunks(chunks.clone()).expect("index");
         let ids: Vec<String> = chunks.iter().rev().map(|c| c.id.clone()).collect();
@@ -1376,17 +1434,24 @@ mod tests {
         store.rebuild_kg().expect("rebuild_kg");
 
         let graph = store.load_graph().expect("load_graph");
-        assert!(!graph.entities.is_empty(), "expected entities after rebuild");
+        assert!(
+            !graph.entities.is_empty(),
+            "expected entities after rebuild"
+        );
     }
 
     #[test]
     fn search_with_kg_falls_back_when_no_graph() {
         let (_temp, store) = make_store();
-        let doc_id = store.add_document(make_doc("D", "the quick brown fox")).expect("add");
+        let doc_id = store
+            .add_document(make_doc("D", "the quick brown fox"))
+            .expect("add");
         let chunks = store.chunk_document(&doc_id, 50).expect("chunk");
         store.index_chunks(chunks).expect("index");
         // No rebuild_kg call — graph.json absent
-        let result = store.search_with_kg("fox", &KgConfig::default()).expect("search");
+        let result = store
+            .search_with_kg("fox", &KgConfig::default())
+            .expect("search");
         assert!(!result.used_kg, "should fall back to FTS");
         assert!(!result.context.is_empty());
     }
@@ -1402,8 +1467,13 @@ mod tests {
         store.index_chunks(chunks).expect("index");
         store.rebuild_kg().expect("rebuild_kg");
 
-        let cfg = KgConfig { min_entity_mentions: 1, ..KgConfig::default() };
-        let result = store.search_with_kg("authservice tokenvalidator", &cfg).expect("search");
+        let cfg = KgConfig {
+            min_entity_mentions: 1,
+            ..KgConfig::default()
+        };
+        let result = store
+            .search_with_kg("authservice tokenvalidator", &cfg)
+            .expect("search");
         // If seeds were found the context should exist
         assert!(!result.context.is_empty());
     }
@@ -1411,7 +1481,9 @@ mod tests {
     #[test]
     fn empty_seed_falls_back_to_fts() {
         let (_temp, store) = make_store();
-        let doc_id = store.add_document(make_doc("F", "rust memory bm25 search")).expect("add");
+        let doc_id = store
+            .add_document(make_doc("F", "rust memory bm25 search"))
+            .expect("add");
         let chunks = store.chunk_document(&doc_id, 50).expect("chunk");
         store.index_chunks(chunks).expect("index");
 

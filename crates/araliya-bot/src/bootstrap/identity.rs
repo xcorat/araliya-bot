@@ -79,7 +79,10 @@ pub fn setup(config: &Config) -> Result<Identity, AppError> {
                     "multiple identity directories found in {} ({}); set [supervisor].identity_dir explicitly",
                     config.work_dir.display(),
                     dirs.iter()
-                        .map(|d| d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| d.display().to_string()))
+                        .map(|d| d
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| d.display().to_string()))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )));
@@ -172,10 +175,12 @@ fn save_keypair(dir: &Path, seed: &[u8; 32], vk: &[u8; 32]) -> Result<(), AppErr
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600))
-            .map_err(|e| AppError::Identity(format!("cannot set permissions on id_ed25519: {e}")))?;
-        fs::set_permissions(&pub_path, fs::Permissions::from_mode(0o644))
-            .map_err(|e| AppError::Identity(format!("cannot set permissions on id_ed25519.pub: {e}")))?;
+        fs::set_permissions(&secret_path, fs::Permissions::from_mode(0o600)).map_err(|e| {
+            AppError::Identity(format!("cannot set permissions on id_ed25519: {e}"))
+        })?;
+        fs::set_permissions(&pub_path, fs::Permissions::from_mode(0o644)).map_err(|e| {
+            AppError::Identity(format!("cannot set permissions on id_ed25519.pub: {e}"))
+        })?;
     }
 
     Ok(())
@@ -287,10 +292,16 @@ mod tests {
     fn setup_named_identity_creates_and_loads() {
         let tmp = TempDir::new().unwrap();
         let id1 = setup_named_identity(tmp.path(), "test-agent").unwrap();
-        
+
         assert!(id1.identity_dir.exists());
-        assert!(id1.identity_dir.file_name().unwrap().to_string_lossy().starts_with("test-agent-"));
-        
+        assert!(
+            id1.identity_dir
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("test-agent-")
+        );
+
         let id2 = setup_named_identity(tmp.path(), "test-agent").unwrap();
         assert_eq!(id1.public_id, id2.public_id);
         assert_eq!(id1.identity_dir, id2.identity_dir);
@@ -312,7 +323,10 @@ mod tests {
 
         let cfg = test_config(tmp.path());
         let err = setup(&cfg).unwrap_err();
-        assert!(err.to_string().contains("multiple identity directories found"));
+        assert!(
+            err.to_string()
+                .contains("multiple identity directories found")
+        );
     }
 
     #[test]
