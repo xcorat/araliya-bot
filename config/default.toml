@@ -162,6 +162,14 @@ cached_input_per_million_usd = 0.0
 # If [llm.instruction.openai] is absent entirely, the main [llm.openai] config
 # is used as-is — api_base_url, timeout, pricing etc. are all inherited.
 
+## ------------------------- Runtimes Subsystem ------------------------------
+
+[runtimes]
+# External script execution (node, python3, etc.).
+# Working directories are created under {identity_dir}/runtimes/{runtime}/.
+enabled = true
+default_timeout_secs = 30
+
 ## ------------------------- Tools Subsystem ---------------------------------
 
 [tools.newsmail_aggregator]

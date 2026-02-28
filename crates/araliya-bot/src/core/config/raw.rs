@@ -25,6 +25,8 @@ pub(super) struct RawConfig {
     pub ui: RawUi,
     #[serde(default)]
     pub tools: RawTools,
+    #[serde(default)]
+    pub runtimes: RawRuntimes,
 }
 
 #[derive(Deserialize)]
@@ -334,6 +336,26 @@ impl Default for RawNewsmailAggregator {
     }
 }
 
+// ── Runtimes ─────────────────────────────────────────────────────────────────
+
+/// Raw config for the runtimes subsystem (`[runtimes]`).
+#[derive(Deserialize)]
+pub(super) struct RawRuntimes {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_runtimes_timeout")]
+    pub default_timeout_secs: u64,
+}
+
+impl Default for RawRuntimes {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_timeout_secs: default_runtimes_timeout(),
+        }
+    }
+}
+
 // ── Default impls for serde ──────────────────────────────────────────────────
 
 impl Default for RawPty {
@@ -409,6 +431,10 @@ fn default_qwen_timeout_seconds() -> u64 {
 }
 fn default_qwen_max_tokens() -> usize {
     8192
+}
+
+fn default_runtimes_timeout() -> u64 {
+    30
 }
 
 fn default_agent_name() -> String {

@@ -85,6 +85,18 @@ pub struct ToolsConfig {
     pub newsmail_aggregator: NewsmailAggregatorConfig,
 }
 
+// ── Runtimes ─────────────────────────────────────────────────────────────────
+
+/// Runtimes subsystem configuration.
+#[derive(Debug, Clone)]
+pub struct RuntimesConfig {
+    /// Whether the runtimes subsystem is enabled.
+    pub enabled: bool,
+    /// Default per-execution timeout in seconds (used when the request
+    /// does not specify its own `timeout_secs`).
+    pub default_timeout_secs: u64,
+}
+
 // ── LLM ──────────────────────────────────────────────────────────────────────
 
 /// OpenAI / OpenAI-compatible provider configuration.
@@ -244,6 +256,7 @@ pub struct Config {
     pub llm: LlmConfig,
     pub ui: UiConfig,
     pub tools: ToolsConfig,
+    pub runtimes: RuntimesConfig,
     /// API key from `LLM_API_KEY` env var — never sourced from TOML.
     pub llm_api_key: Option<String>,
     /// Memory subsystem caps (from `[memory.basic_session]`).

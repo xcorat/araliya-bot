@@ -21,6 +21,9 @@ pub enum AppError {
 
     #[error("memory error: {0}")]
     Memory(String),
+
+    #[error("runtime error: {0}")]
+    Runtime(String),
 }
 
 #[cfg(test)]

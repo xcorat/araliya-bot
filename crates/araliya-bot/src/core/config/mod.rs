@@ -89,6 +89,10 @@ impl Config {
                     q: None,
                 },
             },
+            runtimes: RuntimesConfig {
+                enabled: true,
+                default_timeout_secs: 30,
+            },
             memory_kv_cap: None,
             memory_transcript_cap: None,
         }

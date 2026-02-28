@@ -46,6 +46,9 @@ use subsystems::tools::ToolsSubsystem;
 #[cfg(feature = "subsystem-cron")]
 use subsystems::cron::CronSubsystem;
 
+#[cfg(feature = "subsystem-runtimes")]
+use subsystems::runtimes::RuntimesSubsystem;
+
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
 
@@ -180,6 +183,17 @@ async fn run() -> Result<(), error::AppError> {
                 .with_health_reporter(health_registry.reporter("tools")),
         ));
         configured_handlers.push("tools".to_string());
+    }
+
+    #[cfg(feature = "subsystem-runtimes")]
+    {
+        if config.runtimes.enabled {
+            handlers.push(Box::new(
+                RuntimesSubsystem::new(&identity.identity_dir, &config.runtimes)
+                    .with_health_reporter(health_registry.reporter("runtimes")),
+            ));
+            configured_handlers.push("runtimes".to_string());
+        }
     }
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]

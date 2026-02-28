@@ -10,6 +10,8 @@ pub mod management;
 #[cfg(feature = "subsystem-memory")]
 pub mod memory;
 pub mod runtime;
+#[cfg(feature = "subsystem-runtimes")]
+pub mod runtimes;
 #[cfg(feature = "subsystem-tools")]
 pub mod tools;
 #[cfg(feature = "subsystem-ui")]

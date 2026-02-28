@@ -163,6 +163,10 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     q: None,
                 },
             },
+            runtimes: RuntimesConfig {
+                enabled: true,
+                default_timeout_secs: 30,
+            },
             memory_kv_cap: Some(200),
             memory_transcript_cap: Some(500),
         })
@@ -391,6 +395,10 @@ pub fn load_from(
                 tsec_last: parsed.tools.newsmail_aggregator.tsec_last,
                 q: parsed.tools.newsmail_aggregator.q,
             },
+        },
+        runtimes: RuntimesConfig {
+            enabled: parsed.runtimes.enabled,
+            default_timeout_secs: parsed.runtimes.default_timeout_secs,
         },
         memory_kv_cap: parsed.memory.basic_session.kv_cap,
         memory_transcript_cap: parsed.memory.basic_session.transcript_cap,
