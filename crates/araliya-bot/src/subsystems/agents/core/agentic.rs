@@ -80,6 +80,9 @@ pub(crate) struct AgenticLoop {
     context_prompt_file: String,
     local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
     prompts_dir: String,
+    /// When `true`, each turn writes intermediate data to the session KV store
+    /// under `debug:turn:{n}:*` keys.  Writes are fire-and-forget.
+    debug_logging: bool,
 }
 
 impl AgenticLoop {
@@ -90,6 +93,7 @@ impl AgenticLoop {
         context_prompt_file: impl Into<String>,
         local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
         prompts_dir: impl Into<String>,
+        debug_logging: bool,
     ) -> Self {
         Self {
             agent_id: agent_id.into(),
@@ -98,6 +102,7 @@ impl AgenticLoop {
             context_prompt_file: context_prompt_file.into(),
             local_tools,
             prompts_dir: prompts_dir.into(),
+            debug_logging,
         }
     }
 
@@ -122,6 +127,30 @@ impl AgenticLoop {
             warn!("{}: transcript_append(user) failed: {e}", self.agent_id);
         }
 
+        // ── Debug: increment turn counter and record user input ───────
+        let debug_n: usize = if self.debug_logging {
+            let prev: usize = handle
+                .kv_get("debug:turn_count")
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let n = prev + 1;
+            if let Err(e) = handle.kv_set("debug:turn_count", &n.to_string()).await {
+                warn!("{}: debug kv_set turn_count: {e}", self.agent_id);
+            }
+            if let Err(e) = handle
+                .kv_set(&format!("debug:turn:{n}:user_input"), &content)
+                .await
+            {
+                warn!("{}: debug kv_set user_input: {e}", self.agent_id);
+            }
+            n
+        } else {
+            0
+        };
+
         // ── 2. History ────────────────────────────────────────────────
         let history = self.read_history(&handle).await;
 
@@ -133,6 +162,18 @@ impl AgenticLoop {
             .var("tools", &tool_manifest)
             .var("user_input", &content)
             .build();
+
+        if self.debug_logging {
+            if let Err(e) = handle
+                .kv_set(
+                    &format!("debug:turn:{debug_n}:instruct_prompt"),
+                    &instruct_prompt,
+                )
+                .await
+            {
+                warn!("{}: debug kv_set instruct_prompt: {e}", self.agent_id);
+            }
+        }
 
         let instruction_text = if self.use_instruction_llm {
             extract_text(
@@ -159,30 +200,83 @@ impl AgenticLoop {
             }
         };
 
+        if self.debug_logging {
+            if let Err(e) = handle
+                .kv_set(
+                    &format!("debug:turn:{debug_n}:instruction_response"),
+                    &instruction_text,
+                )
+                .await
+            {
+                warn!(
+                    "{}: debug kv_set instruction_response: {e}",
+                    self.agent_id
+                );
+            }
+        }
+
         // ── 4. Parse tool calls ───────────────────────────────────────
         let tool_calls = parse_tool_calls(&instruction_text);
         if tool_calls.is_empty() {
             tracing::debug!("{}: no tool calls from instruction pass", self.agent_id);
         }
 
+        if self.debug_logging {
+            // instruction_text is already the raw JSON string from the LLM
+            if let Err(e) = handle
+                .kv_set(
+                    &format!("debug:turn:{debug_n}:tool_calls_json"),
+                    &instruction_text,
+                )
+                .await
+            {
+                warn!("{}: debug kv_set tool_calls_json: {e}", self.agent_id);
+            }
+        }
+
         // ── 5. Execute tools ──────────────────────────────────────────
         let mut context_parts: Vec<String> = Vec::new();
+        let mut debug_tool_outputs: Vec<serde_json::Value> = Vec::new();
+
         for call in tool_calls {
+            let tool_name = call.tool.clone();
+            let action_name = call.action.clone();
+
             // Local tools (in-process, blocking) — checked first.
             if let Some(local) = self
                 .local_tools
                 .iter()
-                .find(|t| t.name() == call.tool.as_str())
+                .find(|t| t.name() == tool_name.as_str())
             {
                 let tool = Arc::clone(local);
                 let params = call.params.clone();
                 match tokio::task::spawn_blocking(move || tool.call(&params)).await {
-                    Ok(Ok(output)) => context_parts.push(output),
+                    Ok(Ok(output)) => {
+                        if self.debug_logging {
+                            debug_tool_outputs.push(serde_json::json!({
+                                "tool": &tool_name, "action": &action_name,
+                                "ok": true, "output": &output,
+                            }));
+                        }
+                        context_parts.push(output);
+                    }
                     Ok(Err(e)) => {
-                        warn!("{}: local tool '{}' error: {e}", self.agent_id, call.tool)
+                        if self.debug_logging {
+                            debug_tool_outputs.push(serde_json::json!({
+                                "tool": &tool_name, "action": &action_name,
+                                "ok": false, "output": e.to_string(),
+                            }));
+                        }
+                        warn!("{}: local tool '{}' error: {e}", self.agent_id, tool_name)
                     }
                     Err(e) => {
-                        warn!("{}: local tool '{}' panic: {e}", self.agent_id, call.tool)
+                        if self.debug_logging {
+                            debug_tool_outputs.push(serde_json::json!({
+                                "tool": &tool_name, "action": &action_name,
+                                "ok": false, "output": format!("panic: {e}"),
+                            }));
+                        }
+                        warn!("{}: local tool '{}' panic: {e}", self.agent_id, tool_name)
                     }
                 }
                 continue;
@@ -192,8 +286,8 @@ impl AgenticLoop {
             let params_json = call.params.to_string();
             match state
                 .execute_tool(
-                    &call.tool,
-                    &call.action,
+                    &tool_name,
+                    &action_name,
                     params_json,
                     &channel_id,
                     Some(handle.session_id.clone()),
@@ -204,18 +298,38 @@ impl AgenticLoop {
                     ok: true,
                     data_json: Some(data),
                     ..
-                }) => context_parts.push(data),
+                }) => {
+                    if self.debug_logging {
+                        debug_tool_outputs.push(serde_json::json!({
+                            "tool": &tool_name, "action": &action_name,
+                            "ok": true, "output": &data,
+                        }));
+                    }
+                    context_parts.push(data);
+                }
                 Ok(BusPayload::ToolResponse {
                     ok: false,
                     error: Some(e),
                     ..
                 }) => {
+                    if self.debug_logging {
+                        debug_tool_outputs.push(serde_json::json!({
+                            "tool": &tool_name, "action": &action_name,
+                            "ok": false, "output": &e,
+                        }));
+                    }
                     warn!(
                         "{}: bus tool {}/{} error: {e}",
-                        self.agent_id, call.tool, call.action
+                        self.agent_id, tool_name, action_name
                     )
                 }
                 Err(e) => {
+                    if self.debug_logging {
+                        debug_tool_outputs.push(serde_json::json!({
+                            "tool": &tool_name, "action": &action_name,
+                            "ok": false, "output": format!("bus error: {}", e.message),
+                        }));
+                    }
                     warn!(
                         "{}: bus tool dispatch failed: {}",
                         self.agent_id, e.message
@@ -225,6 +339,26 @@ impl AgenticLoop {
             }
         }
         let context = context_parts.join("\n\n---\n\n");
+
+        if self.debug_logging {
+            let outputs_json =
+                serde_json::to_string(&debug_tool_outputs).unwrap_or_default();
+            if let Err(e) = handle
+                .kv_set(
+                    &format!("debug:turn:{debug_n}:tool_outputs_json"),
+                    &outputs_json,
+                )
+                .await
+            {
+                warn!("{}: debug kv_set tool_outputs_json: {e}", self.agent_id);
+            }
+            if let Err(e) = handle
+                .kv_set(&format!("debug:turn:{debug_n}:context"), &context)
+                .await
+            {
+                warn!("{}: debug kv_set context: {e}", self.agent_id);
+            }
+        }
 
         // ── 6. Response pass ──────────────────────────────────────────
         let system = preamble(&self.prompts_dir, &state.enabled_tools).build();
@@ -241,6 +375,18 @@ impl AgenticLoop {
             .var("history", &history)
             .var("user_input", &content)
             .build();
+
+        if self.debug_logging {
+            if let Err(e) = handle
+                .kv_set(
+                    &format!("debug:turn:{debug_n}:response_prompt"),
+                    &response_prompt,
+                )
+                .await
+            {
+                warn!("{}: debug kv_set response_prompt: {e}", self.agent_id);
+            }
+        }
 
         let result = state
             .complete_via_llm_with_system(&channel_id, &response_prompt, Some(&system))

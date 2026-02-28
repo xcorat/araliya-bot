@@ -7,10 +7,10 @@
 use std::time::Duration;
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -65,7 +65,12 @@ pub(super) async fn health(State(state): State<AxumState>) -> Response {
 /// timeout) and returns the updated aggregated health body, identical in shape
 /// to `GET /api/health`.
 pub(super) async fn health_refresh(State(state): State<AxumState>) -> Response {
-    match tokio::time::timeout(Duration::from_secs(15), state.comms.management_health_refresh()).await {
+    match tokio::time::timeout(
+        Duration::from_secs(15),
+        state.comms.management_health_refresh(),
+    )
+    .await
+    {
         Ok(Ok(body)) => (
             StatusCode::OK,
             [(axum::http::header::CONTENT_TYPE, "application/json")],
@@ -116,9 +121,12 @@ pub(super) async fn message(
 
     match tokio::time::timeout(
         Duration::from_secs(120),
-        state
-            .comms
-            .send_message(&state.channel_id, req.message.clone(), session_id, req.agent_id.clone()),
+        state.comms.send_message(
+            &state.channel_id,
+            req.message.clone(),
+            session_id,
+            req.agent_id.clone(),
+        ),
     )
     .await
     {
@@ -267,6 +275,35 @@ pub(super) async fn session_memory(
         Err(_) => (
             StatusCode::GATEWAY_TIMEOUT,
             json_error("timeout", "session memory request timed out"),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/sessions/{session_id}/debug
+pub(super) async fn session_debug(
+    State(state): State<AxumState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        state.comms.request_session_debug(&session_id, None),
+    )
+    .await
+    {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, %session_id, "session debug request failed: {e}");
+            (StatusCode::NOT_FOUND, json_error("not_found", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "session debug request timed out"),
         )
             .into_response(),
     }

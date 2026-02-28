@@ -122,6 +122,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 news_query: None,
                 docs: None,
                 agentic_chat: None,
+                debug_logging: false,
             },
             llm: LlmConfig {
                 provider: "dummy".to_string(),
@@ -343,6 +344,7 @@ pub fn load_from(
             news_query,
             docs: docs_cfg,
             agentic_chat: agentic_chat_cfg,
+            debug_logging: parsed.agents.debug_logging,
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,

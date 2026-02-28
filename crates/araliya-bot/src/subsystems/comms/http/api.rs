@@ -32,9 +32,7 @@ pub(super) async fn handle_health(
     let response = tokio::time::timeout(Duration::from_secs(3), state.management_http_get()).await;
 
     match response {
-        Ok(Ok(body)) => {
-            super::write_json_response(socket, "200 OK", body.as_bytes()).await
-        }
+        Ok(Ok(body)) => super::write_json_response(socket, "200 OK", body.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, "management health request failed: {e}");
             super::write_response(
@@ -67,7 +65,8 @@ pub(super) async fn handle_health_refresh(
     state: &Arc<CommsState>,
     channel_id: &str,
 ) -> Result<(), AppError> {
-    let response = tokio::time::timeout(Duration::from_secs(15), state.management_health_refresh()).await;
+    let response =
+        tokio::time::timeout(Duration::from_secs(15), state.management_health_refresh()).await;
 
     match response {
         Ok(Ok(body)) => super::write_json_response(socket, "200 OK", body.as_bytes()).await,
@@ -186,12 +185,8 @@ pub(super) async fn handle_message(
                 "error": "internal",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "502 Bad Gateway",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({
@@ -214,28 +209,18 @@ pub(super) async fn handle_sessions(
     state: &Arc<CommsState>,
     channel_id: &str,
 ) -> Result<(), AppError> {
-    let result = tokio::time::timeout(
-        Duration::from_secs(10),
-        state.request_sessions(),
-    )
-    .await;
+    let result = tokio::time::timeout(Duration::from_secs(10), state.request_sessions()).await;
 
     match result {
-        Ok(Ok(data)) => {
-            super::write_json_response(socket, "200 OK", data.as_bytes()).await
-        }
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, "sessions request failed: {e}");
             let err_body = serde_json::json!({
                 "error": "internal",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "502 Bad Gateway",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({
@@ -266,21 +251,15 @@ pub(super) async fn handle_session_detail(
     .await;
 
     match result {
-        Ok(Ok(data)) => {
-            super::write_json_response(socket, "200 OK", data.as_bytes()).await
-        }
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, %session_id, "session detail request failed: {e}");
             let err_body = serde_json::json!({
                 "error": "not_found",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "404 Not Found",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "404 Not Found", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({
@@ -311,21 +290,15 @@ pub(super) async fn handle_session_memory(
     .await;
 
     match result {
-        Ok(Ok(data)) => {
-            super::write_json_response(socket, "200 OK", data.as_bytes()).await
-        }
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, %session_id, "session memory request failed: {e}");
             let err_body = serde_json::json!({
                 "error": "not_found",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "404 Not Found",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "404 Not Found", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({
@@ -349,33 +322,63 @@ pub(super) async fn handle_agent_kg(
     channel_id: &str,
     agent_id: &str,
 ) -> Result<(), AppError> {
-    let result = tokio::time::timeout(
-        Duration::from_secs(10),
-        state.request_agent_kg(agent_id),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(Duration::from_secs(10), state.request_agent_kg(agent_id)).await;
 
     match result {
-        Ok(Ok(data)) => {
-            super::write_json_response(socket, "200 OK", data.as_bytes()).await
-        }
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, %agent_id, "agent KG request failed: {e}");
             let err_body = serde_json::json!({
                 "error": "not_found",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "404 Not Found",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "404 Not Found", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({
                 "error": "timeout",
                 "message": "agent KG request timed out"
+            });
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
+        }
+    }
+}
+
+/// GET /api/sessions/{session_id}/debug
+pub(super) async fn handle_session_debug(
+    socket: &mut tokio::net::TcpStream,
+    state: &Arc<CommsState>,
+    channel_id: &str,
+    session_id: &str,
+) -> Result<(), AppError> {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        state.request_session_debug(session_id, None),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
+        Ok(Err(e)) => {
+            warn!(%channel_id, %session_id, "session debug request failed: {e}");
+            let err_body = serde_json::json!({
+                "error": "not_found",
+                "message": format!("{e}")
+            });
+            super::write_json_response(socket, "404 Not Found", err_body.to_string().as_bytes())
+                .await
+        }
+        Err(_) => {
+            let err_body = serde_json::json!({
+                "error": "timeout",
+                "message": "session debug request timed out"
             });
             super::write_json_response(
                 socket,
@@ -401,21 +404,15 @@ pub(super) async fn handle_session_files(
     .await;
 
     match result {
-        Ok(Ok(data)) => {
-            super::write_json_response(socket, "200 OK", data.as_bytes()).await
-        }
+        Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, %session_id, "session files request failed: {e}");
             let err_body = serde_json::json!({
                 "error": "not_found",
                 "message": format!("{e}")
             });
-            super::write_json_response(
-                socket,
-                "404 Not Found",
-                err_body.to_string().as_bytes(),
-            )
-            .await
+            super::write_json_response(socket, "404 Not Found", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({

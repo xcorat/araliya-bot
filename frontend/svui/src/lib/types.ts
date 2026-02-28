@@ -177,3 +177,21 @@ export interface AgentKGResponse {
 	agent_id: string;
 	graph: KgGraph;
 }
+
+// ── Agent debug types ────────────────────────────────────────
+
+export interface SessionDebugTurn {
+	n: number;
+	user_input: string;
+	instruct_prompt: string;
+	instruction_response: string;
+	tool_calls_json: string;
+	tool_outputs_json: string;
+	context: string;
+	response_prompt: string;
+}
+
+export interface SessionDebugResponse {
+	session_id: string;
+	turns: SessionDebugTurn[];
+}

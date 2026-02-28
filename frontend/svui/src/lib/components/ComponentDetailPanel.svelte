@@ -328,6 +328,16 @@
 										{/if}
 									</button>
 
+									<!-- Debug link -->
+									<div class="flex gap-2 border-t bg-muted/5 px-3 py-1.5">
+										<a
+											href={`${uiBase}/status/${encodeURIComponent(inspectorAgentId)}/debug?session=${encodeURIComponent(session.session_id)}`}
+											class="text-[10px] text-primary underline"
+										>
+											Debug
+										</a>
+									</div>
+
 									<!-- Memory content (expanded) -->
 									{#if mem?.loaded}
 										<div class="border-t bg-muted/5 px-3 py-2.5">

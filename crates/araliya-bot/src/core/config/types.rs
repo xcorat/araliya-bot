@@ -216,6 +216,12 @@ pub struct AgentsConfig {
     pub docs: Option<DocsAgentConfig>,
     /// Optional configuration for the `agentic-chat` agent.
     pub agentic_chat: Option<AgenticChatConfig>,
+    /// Enable per-turn debug logging to the session KV store.
+    ///
+    /// When `true`, each `AgenticLoop` turn writes intermediate data
+    /// (`instruct_prompt`, `instruction_response`, `tool_calls_json`, etc.)
+    /// under `debug:turn:{n}:*` KV keys.  Off by default.
+    pub debug_logging: bool,
 }
 
 // ── Config (root) ────────────────────────────────────────────────────────────

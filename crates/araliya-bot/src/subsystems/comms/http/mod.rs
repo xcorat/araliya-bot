@@ -11,11 +11,11 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use super::state::{CommsEvent, CommsState};
 use crate::error::AppError;
 use crate::subsystems::runtime::{Component, ComponentFuture};
 #[cfg(feature = "subsystem-ui")]
 use crate::subsystems::ui::UiServeHandle;
-use super::state::{CommsEvent, CommsState};
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 
@@ -138,53 +138,42 @@ async fn handle_connection(
     let body = req.body;
 
     let session_memory = parse_session_subresource_path(&path, "memory");
+    let session_debug = parse_session_subresource_path(&path, "debug");
     let session_files = parse_session_subresource_path(&path, "files");
     let agent_kg = parse_agent_subresource_path(&path, "kg");
 
     match (method.as_str(), path.as_str()) {
-        ("GET", "/api/health")    => api::handle_health(&mut socket, &state, &channel_id).await,
-        ("POST", "/api/health/refresh") => api::handle_health_refresh(&mut socket, &state, &channel_id).await,
-        ("GET", "/api/tree")      => api::handle_tree(&mut socket, &state, &channel_id).await,
-        ("POST", "/api/message")  => api::handle_message(&mut socket, &state, &channel_id, body).await,
-        ("GET", "/api/sessions")  => api::handle_sessions(&mut socket, &state, &channel_id).await,
+        ("GET", "/api/health") => api::handle_health(&mut socket, &state, &channel_id).await,
+        ("POST", "/api/health/refresh") => {
+            api::handle_health_refresh(&mut socket, &state, &channel_id).await
+        }
+        ("GET", "/api/tree") => api::handle_tree(&mut socket, &state, &channel_id).await,
+        ("POST", "/api/message") => {
+            api::handle_message(&mut socket, &state, &channel_id, body).await
+        }
+        ("GET", "/api/sessions") => api::handle_sessions(&mut socket, &state, &channel_id).await,
         ("GET", _) if session_memory.is_some() => {
-            api::handle_session_memory(
-                &mut socket,
-                &state,
-                &channel_id,
-                session_memory.unwrap(),
-            )
-            .await
+            api::handle_session_memory(&mut socket, &state, &channel_id, session_memory.unwrap())
+                .await
+        }
+        ("GET", _) if session_debug.is_some() => {
+            api::handle_session_debug(&mut socket, &state, &channel_id, session_debug.unwrap())
+                .await
         }
         ("GET", _) if session_files.is_some() => {
-            api::handle_session_files(
-                &mut socket,
-                &state,
-                &channel_id,
-                session_files.unwrap(),
-            )
-            .await
+            api::handle_session_files(&mut socket, &state, &channel_id, session_files.unwrap())
+                .await
         }
         ("GET", _) if agent_kg.is_some() => {
-            api::handle_agent_kg(
-                &mut socket,
-                &state,
-                &channel_id,
-                agent_kg.unwrap(),
-            )
-            .await
+            api::handle_agent_kg(&mut socket, &state, &channel_id, agent_kg.unwrap()).await
         }
         ("GET", p) if p.starts_with("/api/session/") => {
             let session_id = &p["/api/session/".len()..];
             api::handle_session_detail(&mut socket, &state, &channel_id, session_id).await
         }
-        ("GET", "/favicon.ico") => write_response(
-            &mut socket,
-            "204 No Content",
-            "image/x-icon",
-            b"",
-        )
-        .await,
+        ("GET", "/favicon.ico") => {
+            write_response(&mut socket, "204 No Content", "image/x-icon", b"").await
+        }
         ("GET", "/" | "/index.html") => ui::handle_root(&mut socket).await,
         ("GET", p) if p.starts_with("/ui") => ui::handle_ui_path(&mut socket, p, &ui_handle).await,
         _ => ui::handle_not_found(&mut socket).await,
@@ -232,9 +221,7 @@ struct HttpRequest {
     body: Vec<u8>,
 }
 
-async fn read_request(
-    socket: &mut tokio::net::TcpStream,
-) -> Result<Option<HttpRequest>, AppError> {
+async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpRequest>, AppError> {
     let mut buffer = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
 
@@ -251,7 +238,9 @@ async fn read_request(
         buffer.extend_from_slice(&chunk[..n]);
 
         if buffer.len() > MAX_HEADER_BYTES {
-            return Err(AppError::Comms("http request headers too large".to_string()));
+            return Err(AppError::Comms(
+                "http request headers too large".to_string(),
+            ));
         }
 
         if buffer.windows(4).any(|w| w == b"\r\n\r\n") {
@@ -260,10 +249,7 @@ async fn read_request(
     }
 
     // Split headers from any body bytes already read.
-    let header_end = buffer
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .unwrap();
+    let header_end = buffer.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
     let body_start = header_end + 4;
     let header_bytes = &buffer[..header_end];
 

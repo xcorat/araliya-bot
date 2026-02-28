@@ -201,6 +201,9 @@ pub(super) struct RawAgents {
     pub default_agent: String,
     #[serde(default)]
     pub routing: HashMap<String, String>,
+    /// Enable per-turn debug logging to the session KV store for agentic plugins.
+    #[serde(default)]
+    pub debug_logging: bool,
     #[serde(flatten)]
     pub entries: HashMap<String, RawAgentEntry>,
 }

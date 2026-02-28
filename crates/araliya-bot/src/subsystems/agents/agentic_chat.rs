@@ -58,6 +58,7 @@ impl Agent for AgenticChatPlugin {
             "agentic_context.txt",
             vec![],
             "config/prompts",
+            state.debug_logging,
         );
         tokio::spawn(async move {
             let result = loop_.run(channel_id, content, session_id, state).await;

@@ -27,7 +27,11 @@ mod ui;
 
 use std::sync::Arc;
 
-use axum::{Router, routing::{get, post}, http::StatusCode};
+use axum::{
+    Router,
+    http::StatusCode,
+    routing::{get, post},
+};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -139,19 +143,23 @@ async fn run_axum(
 fn build_router(state: AxumState) -> Router {
     Router::new()
         // API routes
-        .route("/api/health",                        get(api::health))
-        .route("/api/health/refresh",                post(api::health_refresh))
-        .route("/api/tree",                           get(api::tree))
-        .route("/api/message",                       post(api::message))
-        .route("/api/sessions",                      get(api::sessions))
-        .route("/api/agents",                        get(api::agents))
-        .route("/api/agents/{agent_id}/kg",          get(api::agent_kg))
-        .route("/api/sessions/{session_id}/memory",  get(api::session_memory))
-        .route("/api/sessions/{session_id}/files",   get(api::session_files))
-        .route("/api/session/{session_id}",          get(api::session_detail))
+        .route("/api/health", get(api::health))
+        .route("/api/health/refresh", post(api::health_refresh))
+        .route("/api/tree", get(api::tree))
+        .route("/api/message", post(api::message))
+        .route("/api/sessions", get(api::sessions))
+        .route("/api/agents", get(api::agents))
+        .route("/api/agents/{agent_id}/kg", get(api::agent_kg))
+        .route(
+            "/api/sessions/{session_id}/memory",
+            get(api::session_memory),
+        )
+        .route("/api/sessions/{session_id}/debug", get(api::session_debug))
+        .route("/api/sessions/{session_id}/files", get(api::session_files))
+        .route("/api/session/{session_id}", get(api::session_detail))
         // UI routes
         .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }))
-        .route("/",            get(ui::root))
-        .route("/{*path}",     get(ui::serve_path))
+        .route("/", get(ui::root))
+        .route("/{*path}", get(ui::serve_path))
         .with_state(state)
 }

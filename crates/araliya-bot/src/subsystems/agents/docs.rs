@@ -201,6 +201,7 @@ impl Agent for DocsAgentPlugin {
                 "docs_context.txt",
                 vec![rag_tool],
                 "config/prompts",
+                state.debug_logging,
             );
 
             let result = loop_.run(channel_id, query, session_id, state).await;

@@ -37,6 +37,10 @@ bind = "127.0.0.1:8080"
 # To enable LLM-backed chat, set this to "basic_chat" or "chat" and
 # set enabled = true in the corresponding section below.
 default = "echo"
+# Set to true to log each agentic turn's intermediate data to the session KV
+# store (instruct_prompt, tool_calls, context, response_prompt, etc.).
+# Enables the "Debug" pane in the UI.  Has a small storage cost per turn.
+debug_logging = false
 
 [agents.routing]
 # Optional channel_id -> agent_id overrides.

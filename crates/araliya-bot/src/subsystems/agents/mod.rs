@@ -74,6 +74,8 @@ pub struct AgentsState {
     pub docs_kg_config: DocsKgConfig,
     /// Names of tool plugins enabled at startup — injected into prompt layer 2.
     pub enabled_tools: Vec<String>,
+    /// Enable per-turn debug logging to session KV store.
+    pub debug_logging: bool,
 }
 
 impl AgentsState {
@@ -87,6 +89,7 @@ impl AgentsState {
         docs_use_kg: bool,
         docs_kg_config: DocsKgConfig,
         enabled_tools: Vec<String>,
+        debug_logging: bool,
     ) -> Self {
         Self {
             bus,
@@ -99,6 +102,7 @@ impl AgentsState {
             docs_use_kg,
             docs_kg_config,
             enabled_tools,
+            debug_logging,
         }
     }
 
@@ -454,6 +458,7 @@ impl AgentsSubsystem {
                 docs_use_kg,
                 docs_kg_config,
                 enabled_tools,
+                config.debug_logging,
             )),
             agents,
             default_agent,
@@ -877,6 +882,76 @@ impl AgentsSubsystem {
             }));
         });
     }
+
+    /// Handle `agents/sessions/debug` — return per-turn debug data from session KV store.
+    fn handle_session_debug(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        let (session_id, agent_id) = match payload {
+            BusPayload::SessionQuery {
+                session_id,
+                agent_id,
+            } => (session_id, agent_id),
+            _ => {
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected SessionQuery payload")));
+                return;
+            }
+        };
+
+        let handle = match self.load_scoped_session(&session_id, agent_id.as_deref()) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            // Read the turn counter.
+            let turn_count: usize = handle
+                .kv_get("debug:turn_count")
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+
+            let mut turns = Vec::with_capacity(turn_count);
+            for n in 1..=turn_count {
+                let read = |key: &str| {
+                    let handle = handle.clone();
+                    let key = key.to_string();
+                    async move { handle.kv_get(&key).await.ok().flatten().unwrap_or_default() }
+                };
+                let user_input = read(&format!("debug:turn:{n}:user_input")).await;
+                let instruct_prompt = read(&format!("debug:turn:{n}:instruct_prompt")).await;
+                let instruction_response =
+                    read(&format!("debug:turn:{n}:instruction_response")).await;
+                let tool_calls_json = read(&format!("debug:turn:{n}:tool_calls_json")).await;
+                let tool_outputs_json = read(&format!("debug:turn:{n}:tool_outputs_json")).await;
+                let context = read(&format!("debug:turn:{n}:context")).await;
+                let response_prompt = read(&format!("debug:turn:{n}:response_prompt")).await;
+
+                turns.push(serde_json::json!({
+                    "n": n,
+                    "user_input": user_input,
+                    "instruct_prompt": instruct_prompt,
+                    "instruction_response": instruction_response,
+                    "tool_calls_json": tool_calls_json,
+                    "tool_outputs_json": tool_outputs_json,
+                    "context": context,
+                    "response_prompt": response_prompt,
+                }));
+            }
+
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "turns": turns,
+            });
+
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
+    }
 }
 
 impl BusHandler for AgentsSubsystem {
@@ -973,6 +1048,10 @@ impl BusHandler for AgentsSubsystem {
         }
         if method == "agents/sessions/files" {
             self.handle_session_files(payload, reply_tx);
+            return;
+        }
+        if method == "agents/sessions/debug" {
+            self.handle_session_debug(payload, reply_tx);
             return;
         }
 

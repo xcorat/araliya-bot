@@ -78,10 +78,11 @@ impl CommsState {
                 "agent error {}: {}",
                 e.code, e.message
             ))),
-            Ok(Ok(BusPayload::CommsMessage { content: reply, session_id, .. })) => Ok(CommsReply {
-                reply,
+            Ok(Ok(BusPayload::CommsMessage {
+                content: reply,
                 session_id,
-            }),
+                ..
+            })) => Ok(CommsReply { reply, session_id }),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
         }
     }
@@ -97,7 +98,9 @@ impl CommsState {
                 e.code, e.message
             ))),
             Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
-            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
         }
     }
 
@@ -110,7 +113,9 @@ impl CommsState {
                 e.code, e.message
             ))),
             Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
-            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
         }
     }
 
@@ -121,27 +126,39 @@ impl CommsState {
     /// to every registered subsystem concurrently (5 s timeout each), then
     /// returns the full health body with fresh data.
     pub async fn management_health_refresh(&self) -> Result<String, AppError> {
-        match self.bus.request("manage/health/refresh", BusPayload::Empty).await {
+        match self
+            .bus
+            .request("manage/health/refresh", BusPayload::Empty)
+            .await
+        {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!(
                 "management error {}: {}",
                 e.code, e.message
             ))),
             Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
-            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
         }
     }
 
     /// Request the component tree for HTTP (GET /api/tree). Same data as `manage/tree`; no private data.
     pub async fn management_http_tree(&self) -> Result<String, AppError> {
-        match self.bus.request("manage/http/tree", BusPayload::Empty).await {
+        match self
+            .bus
+            .request("manage/http/tree", BusPayload::Empty)
+            .await
+        {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!(
                 "management error {}: {}",
                 e.code, e.message
             ))),
             Ok(Ok(BusPayload::CommsMessage { content, .. })) => Ok(content),
-            Ok(Ok(_)) => Err(AppError::Comms("unexpected management reply payload".to_string())),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
         }
     }
 
@@ -172,7 +189,11 @@ impl CommsState {
     }
 
     /// Request detail (metadata + transcript) for a specific session.
-    pub async fn request_session_detail(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
+    pub async fn request_session_detail(
+        &self,
+        session_id: &str,
+        agent_id: Option<String>,
+    ) -> Result<String, AppError> {
         match self
             .bus
             .request(
@@ -195,7 +216,11 @@ impl CommsState {
     }
 
     /// Request working-memory content for a specific session.
-    pub async fn request_session_memory(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
+    pub async fn request_session_memory(
+        &self,
+        session_id: &str,
+        agent_id: Option<String>,
+    ) -> Result<String, AppError> {
         match self
             .bus
             .request(
@@ -218,11 +243,42 @@ impl CommsState {
     }
 
     /// Request session file list for a specific session.
-    pub async fn request_session_files(&self, session_id: &str, agent_id: Option<String>) -> Result<String, AppError> {
+    pub async fn request_session_files(
+        &self,
+        session_id: &str,
+        agent_id: Option<String>,
+    ) -> Result<String, AppError> {
         match self
             .bus
             .request(
                 "agents/sessions/files",
+                BusPayload::SessionQuery {
+                    session_id: session_id.to_string(),
+                    agent_id,
+                },
+            )
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    /// Request per-turn debug data for a specific session.
+    pub async fn request_session_debug(
+        &self,
+        session_id: &str,
+        agent_id: Option<String>,
+    ) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/sessions/debug",
                 BusPayload::SessionQuery {
                     session_id: session_id.to_string(),
                     agent_id,
