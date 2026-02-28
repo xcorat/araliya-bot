@@ -119,6 +119,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 channel_map: HashMap::new(),
                 enabled: HashSet::from(["basic_chat".to_string()]),
                 agent_memory: HashMap::new(),
+                agent_skills: HashMap::new(),
                 news_query: None,
                 docs: None,
                 agentic_chat: None,
@@ -337,9 +338,16 @@ pub fn load_from(
             agent_memory: parsed
                 .agents
                 .entries
-                .into_iter()
+                .iter()
                 .filter(|(_, e)| !e.memory.is_empty())
-                .map(|(id, e)| (id, e.memory))
+                .map(|(id, e)| (id.clone(), e.memory.clone()))
+                .collect(),
+            agent_skills: parsed
+                .agents
+                .entries
+                .iter()
+                .filter(|(_, e)| !e.skills.is_empty())
+                .map(|(id, e)| (id.clone(), e.skills.clone()))
                 .collect(),
             news_query,
             docs: docs_cfg,

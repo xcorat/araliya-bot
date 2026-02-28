@@ -228,6 +228,10 @@ pub(super) struct RawAgentEntry {
     /// through `llm/instruct` (requires `[llm.instruction]` to be configured).
     #[serde(default)]
     pub use_instruction_llm: bool,
+    /// Bus tools this agent is allowed to invoke (e.g. `["gmail", "newsmail_aggregator"]`).
+    /// Defaults to empty — the agent can only use its own local tools.
+    #[serde(default)]
+    pub skills: Vec<String>,
 }
 
 #[derive(Deserialize, Default)]

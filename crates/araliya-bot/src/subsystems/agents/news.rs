@@ -162,7 +162,12 @@ impl Agent for NewsAgentPlugin {
             }
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
-            let (system, user_prompt) = build_summary_prompt(&items, &state.enabled_tools);
+            let news_skills = state
+                .agent_skills
+                .get("news")
+                .cloned()
+                .unwrap_or_default();
+            let (system, user_prompt) = build_summary_prompt(&items, &news_skills);
             let llm_result = state
                 .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
                 .await;

@@ -2,7 +2,7 @@
 //!
 //! ## Workflow
 //!
-//! 1. **Instruction pass** — builds a tool manifest from `state.enabled_tools`,
+//! 1. **Instruction pass** — builds a tool manifest from the agent's declared skills,
 //!    submits it with the user message to the instruction LLM (`llm/instruct`),
 //!    parses the response as a JSON array of `{tool, action, params}` calls.
 //! 2. **Tool execution** — runs each call generically via `state.execute_tool()`,
@@ -51,12 +51,19 @@ impl Agent for AgenticChatPlugin {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
+        let allowed_tools = state
+            .agent_skills
+            .get("agentic-chat")
+            .cloned()
+            .unwrap_or_default();
+
         let loop_ = AgenticLoop::new(
             "agentic-chat",
             self.use_instruction_llm,
             "agentic_instruct.txt",
             "agentic_context.txt",
             vec![],
+            allowed_tools,
             "config/prompts",
             state.debug_logging,
         );

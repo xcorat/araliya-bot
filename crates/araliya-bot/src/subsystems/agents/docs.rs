@@ -194,12 +194,19 @@ impl Agent for DocsAgentPlugin {
                 kg_cfg: state.docs_kg_config.clone(),
             });
 
+            let allowed_tools = state
+                .agent_skills
+                .get("docs")
+                .cloned()
+                .unwrap_or_default();
+
             let loop_ = AgenticLoop::new(
                 "docs",
                 false,
                 "docs_instruct.txt",
                 "docs_context.txt",
                 vec![rag_tool],
+                allowed_tools,
                 "config/prompts",
                 state.debug_logging,
             );

@@ -72,8 +72,9 @@ pub struct AgentsState {
     pub docs_use_kg: bool,
     /// KG tuning parameters forwarded to IKGDocStore.
     pub docs_kg_config: DocsKgConfig,
-    /// Names of tool plugins enabled at startup — injected into prompt layer 2.
-    pub enabled_tools: Vec<String>,
+    /// Per-agent bus-tool allowlists: agent_id → tool names.
+    /// Each agent only sees tools declared in its `skills` config.
+    pub agent_skills: HashMap<String, Vec<String>>,
     /// Enable per-turn debug logging to session KV store.
     pub debug_logging: bool,
 }
@@ -88,7 +89,7 @@ impl AgentsState {
         docs_index_name: Option<String>,
         docs_use_kg: bool,
         docs_kg_config: DocsKgConfig,
-        enabled_tools: Vec<String>,
+        agent_skills: HashMap<String, Vec<String>>,
         debug_logging: bool,
     ) -> Self {
         Self {
@@ -101,7 +102,7 @@ impl AgentsState {
             docs_index_name,
             docs_use_kg,
             docs_kg_config,
-            enabled_tools,
+            agent_skills,
             debug_logging,
         }
     }
@@ -431,13 +432,9 @@ impl AgentsSubsystem {
             }
         }
 
-        // Collect which tool plugins are compiled in.
-        let mut enabled_tools: Vec<String> = Vec::new();
-        #[cfg(feature = "plugin-gmail-tool")]
-        {
-            enabled_tools.push("gmail".to_string());
-            enabled_tools.push("newsmail_aggregator".to_string());
-        }
+        // Per-agent skills from config — only tools declared here are visible
+        // to each agent's instruction manifest.
+        let agent_skills = config.agent_skills;
 
         // Initialize cryptographic identities for all registered agents.
         let mut agent_identities = HashMap::new();
@@ -457,7 +454,7 @@ impl AgentsSubsystem {
                 docs_index_name,
                 docs_use_kg,
                 docs_kg_config,
-                enabled_tools,
+                agent_skills,
                 config.debug_logging,
             )),
             agents,
@@ -1327,9 +1324,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1363,9 +1362,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map,
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1396,9 +1397,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1426,9 +1429,11 @@ mod tests {
             enabled: HashSet::new(),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1463,9 +1468,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1520,9 +1527,11 @@ mod tests {
             enabled: HashSet::from(["basic_chat".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1610,7 +1619,11 @@ mod tests {
             enabled: HashSet::from(["news".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
+            docs: None,
+            agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1665,9 +1678,11 @@ mod tests {
             enabled: HashSet::from(["news".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1702,9 +1717,11 @@ mod tests {
             enabled: HashSet::from(["docs".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1774,6 +1791,7 @@ mod tests {
             enabled: HashSet::from(["docs".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: Some(DocsAgentConfig {
                 docsdir: Some(docsdir),
@@ -1782,6 +1800,7 @@ mod tests {
                 kg: DocsKgConfig::default(),
             }),
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Populate the docs docstore before handling any queries.
@@ -1816,10 +1835,12 @@ mod tests {
             enabled: HashSet::from(["docs".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             // No docsdir configured — docstore will remain empty.
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Do NOT call init_docs — docstore stays empty.
@@ -1847,9 +1868,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1877,9 +1900,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1897,9 +1922,11 @@ mod tests {
             enabled: HashSet::from(["echo".to_string()]),
             channel_map: HashMap::new(),
             agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
             news_query: None,
             docs: None,
             agentic_chat: None,
+            debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

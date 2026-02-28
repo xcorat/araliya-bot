@@ -79,6 +79,9 @@ pub(crate) struct AgenticLoop {
     instruct_prompt_file: String,
     context_prompt_file: String,
     local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
+    /// Bus tools this agent is allowed to invoke (from config `skills`).
+    /// Only these appear in the instruction-pass tool manifest.
+    allowed_tools: Vec<String>,
     prompts_dir: String,
     /// When `true`, each turn writes intermediate data to the session KV store
     /// under `debug:turn:{n}:*` keys.  Writes are fire-and-forget.
@@ -92,6 +95,7 @@ impl AgenticLoop {
         instruct_prompt_file: impl Into<String>,
         context_prompt_file: impl Into<String>,
         local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
+        allowed_tools: Vec<String>,
         prompts_dir: impl Into<String>,
         debug_logging: bool,
     ) -> Self {
@@ -101,6 +105,7 @@ impl AgenticLoop {
             instruct_prompt_file: instruct_prompt_file.into(),
             context_prompt_file: context_prompt_file.into(),
             local_tools,
+            allowed_tools,
             prompts_dir: prompts_dir.into(),
             debug_logging,
         }
@@ -155,7 +160,7 @@ impl AgenticLoop {
         let history = self.read_history(&handle).await;
 
         // ── 3. Instruction pass ───────────────────────────────────────
-        let tool_manifest = self.build_tool_manifest(&state.enabled_tools);
+        let tool_manifest = self.build_tool_manifest(&self.allowed_tools);
 
         let instruct_prompt = PromptBuilder::new(&self.prompts_dir)
             .layer(&self.instruct_prompt_file)
@@ -361,7 +366,7 @@ impl AgenticLoop {
         }
 
         // ── 6. Response pass ──────────────────────────────────────────
-        let system = preamble(&self.prompts_dir, &state.enabled_tools).build();
+        let system = preamble(&self.prompts_dir, &self.allowed_tools).build();
 
         let context_ref = if context.is_empty() {
             "(no context retrieved)"

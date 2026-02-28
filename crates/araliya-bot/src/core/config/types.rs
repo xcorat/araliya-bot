@@ -216,6 +216,10 @@ pub struct AgentsConfig {
     pub docs: Option<DocsAgentConfig>,
     /// Optional configuration for the `agentic-chat` agent.
     pub agentic_chat: Option<AgenticChatConfig>,
+    /// Per-agent bus-tool allowlists: agent_id → list of tool names the agent
+    /// may invoke.  Populated from `skills = [...]` in each `[agents.<id>]`
+    /// config section.  Agents without an entry default to no bus tools.
+    pub agent_skills: HashMap<String, Vec<String>>,
     /// Enable per-turn debug logging to the session KV store.
     ///
     /// When `true`, each `AgenticLoop` turn writes intermediate data

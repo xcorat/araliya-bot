@@ -45,9 +45,11 @@ impl Config {
                 enabled: std::collections::HashSet::from(["echo".to_string()]),
                 channel_map: std::collections::HashMap::new(),
                 agent_memory: std::collections::HashMap::new(),
+                agent_skills: std::collections::HashMap::new(),
                 news_query: None,
                 docs: None,
                 agentic_chat: None,
+                debug_logging: false,
             },
             llm: LlmConfig {
                 provider: "dummy".into(),

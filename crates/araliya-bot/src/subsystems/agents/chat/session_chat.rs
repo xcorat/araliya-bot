@@ -132,8 +132,13 @@ async fn handle_with_memory(
     };
 
     // Build system preamble (identity layers) and user message separately.
+    let chat_skills = state
+        .agent_skills
+        .get("chat")
+        .cloned()
+        .unwrap_or_default();
     let system =
-        crate::subsystems::agents::core::prompt::preamble("config/prompts", &state.enabled_tools)
+        crate::subsystems::agents::core::prompt::preamble("config/prompts", &chat_skills)
             .build();
 
     let body = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
