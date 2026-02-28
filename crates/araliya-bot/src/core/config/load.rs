@@ -38,10 +38,7 @@ fn merge_toml(base: toml::Value, overlay: toml::Value) -> toml::Value {
 /// Read a config file, follow any `[meta] base = "..."` chain, and return the
 /// fully merged `toml::Value`. `visited` carries canonicalized paths already
 /// seen in this chain so circular references are caught early.
-fn load_raw_merged(
-    path: &Path,
-    visited: &mut HashSet<PathBuf>,
-) -> Result<toml::Value, AppError> {
+fn load_raw_merged(path: &Path, visited: &mut HashSet<PathBuf>) -> Result<toml::Value, AppError> {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if !visited.insert(canonical) {
         return Err(AppError::Config(format!(
@@ -124,6 +121,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agent_memory: HashMap::new(),
                 news_query: None,
                 docs: None,
+                agentic_chat: None,
             },
             llm: LlmConfig {
                 provider: "dummy".to_string(),
@@ -146,6 +144,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
                 },
+                instruction: None,
             },
             llm_api_key: env::var("LLM_API_KEY").ok(),
             ui: UiConfig {
@@ -178,8 +177,8 @@ pub fn load_from(
 ) -> Result<Config, AppError> {
     let merged_val = load_raw_merged(path, &mut HashSet::new())?;
 
-    let parsed: RawConfig = Deserialize::deserialize(merged_val)
-        .map_err(|e: toml::de::Error| {
+    let parsed: RawConfig =
+        Deserialize::deserialize(merged_val).map_err(|e: toml::de::Error| {
             AppError::Config(format!("config error in {}: {e}", path.display()))
         })?;
 
@@ -190,11 +189,7 @@ pub fn load_from(
     let log_level = log_level_override.unwrap_or(&s.log_level).to_string();
     let identity_dir = s.identity_dir.map(|identity_dir| {
         let p = PathBuf::from(identity_dir);
-        if p.is_absolute() {
-            p
-        } else {
-            work_dir.join(p)
-        }
+        if p.is_absolute() { p } else { work_dir.join(p) }
     });
 
     let news_query = parsed
@@ -234,6 +229,46 @@ pub fn load_from(
         }
     });
     let docs_cfg = docs_cfg.filter(|d| d.docsdir.is_some());
+
+    let agentic_chat_cfg =
+        parsed
+            .agents
+            .entries
+            .get("agentic-chat")
+            .map(|entry| AgenticChatConfig {
+                use_instruction_llm: entry.use_instruction_llm,
+            });
+
+    let instruction_llm = parsed.llm.instruction.map(|inst| {
+        let provider = if inst.provider.is_empty() {
+            parsed.llm.provider.clone()
+        } else {
+            inst.provider
+        };
+        Box::new(LlmConfig {
+            provider,
+            openai: OpenAiConfig {
+                api_base_url: inst.openai.api_base_url,
+                model: inst.openai.model,
+                temperature: inst.openai.temperature,
+                timeout_seconds: inst.openai.timeout_seconds,
+                input_per_million_usd: inst.openai.input_per_million_usd,
+                output_per_million_usd: inst.openai.output_per_million_usd,
+                cached_input_per_million_usd: inst.openai.cached_input_per_million_usd,
+            },
+            qwen: QwenConfig {
+                api_base_url: inst.qwen.api_base_url,
+                model: inst.qwen.model,
+                temperature: inst.qwen.temperature,
+                timeout_seconds: inst.qwen.timeout_seconds,
+                max_tokens: inst.qwen.max_tokens,
+                input_per_million_usd: inst.qwen.input_per_million_usd,
+                output_per_million_usd: inst.qwen.output_per_million_usd,
+                cached_input_per_million_usd: inst.qwen.cached_input_per_million_usd,
+            },
+            instruction: None,
+        })
+    });
 
     Ok(Config {
         bot_name: s.bot_name,
@@ -275,6 +310,7 @@ pub fn load_from(
                 .collect(),
             news_query,
             docs: docs_cfg,
+            agentic_chat: agentic_chat_cfg,
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,
@@ -297,6 +333,7 @@ pub fn load_from(
                 output_per_million_usd: parsed.llm.qwen.output_per_million_usd,
                 cached_input_per_million_usd: parsed.llm.qwen.cached_input_per_million_usd,
             },
+            instruction: instruction_llm,
         },
         llm_api_key: env::var("LLM_API_KEY").ok(),
         ui: UiConfig {

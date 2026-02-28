@@ -134,6 +134,11 @@ pub struct LlmConfig {
     pub openai: OpenAiConfig,
     /// Config for the Qwen provider (`[llm.qwen]`).
     pub qwen: QwenConfig,
+    /// Optional separate LLM for the instruction pass (`[llm.instruction]`).
+    ///
+    /// When present, `llm/instruct` bus requests are routed to this provider
+    /// rather than the main one.  Boxed to keep the struct size manageable.
+    pub instruction: Option<Box<LlmConfig>>,
 }
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -185,6 +190,15 @@ pub struct DocsAgentConfig {
     pub kg: DocsKgConfig,
 }
 
+/// Configuration for the `agentic-chat` agent plugin.
+#[derive(Debug, Clone)]
+pub struct AgenticChatConfig {
+    /// When `true`, the instruction pass is routed through `llm/instruct`
+    /// (uses the instruction LLM if configured, falls back to the main LLM).
+    /// When `false`, the instruction pass goes through `llm/complete` directly.
+    pub use_instruction_llm: bool,
+}
+
 /// Agents subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct AgentsConfig {
@@ -200,6 +214,8 @@ pub struct AgentsConfig {
     pub news_query: Option<NewsAgentQueryConfig>,
     /// Optional configuration for the `docs` agent.
     pub docs: Option<DocsAgentConfig>,
+    /// Optional configuration for the `agentic-chat` agent.
+    pub agentic_chat: Option<AgenticChatConfig>,
 }
 
 // ── Config (root) ────────────────────────────────────────────────────────────

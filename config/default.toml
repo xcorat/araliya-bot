@@ -82,6 +82,15 @@ index = "index.md"
 # Disabled — placeholder to show the section shape.
 enabled = false
 
+[agents.agentic-chat]
+# Dual-pass agentic chat plugin — instruction pass + tool execution + response pass.
+# Enable this for agentic workflows with tool use.
+enabled = false
+memory = ["basic_session"]
+# Set to true when [llm.instruction] is configured to route the instruction
+# pass through a separate smaller model.
+use_instruction_llm = false
+
 ## ------------------------- Memory Subsystem ---------------------------------
 
 [memory]
@@ -126,6 +135,16 @@ max_tokens = 8192
 input_per_million_usd = 0.0
 output_per_million_usd = 0.0
 cached_input_per_million_usd = 0.0
+
+# Optional: configure a separate small model for the agentic-chat instruction pass.
+# Uncomment and set use_instruction_llm = true in [agents.agentic-chat] to activate.
+# [llm.instruction]
+# provider = "openai"
+# [llm.instruction.openai]
+# api_base_url = "https://api.openai.com/v1/chat/completions"
+# model = "gpt-4o-mini"
+# temperature = 0.1
+# timeout_seconds = 30
 
 ## ------------------------- Tools Subsystem ---------------------------------
 

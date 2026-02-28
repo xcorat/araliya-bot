@@ -48,6 +48,7 @@ default = [
     "plugin-echo",
     "plugin-basic-chat",
     "plugin-chat",
+    "plugin-agentic-chat",
     "plugin-docs",
     "channel-pty",
     "channel-axum",
@@ -88,6 +89,7 @@ plugin-docs = ["subsystem-agents", "idocstore"]
 plugin-docs-kg = ["subsystem-agents", "ikgdocstore"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
+plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]

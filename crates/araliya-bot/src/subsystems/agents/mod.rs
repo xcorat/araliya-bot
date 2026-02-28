@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgentsConfig, DocsAgentConfig, DocsKgConfig};
+use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, DocsKgConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -26,23 +26,25 @@ use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
 
 use crate::identity::{self, Identity};
-use crate::subsystems::memory::{AGENTS_DIRNAME, MemorySystem};
 use crate::subsystems::memory::handle::SessionHandle;
+use crate::subsystems::memory::{AGENTS_DIRNAME, MemorySystem};
 
 // CHECK: wat?
 pub(crate) mod core;
 
 // Chat-family plugins (basic_chat, session_chat) and shared ChatCore.
+#[cfg(feature = "plugin-agentic-chat")]
+mod agentic_chat;
 #[cfg(any(feature = "plugin-basic-chat", feature = "plugin-chat"))]
 mod chat;
-#[cfg(feature = "plugin-gmail-agent")]
-mod gmail;
-#[cfg(feature = "plugin-news-agent")]
-mod news;
 #[cfg(feature = "plugin-docs")]
 mod docs;
 #[cfg(feature = "plugin-docs")]
 mod docs_import;
+#[cfg(feature = "plugin-gmail-agent")]
+mod gmail;
+#[cfg(feature = "plugin-news-agent")]
+mod news;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -111,9 +113,10 @@ impl AgentsState {
         &self,
         agent_id: &str,
     ) -> Result<crate::subsystems::memory::stores::agent::AgentStore, AppError> {
-        let identity = self.agent_identities.get(agent_id).ok_or_else(|| {
-            AppError::Identity(format!("agent '{}' not found", agent_id))
-        })?;
+        let identity = self
+            .agent_identities
+            .get(agent_id)
+            .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
         crate::subsystems::memory::stores::agent::AgentStore::open(&identity.identity_dir)
     }
 
@@ -121,21 +124,23 @@ impl AgentsState {
     ///
     /// Subagents are ephemeral or task-specific workers that operate under their parent's
     /// identity structure under the shared per-agent identities directory.
-    pub fn get_or_create_subagent(&self, agent_id: &str, subagent_name: &str) -> Result<Identity, AppError> {
-        let agent_identity = self.agent_identities.get(agent_id).ok_or_else(|| {
-            AppError::Identity(format!("agent '{}' not found", agent_id))
-        })?;
+    pub fn get_or_create_subagent(
+        &self,
+        agent_id: &str,
+        subagent_name: &str,
+    ) -> Result<Identity, AppError> {
+        let agent_identity = self
+            .agent_identities
+            .get(agent_id)
+            .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
         let subagents_dir = agent_identity.identity_dir.join("subagents");
         identity::setup_named_identity(&subagents_dir, subagent_name)
     }
 
     /// Forward content to the LLM subsystem and return the completion.
-    pub async fn complete_via_llm(
-        &self,
-        channel_id: &str,
-        content: &str,
-    ) -> BusResult {
-        self.complete_via_llm_with_system(channel_id, content, None).await
+    pub async fn complete_via_llm(&self, channel_id: &str, content: &str) -> BusResult {
+        self.complete_via_llm_with_system(channel_id, content, None)
+            .await
     }
 
     /// Forward content to the LLM subsystem with an explicit system prompt.
@@ -152,6 +157,33 @@ impl AgentsState {
             .bus
             .request(
                 "llm/complete",
+                BusPayload::LlmRequest {
+                    channel_id: channel_id.to_string(),
+                    content: content.to_string(),
+                    system: system.map(|s| s.to_string()),
+                },
+            )
+            .await;
+        match result {
+            Ok(r) => r,
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
+
+    /// Forward content to the instruction LLM via `llm/instruct`.
+    ///
+    /// If no separate instruction LLM is configured, the LLM subsystem
+    /// transparently falls back to the main provider.
+    pub async fn complete_via_instruct_llm(
+        &self,
+        channel_id: &str,
+        content: &str,
+        system: Option<&str>,
+    ) -> BusResult {
+        let result = self
+            .bus
+            .request(
+                "llm/instruct",
                 BusPayload::LlmRequest {
                     channel_id: channel_id.to_string(),
                     content: content.to_string(),
@@ -225,13 +257,26 @@ struct EchoAgent;
 
 #[cfg(feature = "plugin-echo")]
 impl Agent for EchoAgent {
-    fn id(&self) -> &str { "echo" }
-    fn handle(&self, _action: String, channel_id: String, content: String, session_id: Option<String>, reply_tx: oneshot::Sender<BusResult>, _state: Arc<AgentsState>) {
-        let _ = reply_tx.send(Ok(BusPayload::CommsMessage { channel_id, content, session_id, usage: None }));
+    fn id(&self) -> &str {
+        "echo"
+    }
+    fn handle(
+        &self,
+        _action: String,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        reply_tx: oneshot::Sender<BusResult>,
+        _state: Arc<AgentsState>,
+    ) {
+        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+            channel_id,
+            content,
+            session_id,
+            usage: None,
+        }));
     }
 }
-
-
 
 // ── AgentsSubsystem ───────────────────────────────────────────────────────────
 
@@ -291,7 +336,10 @@ impl AgentsSubsystem {
                     map.insert("n_last".to_string(), serde_json::json!(n_last));
                 }
                 if let Some(t_interval) = q.t_interval {
-                    map.insert("t_interval".to_string(), serde_json::Value::String(t_interval));
+                    map.insert(
+                        "t_interval".to_string(),
+                        serde_json::Value::String(t_interval),
+                    );
                 }
                 if let Some(tsec_last) = q.tsec_last {
                     map.insert("tsec_last".to_string(), serde_json::json!(tsec_last));
@@ -361,6 +409,22 @@ impl AgentsSubsystem {
         {
             let agent: Box<dyn Agent> = Box::new(news::NewsAgentPlugin);
             agents.insert(agent.id().to_string(), agent);
+        }
+
+        #[cfg(feature = "plugin-agentic-chat")]
+        if enabled_agents.contains("agentic-chat") {
+            if let Some(ref ac_cfg) = config.agentic_chat {
+                let agent: Box<dyn Agent> = Box::new(agentic_chat::AgenticChatPlugin::new(ac_cfg));
+                agents.insert(agent.id().to_string(), agent);
+            } else {
+                // Use default config when [agents.agentic-chat] has no extra fields.
+                let default_cfg = AgenticChatConfig {
+                    use_instruction_llm: false,
+                };
+                let agent: Box<dyn Agent> =
+                    Box::new(agentic_chat::AgenticChatPlugin::new(&default_cfg));
+                agents.insert(agent.id().to_string(), agent);
+            }
         }
 
         // Collect which tool plugins are compiled in.
@@ -473,13 +537,18 @@ impl AgentsSubsystem {
                     "agent_count": agent_count,
                     "agents": enabled,
                 })),
-            ).await;
+            )
+            .await;
         });
         self.reporter = Some(reporter);
         self
     }
 
-    fn resolve_agent<'a>(&'a self, method_agent_id: Option<&'a str>, channel_id: &str) -> Result<&'a str, BusError> {
+    fn resolve_agent<'a>(
+        &'a self,
+        method_agent_id: Option<&'a str>,
+        channel_id: &str,
+    ) -> Result<&'a str, BusError> {
         if let Some(agent_id) = method_agent_id {
             return if self.enabled_agents.contains(agent_id) {
                 Ok(agent_id)
@@ -521,10 +590,12 @@ impl AgentsSubsystem {
             let store = self.state.open_agent_store(agent)?;
             let sessions_root = store.agent_sessions_dir();
             let index_path = store.agent_sessions_index();
-            return self
-                .state
-                .memory
-                .load_session_in(&sessions_root, &index_path, session_id, Some(agent));
+            return self.state.memory.load_session_in(
+                &sessions_root,
+                &index_path,
+                session_id,
+                Some(agent),
+            );
         }
 
         self.state.memory.load_session(session_id, None)
@@ -565,7 +636,9 @@ impl AgentsSubsystem {
     /// Handle `agents/kg_graph` — return the knowledge graph JSON for an agent.
     fn handle_agent_kg_graph(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let agent_id = match payload {
-            BusPayload::SessionQuery { agent_id: Some(id), .. } => id,
+            BusPayload::SessionQuery {
+                agent_id: Some(id), ..
+            } => id,
             _ => {
                 let _ = reply_tx.send(Err(BusError::new(-32600, "expected agent_id in payload")));
                 return;
@@ -575,12 +648,19 @@ impl AgentsSubsystem {
         let identity = match self.state.agent_identities.get(&agent_id) {
             Some(id) => id.clone(),
             None => {
-                let _ = reply_tx.send(Err(BusError::new(-32000, format!("agent not found: {agent_id}"))));
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32000,
+                    format!("agent not found: {agent_id}"),
+                )));
                 return;
             }
         };
 
-        let kg_path = identity.identity_dir.join("kgdocstore").join("kg").join("graph.json");
+        let kg_path = identity
+            .identity_dir
+            .join("kgdocstore")
+            .join("kg")
+            .join("graph.json");
 
         let body = match std::fs::read_to_string(&kg_path) {
             Ok(json) => {
@@ -592,12 +672,17 @@ impl AgentsSubsystem {
                 serde_json::json!({ "agent_id": agent_id, "graph": { "entities": {}, "relations": [] } })
             }
             Err(e) => {
-                let _ = reply_tx.send(Err(BusError::new(-32000, format!("failed to read KG graph: {e}"))));
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32000,
+                    format!("failed to read KG graph: {e}"),
+                )));
                 return;
             }
         };
 
-        let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: body.to_string() }));
+        let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+            data: body.to_string(),
+        }));
     }
 
     /// Handle `agents/list` — return metadata for all registered agents.
@@ -634,12 +719,12 @@ impl AgentsSubsystem {
     /// Handle `agents/sessions/detail` — return session metadata + transcript.
     fn handle_session_detail(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let (session_id, agent_id) = match payload {
-            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
+            BusPayload::SessionQuery {
+                session_id,
+                agent_id,
+            } => (session_id, agent_id),
             _ => {
-                let _ = reply_tx.send(Err(BusError::new(
-                    -32600,
-                    "expected SessionQuery payload",
-                )));
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected SessionQuery payload")));
                 return;
             }
         };
@@ -702,12 +787,12 @@ impl AgentsSubsystem {
     /// Handle `agents/sessions/memory` — return working memory content.
     fn handle_session_memory(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let (session_id, agent_id) = match payload {
-            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
+            BusPayload::SessionQuery {
+                session_id,
+                agent_id,
+            } => (session_id, agent_id),
             _ => {
-                let _ = reply_tx.send(Err(BusError::new(
-                    -32600,
-                    "expected SessionQuery payload",
-                )));
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected SessionQuery payload")));
                 return;
             }
         };
@@ -747,12 +832,12 @@ impl AgentsSubsystem {
     /// Handle `agents/sessions/files` — return files in the session directory.
     fn handle_session_files(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let (session_id, agent_id) = match payload {
-            BusPayload::SessionQuery { session_id, agent_id } => (session_id, agent_id),
+            BusPayload::SessionQuery {
+                session_id,
+                agent_id,
+            } => (session_id, agent_id),
             _ => {
-                let _ = reply_tx.send(Err(BusError::new(
-                    -32600,
-                    "expected SessionQuery payload",
-                )));
+                let _ = reply_tx.send(Err(BusError::new(-32600, "expected SessionQuery payload")));
                 return;
             }
         };
@@ -805,15 +890,21 @@ impl BusHandler for AgentsSubsystem {
     /// Session queries (`agents/sessions`, `agents/sessions/detail`,
     /// `agents/sessions/memory`, `agents/sessions/files`) are
     /// intercepted before agent routing to return session metadata.
-    fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+    fn handle_request(
+        &self,
+        method: &str,
+        payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
         // ── Subsystem-level health (must be intercepted before parse_method
         //    which would interpret "agents/health" as agent_id="health") ──────
         if method == "agents/health" {
             let reporter = self.reporter.clone();
             tokio::spawn(async move {
                 let h = match reporter {
-                    Some(r) => r.get_current().await
-                        .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("agents")),
+                    Some(r) => r.get_current().await.unwrap_or_else(|| {
+                        crate::supervisor::health::SubsystemHealth::ok("agents")
+                    }),
                     None => crate::supervisor::health::SubsystemHealth::ok("agents"),
                 };
                 let data = serde_json::to_string(&h).unwrap_or_default();
@@ -827,7 +918,9 @@ impl BusHandler for AgentsSubsystem {
             let reporter = self.reporter.clone();
             tokio::spawn(async move {
                 let resp = status_from_reporter("agents", reporter).await;
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: resp.to_json(),
+                }));
             });
             return;
         }
@@ -848,7 +941,9 @@ impl BusHandler for AgentsSubsystem {
                     "enabled_agents": enabled_agents,
                     "session_count": session_count,
                 });
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: data.to_string(),
+                }));
             });
             return;
         }
@@ -884,7 +979,10 @@ impl BusHandler for AgentsSubsystem {
         // ── Agent routing ───────────────────────────────────────────
         let (method_agent_id, action) = match parse_method(method) {
             Ok(v) => v,
-            Err(e) => { let _ = reply_tx.send(Err(e)); return; }
+            Err(e) => {
+                let _ = reply_tx.send(Err(e));
+                return;
+            }
         };
 
         // Per-agent status routes (intercepted before payload dispatch).
@@ -898,7 +996,9 @@ impl BusHandler for AgentsSubsystem {
                     } else {
                         ComponentStatusResponse::error(id, "not found")
                     };
-                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                        data: resp.to_json(),
+                    }));
                 });
                 return;
             }
@@ -910,16 +1010,22 @@ impl BusHandler for AgentsSubsystem {
                 tokio::spawn(async move {
                     if !exists {
                         let resp = ComponentStatusResponse::error(&id, "not found");
-                        let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                        let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                            data: resp.to_json(),
+                        }));
                         return;
                     }
-                    let kv_path = identities.get(&id)
+                    let kv_path = identities
+                        .get(&id)
                         .map(|ident| ident.identity_dir.join("store").join("kv.json"));
-                    let last_fetched = kv_path.as_ref()
+                    let last_fetched = kv_path
+                        .as_ref()
                         .and_then(|p| read_agent_kv_value(p, "last_fetched"));
-                    let index_path = identities.get(&id)
+                    let index_path = identities
+                        .get(&id)
                         .map(|ident| ident.identity_dir.join("sessions.json"));
-                    let session_count = index_path.as_ref()
+                    let session_count = index_path
+                        .as_ref()
                         .map(|p| count_agent_sessions(p))
                         .unwrap_or(0);
                     let data = serde_json::json!({
@@ -929,20 +1035,37 @@ impl BusHandler for AgentsSubsystem {
                         "session_count": session_count,
                         "last_fetched": last_fetched,
                     });
-                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                    let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                        data: data.to_string(),
+                    }));
                 });
                 return;
             }
         }
 
         match payload {
-            BusPayload::CommsMessage { channel_id, content, session_id, .. } => {
+            BusPayload::CommsMessage {
+                channel_id,
+                content,
+                session_id,
+                ..
+            } => {
                 let agent_id = match self.resolve_agent(method_agent_id.as_deref(), &channel_id) {
                     Ok(id) => id,
-                    Err(e) => { let _ = reply_tx.send(Err(e)); return; }
+                    Err(e) => {
+                        let _ = reply_tx.send(Err(e));
+                        return;
+                    }
                 };
                 match self.agents.get(agent_id) {
-                    Some(agent) => agent.handle(action, channel_id, content, session_id, reply_tx, self.state.clone()),
+                    Some(agent) => agent.handle(
+                        action,
+                        channel_id,
+                        content,
+                        session_id,
+                        reply_tx,
+                        self.state.clone(),
+                    ),
                     None => {
                         let _ = reply_tx.send(Err(BusError::new(
                             ERR_METHOD_NOT_FOUND,
@@ -982,29 +1105,45 @@ impl BusHandler for AgentsSubsystem {
 
 /// Read `last_updated` from `{session_dir}/spend.json`, fall back to None.
 fn read_session_updated_at(sessions_root: &std::path::Path, session_id: &str) -> Option<String> {
-    let data = std::fs::read_to_string(
-        sessions_root.join(session_id).join("spend.json")
-    ).ok()?;
+    let data = std::fs::read_to_string(sessions_root.join(session_id).join("spend.json")).ok()?;
     #[derive(serde::Deserialize)]
-    struct SpendTs { last_updated: String }
-    serde_json::from_str::<SpendTs>(&data).ok().map(|s| s.last_updated)
+    struct SpendTs {
+        last_updated: String,
+    }
+    serde_json::from_str::<SpendTs>(&data)
+        .ok()
+        .map(|s| s.last_updated)
 }
 
 /// Read a single string value from an AgentStore `kv.json` file.
 fn read_agent_kv_value(kv_path: &std::path::Path, key: &str) -> Option<String> {
     let data = std::fs::read_to_string(kv_path).ok()?;
     #[derive(serde::Deserialize)]
-    struct KvPartial { values: std::collections::HashMap<String, String> }
-    serde_json::from_str::<KvPartial>(&data).ok()?.values.remove(key)
+    struct KvPartial {
+        values: std::collections::HashMap<String, String>,
+    }
+    serde_json::from_str::<KvPartial>(&data)
+        .ok()?
+        .values
+        .remove(key)
 }
 
 /// Return the number of sessions in an agent's `sessions.json` index.
 fn count_agent_sessions(index_path: &std::path::Path) -> usize {
-    if !index_path.exists() { return 0; }
-    let data = match std::fs::read_to_string(index_path) { Ok(d) => d, Err(_) => return 0 };
+    if !index_path.exists() {
+        return 0;
+    }
+    let data = match std::fs::read_to_string(index_path) {
+        Ok(d) => d,
+        Err(_) => return 0,
+    };
     #[derive(serde::Deserialize)]
-    struct Idx { sessions: std::collections::HashMap<String, serde_json::Value> }
-    serde_json::from_str::<Idx>(&data).map(|i| i.sessions.len()).unwrap_or(0)
+    struct Idx {
+        sessions: std::collections::HashMap<String, serde_json::Value>,
+    }
+    serde_json::from_str::<Idx>(&data)
+        .map(|i| i.sessions.len())
+        .unwrap_or(0)
 }
 
 /// Infer available store types for an agent from config and on-disk layout.
@@ -1078,9 +1217,9 @@ fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::oneshot;
     use crate::supervisor::bus::{BusMessage, SupervisorBus};
     use crate::supervisor::dispatch::BusHandler;
+    use tokio::sync::oneshot;
 
     fn echo_bus() -> (SupervisorBus, BusHandle) {
         let bus = SupervisorBus::new(16);
@@ -1092,7 +1231,11 @@ mod tests {
     /// The returned `TempDir` must be kept alive for the duration of the test.
     fn test_memory() -> (tempfile::TempDir, Arc<MemorySystem>) {
         let dir = tempfile::TempDir::new().unwrap();
-        let mem = MemorySystem::new(dir.path(), crate::subsystems::memory::MemoryConfig::default()).unwrap();
+        let mem = MemorySystem::new(
+            dir.path(),
+            crate::subsystems::memory::MemoryConfig::default(),
+        )
+        .unwrap();
         (dir, Arc::new(mem))
     }
 
@@ -1107,13 +1250,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hello".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1137,13 +1286,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "mapped".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "mapped".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1164,13 +1319,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/unknown",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hi".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1188,13 +1349,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "fallback".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "fallback".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1219,13 +1386,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hi".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1243,8 +1416,16 @@ mod tests {
 
         // Spawn a fake LLM responder that echoes with a marker prefix.
         tokio::spawn(async move {
-            if let Some(BusMessage::Request { payload, reply_tx, .. }) = rx.recv().await {
-                if let BusPayload::LlmRequest { channel_id, content, .. } = payload {
+            if let Some(BusMessage::Request {
+                payload, reply_tx, ..
+            }) = rx.recv().await
+            {
+                if let BusPayload::LlmRequest {
+                    channel_id,
+                    content,
+                    ..
+                } = payload
+                {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: format!("[fake] {content}"),
@@ -1262,13 +1443,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hello".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hello".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1290,7 +1477,13 @@ mod tests {
         // Handle two sequential bus requests: tool then LLM.
         tokio::spawn(async move {
             // First: tools/execute
-            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+            if let Some(BusMessage::Request {
+                method,
+                payload,
+                reply_tx,
+                ..
+            }) = rx.recv().await
+            {
                 assert_eq!(method, "tools/execute");
                 if let BusPayload::ToolRequest { tool, action, .. } = payload {
                     assert_eq!(tool, "newsmail_aggregator");
@@ -1305,10 +1498,24 @@ mod tests {
                 }));
             }
             // Second: llm/complete
-            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+            if let Some(BusMessage::Request {
+                method,
+                payload,
+                reply_tx,
+                ..
+            }) = rx.recv().await
+            {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest { content, channel_id, .. } = payload {
-                    assert!(content.contains("Test Headline"), "prompt should contain subject");
+                if let BusPayload::LlmRequest {
+                    content,
+                    channel_id,
+                    ..
+                } = payload
+                {
+                    assert!(
+                        content.contains("Test Headline"),
+                        "prompt should contain subject"
+                    );
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: "Summary: Test Headline from news@example.com.".to_string(),
@@ -1331,13 +1538,21 @@ mod tests {
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
         match rx_reply.await.unwrap() {
             Ok(BusPayload::CommsMessage { content, .. }) => {
-                assert!(content.contains("Summary:"), "response should be LLM summary, got: {content}");
+                assert!(
+                    content.contains("Summary:"),
+                    "response should be LLM summary, got: {content}"
+                );
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -1373,13 +1588,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx_reply) = oneshot::channel();
         agents.handle_request(
             "agents",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1404,13 +1625,19 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/docs/health",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
         match rx.await.unwrap() {
@@ -1437,9 +1664,20 @@ mod tests {
 
         // Fake LLM responder that checks the prompt includes the docs content.
         tokio::spawn(async move {
-            if let Some(BusMessage::Request { method, payload, reply_tx, .. }) = rx.recv().await {
+            if let Some(BusMessage::Request {
+                method,
+                payload,
+                reply_tx,
+                ..
+            }) = rx.recv().await
+            {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest { content, channel_id, .. } = payload {
+                if let BusPayload::LlmRequest {
+                    content,
+                    channel_id,
+                    ..
+                } = payload
+                {
                     assert!(content.contains("the quick brown fox"));
                     assert!(content.contains("what color"));
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
@@ -1464,6 +1702,7 @@ mod tests {
                 use_kg: false,
                 kg: DocsKgConfig::default(),
             }),
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Populate the docs docstore before handling any queries.
@@ -1472,7 +1711,12 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/docs/ask",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "what color".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "what color".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
 
@@ -1496,6 +1740,7 @@ mod tests {
             news_query: None,
             // No docsdir configured — docstore will remain empty.
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Do NOT call init_docs — docstore stays empty.
@@ -1503,7 +1748,12 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         agents.handle_request(
             "agents/docs/ask",
-            BusPayload::CommsMessage { channel_id: "pty0".to_string(), content: "hi".to_string(), session_id: None, usage: None },
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hi".to_string(),
+                session_id: None,
+                usage: None,
+            },
             tx,
         );
         assert!(rx.await.unwrap().is_err());
@@ -1520,17 +1770,21 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
-        let subagent = agents.state.get_or_create_subagent("echo", "worker1").unwrap();
-        
+        let subagent = agents
+            .state
+            .get_or_create_subagent("echo", "worker1")
+            .unwrap();
+
         assert!(subagent.identity_dir.exists());
-        
+
         let dir_name = subagent.identity_dir.file_name().unwrap().to_str().unwrap();
         assert!(dir_name.starts_with("worker1-"));
         assert!(dir_name.ends_with(&subagent.public_id));
-        
+
         let parent_dir = subagent.identity_dir.parent().unwrap();
         assert!(parent_dir.ends_with("subagents"));
     }
@@ -1546,6 +1800,7 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1565,6 +1820,7 @@ mod tests {
             agent_memory: HashMap::new(),
             news_query: None,
             docs: None,
+            agentic_chat: None,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

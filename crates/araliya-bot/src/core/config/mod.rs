@@ -47,6 +47,7 @@ impl Config {
                 agent_memory: std::collections::HashMap::new(),
                 news_query: None,
                 docs: None,
+                agentic_chat: None,
             },
             llm: LlmConfig {
                 provider: "dummy".into(),
@@ -69,6 +70,7 @@ impl Config {
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
                 },
+                instruction: None,
             },
             llm_api_key: None,
             ui: UiConfig {
@@ -311,10 +313,7 @@ log_level = "info"
     fn cycle_detection() {
         let dir = TempDir::new().unwrap();
         let self_path = dir.path().join("self.toml");
-        let content = format!(
-            "[meta]\nbase = \"{}\"\n\n{BASE_TOML}",
-            self_path.display()
-        );
+        let content = format!("[meta]\nbase = \"{}\"\n\n{BASE_TOML}", self_path.display());
         std::fs::write(&self_path, content).unwrap();
         let result = load_from(&self_path, None, None);
         assert!(result.is_err());

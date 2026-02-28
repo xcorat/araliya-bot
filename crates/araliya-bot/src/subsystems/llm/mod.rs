@@ -11,8 +11,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
 use crate::config::LlmConfig;
-use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use crate::llm::providers;
+use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
@@ -25,6 +25,9 @@ pub struct LlmSubsystem {
     provider: LlmProvider,
     provider_name: String,
     model_name: String,
+    /// Optional instruction-pass provider (`[llm.instruction]`).
+    /// When present, `llm/instruct` requests are routed here instead of `provider`.
+    instruction_provider: Option<LlmProvider>,
     rates: ModelRates,
     reporter: Option<HealthReporter>,
 }
@@ -32,7 +35,7 @@ pub struct LlmSubsystem {
 impl LlmSubsystem {
     /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
     pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
-        let provider = providers::build(config, api_key)?;
+        let provider = providers::build(config, api_key.clone())?;
         let provider_name = config.provider.clone();
         let model_name = match config.provider.as_str() {
             "qwen" => config.qwen.model.clone(),
@@ -50,7 +53,19 @@ impl LlmSubsystem {
                 cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
             },
         };
-        Ok(Self { provider, provider_name, model_name, rates, reporter: None })
+        let instruction_provider = config
+            .instruction
+            .as_deref()
+            .map(|inst_cfg| providers::build(inst_cfg, api_key))
+            .transpose()?;
+        Ok(Self {
+            provider,
+            provider_name,
+            model_name,
+            instruction_provider,
+            rates,
+            reporter: None,
+        })
     }
 
     /// Attach a health reporter to this subsystem.
@@ -94,17 +109,18 @@ impl LlmSubsystem {
         match provider.ping().await {
             Ok(()) => {
                 debug!(model, "llm provider reachable");
-                reporter.set_healthy_with(
-                    "ok",
-                    Some(serde_json::json!({ "model": model })),
-                ).await;
+                reporter
+                    .set_healthy_with("ok", Some(serde_json::json!({ "model": model })))
+                    .await;
             }
             Err(e) => {
                 warn!(model, error = %e, "llm provider unreachable");
-                reporter.set_unhealthy_with(
-                    format!("provider unreachable: {e}"),
-                    Some(serde_json::json!({ "model": model })),
-                ).await;
+                reporter
+                    .set_unhealthy_with(
+                        format!("provider unreachable: {e}"),
+                        Some(serde_json::json!({ "model": model })),
+                    )
+                    .await;
             }
         }
     }
@@ -117,7 +133,12 @@ impl BusHandler for LlmSubsystem {
 
     /// Route an `llm/*` request. Ownership of `reply_tx` is moved into a
     /// spawned task — the supervisor loop returns immediately.
-    fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+    fn handle_request(
+        &self,
+        method: &str,
+        payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
         // On-demand health check: runs a live ping and returns the updated state.
         if method == "llm/health" {
             let provider = self.provider.clone();
@@ -126,7 +147,9 @@ impl BusHandler for LlmSubsystem {
             tokio::spawn(async move {
                 if let Some(ref r) = reporter {
                     Self::run_check(&provider, &model, r).await;
-                    let h = r.get_current().await
+                    let h = r
+                        .get_current()
+                        .await
                         .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("llm"));
                     let data = serde_json::to_string(&h).unwrap_or_default();
                     let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
@@ -151,7 +174,9 @@ impl BusHandler for LlmSubsystem {
                     },
                     None => ComponentStatusResponse::running("llm"),
                 };
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: resp.to_json(),
+                }));
             });
             return;
         }
@@ -170,7 +195,9 @@ impl BusHandler for LlmSubsystem {
                     },
                     None => ComponentStatusResponse::running(provider_id),
                 };
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: resp.to_json() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: resp.to_json(),
+                }));
             });
             return;
         }
@@ -196,13 +223,69 @@ impl BusHandler for LlmSubsystem {
                     "provider": provider,
                     "model": model,
                 });
-                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: data.to_string() }));
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: data.to_string(),
+                }));
             });
             return;
         }
 
+        // llm/instruct — instruction-pass completion; falls back to main provider when
+        // no separate instruction provider is configured.
+        if method == "llm/instruct" {
+            let provider = self
+                .instruction_provider
+                .as_ref()
+                .unwrap_or(&self.provider)
+                .clone();
+            let rates = self.rates.clone();
+            if let BusPayload::LlmRequest {
+                channel_id,
+                content,
+                system,
+            } = payload
+            {
+                debug!(%channel_id, "dispatching to instruction llm provider");
+                tokio::spawn(async move {
+                    let result = provider
+                        .complete(&content, system.as_deref())
+                        .await
+                        .map(|resp| {
+                            let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));
+                            if let (Some(u), Some(c)) = (&resp.usage, cost) {
+                                tracing::debug!(
+                                    input_tokens = u.input_tokens,
+                                    output_tokens = u.output_tokens,
+                                    cached_tokens = u.cached_input_tokens,
+                                    cost_usd = c,
+                                    "llm instruct usage"
+                                );
+                            }
+                            BusPayload::CommsMessage {
+                                channel_id,
+                                content: resp.text,
+                                session_id: None,
+                                usage: resp.usage,
+                            }
+                        })
+                        .map_err(|e| BusError::new(-32000, e.to_string()));
+                    let _ = reply_tx.send(result);
+                });
+            } else {
+                let _ = reply_tx.send(Err(BusError::new(
+                    ERR_METHOD_NOT_FOUND,
+                    "llm/instruct requires LlmRequest payload".to_string(),
+                )));
+            }
+            return;
+        }
+
         match payload {
-            BusPayload::LlmRequest { channel_id, content, system } => {
+            BusPayload::LlmRequest {
+                channel_id,
+                content,
+                system,
+            } => {
                 let provider = self.provider.clone();
                 let rates = self.rates.clone();
                 debug!(%method, %channel_id, "dispatching to llm provider");
@@ -248,8 +331,10 @@ impl BusHandler for LlmSubsystem {
             ComponentInfo::capitalise(provider_id),
             self.model_name
         );
-        ComponentInfo::running("llm", "LLM", vec![
-            ComponentInfo::leaf(provider_id, &provider_label),
-        ])
+        ComponentInfo::running(
+            "llm",
+            "LLM",
+            vec![ComponentInfo::leaf(provider_id, &provider_label)],
+        )
     }
 }

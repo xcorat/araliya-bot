@@ -88,6 +88,9 @@ pub(super) struct RawLlm {
     pub openai: RawOpenAiConfig,
     #[serde(default)]
     pub qwen: RawQwenConfig,
+    /// Optional separate small model for the instruction pass (`[llm.instruction]`).
+    #[serde(default)]
+    pub instruction: Option<RawLlmInstruction>,
 }
 
 impl Default for RawLlm {
@@ -96,8 +99,24 @@ impl Default for RawLlm {
             provider: default_llm_provider(),
             openai: RawOpenAiConfig::default(),
             qwen: RawQwenConfig::default(),
+            instruction: None,
         }
     }
+}
+
+/// Configuration for the optional instruction-pass LLM (`[llm.instruction]`).
+///
+/// When present, `llm/instruct` bus requests are routed to this provider
+/// instead of the main LLM.  This is typically a smaller, faster model.
+#[derive(Deserialize, Default)]
+pub(super) struct RawLlmInstruction {
+    /// Provider name ("openai", "qwen", "dummy").  Defaults to main provider if empty.
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub openai: RawOpenAiConfig,
+    #[serde(default)]
+    pub qwen: RawQwenConfig,
 }
 
 #[derive(Deserialize)]
@@ -195,6 +214,10 @@ pub(super) struct RawAgentEntry {
     pub use_kg: bool,
     #[serde(default)]
     pub kg: RawKgConfig,
+    /// Whether the `agentic-chat` plugin should route the instruction pass
+    /// through `llm/instruct` (requires `[llm.instruction]` to be configured).
+    #[serde(default)]
+    pub use_instruction_llm: bool,
 }
 
 #[derive(Deserialize, Default)]
