@@ -107,16 +107,23 @@ impl Default for RawLlm {
 /// Configuration for the optional instruction-pass LLM (`[llm.instruction]`).
 ///
 /// When present, `llm/instruct` bus requests are routed to this provider
-/// instead of the main LLM.  This is typically a smaller, faster model.
+/// instead of the main LLM.  Provider sub-configs (`openai`, `qwen`) are
+/// optional — when absent, the corresponding values from `[llm.openai]` /
+/// `[llm.qwen]` are inherited.  Only specify the sub-section when you need
+/// to override a specific field (e.g. a different model or temperature).
 #[derive(Deserialize, Default)]
 pub(super) struct RawLlmInstruction {
     /// Provider name ("openai", "qwen", "dummy").  Defaults to main provider if empty.
     #[serde(default)]
     pub provider: String,
+    /// Override fields for the OpenAI-compatible provider.
+    /// Absent → inherit all values from `[llm.openai]`.
     #[serde(default)]
-    pub openai: RawOpenAiConfig,
+    pub openai: Option<RawOpenAiConfig>,
+    /// Override fields for the Qwen provider.
+    /// Absent → inherit all values from `[llm.qwen]`.
     #[serde(default)]
-    pub qwen: RawQwenConfig,
+    pub qwen: Option<RawQwenConfig>,
 }
 
 #[derive(Deserialize)]

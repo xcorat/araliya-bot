@@ -138,13 +138,20 @@ cached_input_per_million_usd = 0.0
 
 # Optional: configure a separate small model for the agentic-chat instruction pass.
 # Uncomment and set use_instruction_llm = true in [agents.agentic-chat] to activate.
+#
+# Provider sub-sections ([llm.instruction.openai] / [llm.instruction.qwen]) are
+# optional — when omitted all settings are inherited from [llm.openai] / [llm.qwen].
+# Only add the sub-section when you need to override a specific field.
+#
+# Minimal form (inherit everything from [llm.openai], just use a different model):
 # [llm.instruction]
 # provider = "openai"
 # [llm.instruction.openai]
-# api_base_url = "https://api.openai.com/v1/chat/completions"
 # model = "gpt-4o-mini"
 # temperature = 0.1
-# timeout_seconds = 30
+#
+# If [llm.instruction.openai] is absent entirely, the main [llm.openai] config
+# is used as-is — api_base_url, timeout, pricing etc. are all inherited.
 
 ## ------------------------- Tools Subsystem ---------------------------------
 

@@ -239,33 +239,65 @@ pub fn load_from(
                 use_instruction_llm: entry.use_instruction_llm,
             });
 
+    // Build the instruction LLM config by inheriting the main provider values
+    // and overlaying only the fields explicitly set in [llm.instruction.*].
     let instruction_llm = parsed.llm.instruction.map(|inst| {
         let provider = if inst.provider.is_empty() {
             parsed.llm.provider.clone()
         } else {
             inst.provider
         };
+        // OpenAI: use [llm.instruction.openai] overrides if present, else fall back
+        // to the main [llm.openai] values so the connection details are inherited.
+        let base_openai = &parsed.llm.openai;
+        let openai = match inst.openai {
+            Some(ov) => OpenAiConfig {
+                api_base_url: ov.api_base_url,
+                model: ov.model,
+                temperature: ov.temperature,
+                timeout_seconds: ov.timeout_seconds,
+                input_per_million_usd: ov.input_per_million_usd,
+                output_per_million_usd: ov.output_per_million_usd,
+                cached_input_per_million_usd: ov.cached_input_per_million_usd,
+            },
+            None => OpenAiConfig {
+                api_base_url: base_openai.api_base_url.clone(),
+                model: base_openai.model.clone(),
+                temperature: base_openai.temperature,
+                timeout_seconds: base_openai.timeout_seconds,
+                input_per_million_usd: base_openai.input_per_million_usd,
+                output_per_million_usd: base_openai.output_per_million_usd,
+                cached_input_per_million_usd: base_openai.cached_input_per_million_usd,
+            },
+        };
+        // Qwen: same pattern — inherit main [llm.qwen] unless overridden.
+        let base_qwen = &parsed.llm.qwen;
+        let qwen = match inst.qwen {
+            Some(ov) => QwenConfig {
+                api_base_url: ov.api_base_url,
+                model: ov.model,
+                temperature: ov.temperature,
+                timeout_seconds: ov.timeout_seconds,
+                max_tokens: ov.max_tokens,
+                input_per_million_usd: ov.input_per_million_usd,
+                output_per_million_usd: ov.output_per_million_usd,
+                cached_input_per_million_usd: ov.cached_input_per_million_usd,
+            },
+            None => QwenConfig {
+                api_base_url: base_qwen.api_base_url.clone(),
+                model: base_qwen.model.clone(),
+                temperature: base_qwen.temperature,
+                timeout_seconds: base_qwen.timeout_seconds,
+                max_tokens: base_qwen.max_tokens,
+                input_per_million_usd: base_qwen.input_per_million_usd,
+                output_per_million_usd: base_qwen.output_per_million_usd,
+                cached_input_per_million_usd: base_qwen.cached_input_per_million_usd,
+            },
+        };
         Box::new(LlmConfig {
             provider,
-            openai: OpenAiConfig {
-                api_base_url: inst.openai.api_base_url,
-                model: inst.openai.model,
-                temperature: inst.openai.temperature,
-                timeout_seconds: inst.openai.timeout_seconds,
-                input_per_million_usd: inst.openai.input_per_million_usd,
-                output_per_million_usd: inst.openai.output_per_million_usd,
-                cached_input_per_million_usd: inst.openai.cached_input_per_million_usd,
-            },
-            qwen: QwenConfig {
-                api_base_url: inst.qwen.api_base_url,
-                model: inst.qwen.model,
-                temperature: inst.qwen.temperature,
-                timeout_seconds: inst.qwen.timeout_seconds,
-                max_tokens: inst.qwen.max_tokens,
-                input_per_million_usd: inst.qwen.input_per_million_usd,
-                output_per_million_usd: inst.qwen.output_per_million_usd,
-                cached_input_per_million_usd: inst.qwen.cached_input_per_million_usd,
-            },
+            openai,
+            qwen,
             instruction: None,
         })
     });
