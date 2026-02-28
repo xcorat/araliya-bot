@@ -143,6 +143,7 @@ Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
 | `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
 | `memory` (field) | `Arc<MemorySystem>` — create/load sessions. In builds that include `subsystem-agents`, memory is available to agents directly. |
 | `agent_memory` (field) | `HashMap<String, Vec<String>>` — per-agent memory store requirements from config. |
+| `agent_skills` (field) | `HashMap<String, Vec<String>>` — per-agent bus-tool allowlists from config (`skills = [...]`). Each agent reads its own entry to scope which tools appear in the instruction manifest. |
 
 The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
 targets.
@@ -204,6 +205,11 @@ default = "chat"
 
 [agents.chat]
 memory = ["basic_session"]
+skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
+
+[agents.docs]
+memory = ["basic_session"]
+# skills = []  # default: no bus tools, only local docs_search
 ```
 
 ## Docs Agent — RAG & KG-RAG
@@ -256,6 +262,7 @@ See [kg_docstore.md](kg_docstore.md) for full parameter reference.
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
+| `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke (e.g. `["gmail", "newsmail_aggregator"]`). Only listed tools appear in the agent's instruction manifest. |
 | `agents.docs.path` | string | `docs/quick-intro.md` | Fallback Markdown file when KG is disabled. |
 | `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path via `IKGDocStore`. Requires feature `ikgdocstore`. |
 | `agents.docs.kg.min_entity_mentions` | usize | `2` | Minimum mentions for an entity to survive the KG filter. |

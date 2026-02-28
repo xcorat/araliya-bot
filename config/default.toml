@@ -64,6 +64,7 @@ enabled = false
 # this plugin simply change `enabled = false` to `enabled = true`.
 enabled = false
 memory = ["basic_session"]
+# skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
 
 [agents.gmail]
 # Gmail agent — calls tools/gmail to read the latest email.
@@ -94,6 +95,7 @@ enabled = false
 # Enable this for agentic workflows with tool use.
 enabled = false
 memory = ["basic_session"]
+# skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
 # Set to true when [llm.instruction] is configured to route the instruction
 # pass through a separate smaller model.
 use_instruction_llm = false

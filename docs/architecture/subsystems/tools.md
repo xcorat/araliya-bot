@@ -51,6 +51,18 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 - Request payload: `ToolRequest { tool, action, args_json, channel_id, session_id }`
 - Response payload: `ToolResponse { tool, action, ok, data_json, error }`
 
+## Per-Agent Tool Scoping
+
+Bus tools are not globally visible to all agents. Each agent declares which tools it may invoke via `skills = [...]` in its config section. Only declared tools appear in the agent's instruction-pass tool manifest and response-pass system prompt. Agents without a `skills` declaration cannot call any bus tools — they can only use their own local tools (e.g. the docs agent's `docs_search`).
+
+```toml
+[agents.agentic-chat]
+skills = ["gmail", "newsmail_aggregator"]  # can invoke both
+
+[agents.docs]
+# skills = []  # default — only local docs_search tool
+```
+
 ## Agent Integration
 
 - Gmail agent plugin: `src/subsystems/agents/gmail.rs`

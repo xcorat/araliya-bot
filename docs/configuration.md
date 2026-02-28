@@ -29,6 +29,7 @@ default = "basic_chat"
 
 [agents.chat]
 memory = ["basic_session"]
+# skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
 
 [memory]
 # Global memory settings
@@ -185,6 +186,7 @@ The build output goes to `frontend/build/`, which matches the default `static_di
 | `agents.default` | string | `"basic_chat"` | Which agent handles unrouted messages. |
 | `agents.routing` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
 | `agents.{id}.memory` | array<string> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
+| `agents.{id}.skills` | array<string> | `[]` | Bus tools this agent may invoke (e.g. `["gmail", "newsmail_aggregator"]`). Only listed tools appear in the agent's instruction manifest and response preamble. Agents without this field cannot call any bus tools. |
 
 Gmail agent endpoint:
 
