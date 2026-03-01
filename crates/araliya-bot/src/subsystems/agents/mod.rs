@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, DocsKgConfig};
+use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, DocsKgConfig, RuntimeCmdAgentConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -45,6 +45,8 @@ mod docs_import;
 mod gmail;
 #[cfg(feature = "plugin-news-agent")]
 mod news;
+#[cfg(feature = "plugin-runtime-cmd")]
+mod runtime_cmd;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -225,6 +227,30 @@ impl AgentsState {
             )
             .await;
 
+        match result {
+            Ok(r) => r,
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
+
+    /// Send a `runtimes/init` request through the bus.
+    pub async fn runtime_init(&self, json: String) -> BusResult {
+        let result = self
+            .bus
+            .request("runtimes/init", BusPayload::JsonResponse { data: json })
+            .await;
+        match result {
+            Ok(r) => r,
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
+
+    /// Send a `runtimes/exec` request through the bus.
+    pub async fn runtime_exec(&self, json: String) -> BusResult {
+        let result = self
+            .bus
+            .request("runtimes/exec", BusPayload::JsonResponse { data: json })
+            .await;
         match result {
             Ok(r) => r,
             Err(e) => Err(BusError::new(-32000, e.to_string())),
@@ -430,6 +456,13 @@ impl AgentsSubsystem {
                     Box::new(agentic_chat::AgenticChatPlugin::new(&default_cfg));
                 agents.insert(agent.id().to_string(), agent);
             }
+        }
+
+        #[cfg(feature = "plugin-runtime-cmd")]
+        if enabled_agents.contains("runtime_cmd") {
+            let rc_cfg = config.runtime_cmd.unwrap_or_default();
+            let agent: Box<dyn Agent> = Box::new(runtime_cmd::RuntimeCmdPlugin::new(&rc_cfg));
+            agents.insert(agent.id().to_string(), agent);
         }
 
         // Per-agent skills from config — only tools declared here are visible
@@ -1328,6 +1361,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1366,6 +1400,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1401,6 +1436,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1433,6 +1469,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1472,6 +1509,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1531,6 +1569,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1623,6 +1662,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1682,6 +1722,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1721,6 +1762,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1800,6 +1842,7 @@ mod tests {
                 kg: DocsKgConfig::default(),
             }),
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1840,6 +1883,7 @@ mod tests {
             // No docsdir configured — docstore will remain empty.
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1872,6 +1916,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1904,6 +1949,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
@@ -1926,6 +1972,7 @@ mod tests {
             news_query: None,
             docs: None,
             agentic_chat: None,
+            runtime_cmd: None,
             debug_logging: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();

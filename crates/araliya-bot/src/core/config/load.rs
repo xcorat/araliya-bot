@@ -123,6 +123,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 news_query: None,
                 docs: None,
                 agentic_chat: None,
+                runtime_cmd: None,
                 debug_logging: false,
             },
             llm: LlmConfig {
@@ -245,6 +246,15 @@ pub fn load_from(
                 use_instruction_llm: entry.use_instruction_llm,
             });
 
+    let runtime_cmd_cfg = parsed.agents.entries.get("runtime_cmd").map(|entry| {
+        let defaults = RuntimeCmdAgentConfig::default();
+        RuntimeCmdAgentConfig {
+            runtime: entry.runtime.clone().unwrap_or(defaults.runtime),
+            command: entry.command.clone().unwrap_or(defaults.command),
+            setup_script: entry.setup_script.clone(),
+        }
+    });
+
     // Build the instruction LLM config by inheriting the main provider values
     // and overlaying only the fields explicitly set in [llm.instruction.*].
     let instruction_llm = parsed.llm.instruction.map(|inst| {
@@ -356,6 +366,7 @@ pub fn load_from(
             news_query,
             docs: docs_cfg,
             agentic_chat: agentic_chat_cfg,
+            runtime_cmd: runtime_cmd_cfg,
             debug_logging: parsed.agents.debug_logging,
         },
         llm: LlmConfig {

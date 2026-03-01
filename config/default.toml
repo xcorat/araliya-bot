@@ -90,6 +90,15 @@ memory = ["basic_session"]
 # Disabled — placeholder to show the section shape.
 enabled = false
 
+[agents.runtime_cmd]
+# REPL-style passthrough agent — sends user messages as source code to an
+# external runtime (node, python3, bash, etc.) via the runtimes subsystem.
+# No LLM involved.
+enabled = false
+runtime = "node"
+command = "node"
+# setup_script = "npm init -y"
+
 [agents.agentic-chat]
 # Dual-pass agentic chat plugin — instruction pass + tool execution + response pass.
 # Enable this for agentic workflows with tool use.

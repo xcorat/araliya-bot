@@ -211,6 +211,27 @@ pub struct AgenticChatConfig {
     pub use_instruction_llm: bool,
 }
 
+/// Configuration for the `runtime_cmd` agent plugin.
+#[derive(Debug, Clone)]
+pub struct RuntimeCmdAgentConfig {
+    /// Runtime environment name (default: `"bash"`).
+    pub runtime: String,
+    /// Interpreter command (default: `"bash"`).
+    pub command: String,
+    /// Optional init script run on first interaction.
+    pub setup_script: Option<String>,
+}
+
+impl Default for RuntimeCmdAgentConfig {
+    fn default() -> Self {
+        Self {
+            runtime: "bash".to_string(),
+            command: "bash".to_string(),
+            setup_script: None,
+        }
+    }
+}
+
 /// Agents subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct AgentsConfig {
@@ -228,6 +249,8 @@ pub struct AgentsConfig {
     pub docs: Option<DocsAgentConfig>,
     /// Optional configuration for the `agentic-chat` agent.
     pub agentic_chat: Option<AgenticChatConfig>,
+    /// Optional configuration for the `runtime_cmd` agent.
+    pub runtime_cmd: Option<RuntimeCmdAgentConfig>,
     /// Per-agent bus-tool allowlists: agent_id → list of tool names the agent
     /// may invoke.  Populated from `skills = [...]` in each `[agents.<id>]`
     /// config section.  Agents without an entry default to no bus tools.

@@ -234,6 +234,15 @@ pub(super) struct RawAgentEntry {
     /// Defaults to empty — the agent can only use its own local tools.
     #[serde(default)]
     pub skills: Vec<String>,
+    /// Runtime name for the `runtime_cmd` agent (e.g. `"node"`, `"bash"`).
+    #[serde(default)]
+    pub runtime: Option<String>,
+    /// Interpreter command for the `runtime_cmd` agent (e.g. `"node"`, `"python3"`).
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Optional setup script run on first interaction.
+    #[serde(default)]
+    pub setup_script: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

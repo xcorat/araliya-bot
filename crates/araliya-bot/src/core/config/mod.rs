@@ -49,6 +49,7 @@ impl Config {
                 news_query: None,
                 docs: None,
                 agentic_chat: None,
+                runtime_cmd: None,
                 debug_logging: false,
             },
             llm: LlmConfig {

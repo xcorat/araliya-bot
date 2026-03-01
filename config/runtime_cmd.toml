@@ -1,0 +1,33 @@
+# Runtime CMD overlay — extends default.toml for interactive REPL sessions.
+# Routes all user input to an external runtime (node, python3, bash, etc.)
+# via the runtimes subsystem.  No LLM involved.
+#
+# Usage:
+#   cargo run -- -i -c config/runtime_cmd.toml
+
+[meta]
+base = "default.toml"
+
+[comms.pty]
+enabled = true
+
+[comms.axum_channel]
+enabled = false
+
+[agents]
+default = "runtime_cmd"
+
+[agents.echo]
+enabled = false
+
+[agents.runtime_cmd]
+enabled = true
+runtime = "node"
+command = "node"
+# setup_script = "npm init -y"
+
+[ui.svui]
+enabled = false
+
+[llm]
+default = "dummy"
