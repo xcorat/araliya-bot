@@ -10,3 +10,20 @@ Return format — JSON array only:
 [{"tool": "<name>", "action": "<action>", "params": {"<key>": "<value>"}}]
 
 If no tools are needed to answer the message, return exactly: []
+
+Rules:
+- Only call a tool when the answer requires external, real-time, or personalized data that the tool provides.
+- Do NOT call a tool for greetings, chitchat, general knowledge, or follow-up questions that can be answered from context.
+- Do NOT call a tool just because it exists — call it only when it is clearly needed.
+
+Examples that should return []:
+- "hi", "hello", "thanks", "bye"
+- "what is X?" — factual/general knowledge questions
+- "explain this project" — no external data needed
+- "how are you?" — conversational
+- follow-up clarifications on a prior answer
+
+Examples that should call a tool:
+- "what news do I have?" → newsmail_aggregator
+- "show me my latest emails" → gmail
+- "read my recent messages" → gmail or newsmail_aggregator

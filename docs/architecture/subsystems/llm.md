@@ -14,8 +14,8 @@ The Agents subsystem uses the bus to call `llm/complete` rather than holding a d
 
 ## Responsibilities
 
-- Receive `llm/complete` requests via the supervisor bus
-- Forward the prompt to the configured `LlmProvider`
+- Receive `llm/complete` and `llm/instruct` requests via the supervisor bus
+- Forward each prompt to the appropriate `LlmProvider` (main or instruction)
 - Deserialize token usage from the provider response
 - Compute per-call cost using configured pricing rates and log it
 - Return the reply as `BusPayload::CommsMessage` (preserving `channel_id` and `usage`)
@@ -91,13 +91,21 @@ impl LlmProvider {
 
 ## Bus Protocol
 
-**Request method:** `"llm/complete"`
+### `llm/complete` — main response pass
 
-**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String }`
+**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
 
-`channel_id` is threaded through so the reply can be associated with the originating channel without extra bookkeeping by the caller.
+Used by the response pass of `AgenticLoop` and by simple chat agents. Routes to the main configured provider.
 
 **Reply payload:** `BusPayload::CommsMessage { channel_id, content: reply, session_id: None, usage: Option<LlmUsage> }`
+
+### `llm/instruct` — instruction pass (SLM router)
+
+**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
+
+Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the main provider** when no instruction provider is configured — so callers don't need to check; the LLM subsystem handles the fallback transparently.
+
+The instruction pass expects structured JSON output from the model. Use a model tuned for structured output or apply few-shot examples in the prompt (`config/prompts/agentic_instruct.txt`).
 
 `usage` is `None` when the provider does not report token counts.
 
@@ -161,11 +169,20 @@ timeout_seconds = 60
 input_per_million_usd = 1.10
 output_per_million_usd = 4.40
 cached_input_per_million_usd = 0.275
+
+# Optional: separate small model for the agentic instruction pass.
+# Provider sub-sections ([llm.instruction.openai] / [llm.instruction.qwen])
+# are optional — absent fields are inherited from [llm.openai] / [llm.qwen].
+# [llm.instruction]
+# provider = "openai"
+# [llm.instruction.openai]
+# model = "gpt-4o-mini"
+# temperature = 0.1
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.default` | string | `"dummy"` | Active provider. Supported: `"dummy"`, `"openai"`. |
+| `llm.default` | string | `"dummy"` | Active provider. Supported: `"dummy"`, `"openai"`, `"qwen"`. |
 | `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Set to a local server for Ollama / LM Studio. |
 | `llm.openai.model` | string | `"gpt-4o-mini"` | Model name sent in the request body. |
 | `llm.openai.temperature` | float | `0.2` | Sampling temperature (silently omitted for `gpt-5` family). |
@@ -173,6 +190,9 @@ cached_input_per_million_usd = 0.275
 | `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
 | `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
 | `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
+| `llm.instruction.provider` | string | — | Provider for `llm/instruct` requests. Inherits connection from main provider when sub-section is absent. |
+| `llm.instruction.openai.model` | string | inherited | Override model for the instruction pass (e.g. smaller/cheaper model). |
+| `llm.instruction.openai.temperature` | float | inherited | Override temperature for the instruction pass (lower = more deterministic JSON). |
 
 Pricing fields default to `0.0` so cost is silently omitted rather than wrong when not configured.
 

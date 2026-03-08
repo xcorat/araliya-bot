@@ -4,6 +4,7 @@
 //!
 //! | Method             | Description                                      |
 //! |--------------------|--------------------------------------------------|
+//! | `runtimes/init`    | Bootstrap a runtime env. Payload: [`RuntimeInitRequest`] |
 //! | `runtimes/exec`    | Execute a script. Payload: [`RuntimeExecRequest`] |
 //! | `runtimes/status`  | Subsystem health / status check                  |
 //!
@@ -17,7 +18,7 @@
 
 mod types;
 
-pub use types::{RuntimeExecRequest, RuntimeExecResult};
+pub use types::{RuntimeExecRequest, RuntimeExecResult, RuntimeInitRequest, RuntimeInitResult};
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -67,6 +68,70 @@ impl RuntimesSubsystem {
         self
     }
 
+    /// Initialize a runtime environment.
+    ///
+    /// Creates the per-runtime working directory and optionally runs a setup
+    /// script (via `bash -c`) inside it.
+    async fn init(
+        runtimes_root: PathBuf,
+        default_timeout: u64,
+        req: RuntimeInitRequest,
+    ) -> Result<RuntimeInitResult, String> {
+        let runtime_dir = runtimes_root.join(&req.runtime);
+        tokio::fs::create_dir_all(&runtime_dir)
+            .await
+            .map_err(|e| format!("failed to create runtime dir: {e}"))?;
+
+        let runtime_dir_str = runtime_dir
+            .to_str()
+            .ok_or_else(|| "runtime dir path is not valid UTF-8".to_string())?
+            .to_string();
+
+        let Some(script) = req.setup_script else {
+            return Ok(RuntimeInitResult {
+                success: true,
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                runtime_dir: runtime_dir_str,
+            });
+        };
+
+        let timeout_secs = req.timeout_secs.unwrap_or(default_timeout);
+
+        let mut cmd = tokio::process::Command::new("bash");
+        cmd.arg("-c")
+            .arg(&script)
+            .current_dir(&runtime_dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        for (k, v) in &req.env {
+            cmd.env(k, v);
+        }
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            cmd.output(),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(output)) => {
+                let exit_code = output.status.code();
+                Ok(RuntimeInitResult {
+                    success: output.status.success(),
+                    exit_code,
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    runtime_dir: runtime_dir_str,
+                })
+            }
+            Ok(Err(e)) => Err(format!("setup script spawn failed: {e}")),
+            Err(_) => Err(format!("setup script timed out after {timeout_secs}s")),
+        }
+    }
+
     /// Execute a script in the given runtime.
     ///
     /// 1. Ensures the per-runtime working directory exists.
@@ -85,10 +150,12 @@ impl RuntimesSubsystem {
             .await
             .map_err(|e| format!("failed to create runtime dir: {e}"))?;
 
+        let command = req.command.as_deref().unwrap_or("bash");
+
         // Determine script path — either caller-provided or temp file from inline source.
         let (script_path, temp_file) = match (&req.source, &req.script_path) {
             (Some(source), _) => {
-                let ext = match req.runtime.as_str() {
+                let ext = match command {
                     "node" => "js",
                     "python3" | "python" => "py",
                     "bash" | "sh" => "sh",
@@ -112,7 +179,7 @@ impl RuntimesSubsystem {
 
         let start = Instant::now();
 
-        let mut cmd = tokio::process::Command::new(&req.runtime);
+        let mut cmd = tokio::process::Command::new(command);
         cmd.arg(&script_path)
             .current_dir(&runtime_dir)
             .stdout(std::process::Stdio::piped())
@@ -182,6 +249,53 @@ impl BusHandler for RuntimesSubsystem {
             return;
         }
 
+        // ── runtimes/init ────────────────────────────────────────────────
+        if method == "runtimes/init" {
+            let runtimes_root = self.runtimes_root.clone();
+            let default_timeout = self.default_timeout_secs;
+
+            let json_str = match &payload {
+                BusPayload::JsonResponse { data } => Some(data.clone()),
+                BusPayload::ToolRequest { args_json, .. } => Some(args_json.clone()),
+                _ => None,
+            };
+
+            let Some(json_str) = json_str else {
+                let _ = reply_tx.send(Err(BusError::new(
+                    -32600,
+                    "expected JsonResponse or ToolRequest payload with init request",
+                )));
+                return;
+            };
+
+            let req: RuntimeInitRequest = match serde_json::from_str(&json_str) {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32602,
+                        format!("invalid init request: {e}"),
+                    )));
+                    return;
+                }
+            };
+
+            debug!(runtime = %req.runtime, "runtimes/init dispatched");
+
+            tokio::spawn(async move {
+                match Self::init(runtimes_root, default_timeout, req).await {
+                    Ok(result) => {
+                        let data = serde_json::to_string(&result).unwrap_or_default();
+                        let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "runtimes/init failed");
+                        let _ = reply_tx.send(Err(BusError::new(-32000, e)));
+                    }
+                }
+            });
+            return;
+        }
+
         // ── runtimes/exec ────────────────────────────────────────────────
         if method == "runtimes/exec" {
             let runtimes_root = self.runtimes_root.clone();
@@ -245,6 +359,52 @@ impl BusHandler for RuntimesSubsystem {
 mod tests {
     use super::*;
 
+    /// Verify that `init` with a setup script creates the directory and runs the script.
+    #[tokio::test]
+    async fn init_with_setup_script() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let req = RuntimeInitRequest {
+            runtime: "test-env".to_string(),
+            setup_script: Some("echo initialized".to_string()),
+            env: Default::default(),
+            timeout_secs: Some(10),
+        };
+
+        let result = RuntimesSubsystem::init(tmp.path().to_path_buf(), 30, req)
+            .await
+            .expect("init should succeed");
+
+        assert!(result.success);
+        assert_eq!(result.exit_code, Some(0));
+        assert_eq!(result.stdout.trim(), "initialized");
+        assert!(tmp.path().join("test-env").is_dir());
+        assert_eq!(
+            result.runtime_dir,
+            tmp.path().join("test-env").to_str().unwrap()
+        );
+    }
+
+    /// Verify that `init` without a setup script just creates the directory.
+    #[tokio::test]
+    async fn init_no_script() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let req = RuntimeInitRequest {
+            runtime: "bare-env".to_string(),
+            setup_script: None,
+            env: Default::default(),
+            timeout_secs: None,
+        };
+
+        let result = RuntimesSubsystem::init(tmp.path().to_path_buf(), 30, req)
+            .await
+            .expect("init should succeed");
+
+        assert!(result.success);
+        assert!(result.exit_code.is_none());
+        assert!(result.stdout.is_empty());
+        assert!(tmp.path().join("bare-env").is_dir());
+    }
+
     /// Verify that an inline `console.log('ok')` script executes successfully
     /// and produces the expected stdout.
     #[tokio::test]
@@ -262,6 +422,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let req = RuntimeExecRequest {
             runtime: "node".to_string(),
+            command: Some("node".into()),
             source: Some("console.log('ok')".to_string()),
             script_path: None,
             env: Default::default(),
@@ -284,6 +445,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let req = RuntimeExecRequest {
             runtime: "nonexistent_runtime_xyz".to_string(),
+            command: Some("nonexistent_runtime_xyz".into()),
             source: Some("hello".to_string()),
             script_path: None,
             env: Default::default(),
@@ -300,6 +462,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let req = RuntimeExecRequest {
             runtime: "node".to_string(),
+            command: None,
             source: None,
             script_path: None,
             env: Default::default(),

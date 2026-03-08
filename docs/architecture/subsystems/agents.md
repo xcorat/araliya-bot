@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Status:** v0.5.0 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`) · **`DocsAgentPlugin` with optional KG-RAG path (`IKGDocStore`) and externalised prompt templates**.
+**Status:** v0.5.1 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`) · **`DocsAgentPlugin` with optional KG-RAG path (`IKGDocStore`) and externalised prompt templates** · **`AgenticChatPlugin` + `AgenticLoop` — dual-model instruction loop (SLM router + LLM responder)** · **`RuntimeCmdPlugin` — external script execution passthrough** · **per-turn debug logging to session KV**.
 
 ---
 
@@ -16,8 +16,10 @@ The Agents subsystem receives agent-targeted requests from the supervisor bus an
 |-------|-----------|
 | `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
 | `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
+| `agentic-chat` | Dual-pass agentic chat via `AgenticChatPlugin` + `AgenticLoop`. Small model selects tools (instruction pass → `llm/instruct`), tools execute, large model generates the reply (response pass → `llm/complete`). Session-aware. Configured with `use_instruction_llm`, `skills`, `memory`. |
 | `news` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
 | `docs` | Retrieves context from the agent's document store and answers questions with the LLM.  Uses `IKGDocStore` (KG+FTS) when `use_kg = true` is set in config and the `ikgdocstore` feature is compiled; falls back to plain `IDocStore` (FTS only) otherwise. |
+| `runtime_cmd` | REPL-style passthrough to an external language runtime (Node.js, Python, Bash). Initialises the runtime on first use via `runtimes/init`, then executes each user message as source code via `runtimes/exec`. Configured with `runtime`, `command`, `setup_script`. |
 | `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
 
 ---
@@ -101,6 +103,56 @@ Agents can also spawn **subagents** — ephemeral or task-specific workers that 
 > **Naming convention:** `Agent` for autonomous actors in the agents subsystem;
 > `Plugin` is reserved for capability extensions in the future tools subsystem.
 
+### Agentic Loop (`AgenticLoop`)
+
+`AgenticLoop` is the shared building block for multi-pass agent plugins (`agentic-chat`, `docs`). It implements the **heterogeneous orchestration** pattern: a small, fast model handles structured output (tool selection), while the main model handles complex reasoning and generation.
+
+**3-phase flow per request:**
+
+```
+1. Instruction pass
+   instruct_prompt = render(agentic_instruct.txt, {tools, user_input})
+   instruction_text = llm/instruct(instruct_prompt)          ← SLM (fast, structured)
+   tool_calls = parse_json_array(instruction_text)           ← [] on error (graceful)
+
+2. Tool execution
+   for call in tool_calls:
+     if local_tool: spawn_blocking(tool.call(params))        ← in-process (e.g. docs search)
+     else:          bus.request("tools/execute", ...)        ← external via bus
+   context = join(outputs)
+
+3. Response pass
+   response_prompt = render(agentic_context.txt, {context, history, user_input})
+   reply = llm/complete(response_prompt, system=preamble)    ← main LLM (larger, smarter)
+```
+
+**Key types:**
+- `AgenticLoop::new(agent_id, use_instruction_llm, instruct_prompt_file, context_prompt_file, local_tools, allowed_tools, prompts_dir, debug_logging)`
+- `LocalTool` trait — in-process blocking tools (implemented by `DocsSearchTool`)
+- `allowed_tools: Vec<String>` — bus tool allowlist from agent `skills` config; only listed tools appear in the instruction manifest
+
+**Routing the instruction pass:**
+- `use_instruction_llm = false` (default) — instruction pass uses `llm/complete` (same model as response)
+- `use_instruction_llm = true` — instruction pass uses `llm/instruct`, which routes to `[llm.instruction]` if configured, falling back to the main provider otherwise
+
+**Per-turn debug logging** (`debug_logging = true` in `[agents]` config):
+
+Each turn writes intermediate data to the session KV store under `debug:turn:{n}:*`:
+
+| KV key | Content |
+|--------|---------|
+| `debug:turn:{n}:user_input` | Raw user message |
+| `debug:turn:{n}:instruct_prompt` | Rendered instruction prompt sent to SLM |
+| `debug:turn:{n}:instruction_response` | Raw SLM output (JSON array or empty) |
+| `debug:turn:{n}:tool_calls_json` | Parsed tool calls (same as instruction_response) |
+| `debug:turn:{n}:tool_outputs_json` | JSON array of tool results with ok/error |
+| `debug:turn:{n}:context` | Assembled context string passed to response pass |
+| `debug:turn:{n}:response_prompt` | Rendered response prompt sent to main LLM |
+
+Read via: `GET /api/sessions/{session_id}/debug` (bus: `agents/sessions/debug`, payload: `SessionQuery { session_id, agent_id? }`)
+
+---
+
 ### Chat-family composition (`ChatCore`)
 
 Chat-family agents (`basic_chat`, `chat`, and future variants) share logic
@@ -141,9 +193,13 @@ Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
 | Method | Description |
 |--------|-------------|
 | `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
+| `complete_via_llm_with_system(channel_id, content, system)` | Like above but with an optional system prompt. Used by the response pass. |
+| `complete_via_instruct_llm(channel_id, content, system)` | Forward to `llm/instruct`; routes to `[llm.instruction]` if configured, else falls back to main provider. Used by the instruction pass. |
+| `execute_tool(tool, action, params_json, channel_id, session_id)` | Dispatch a bus tool call through `tools/execute`. |
 | `memory` (field) | `Arc<MemorySystem>` — create/load sessions. In builds that include `subsystem-agents`, memory is available to agents directly. |
 | `agent_memory` (field) | `HashMap<String, Vec<String>>` — per-agent memory store requirements from config. |
 | `agent_skills` (field) | `HashMap<String, Vec<String>>` — per-agent bus-tool allowlists from config (`skills = [...]`). Each agent reads its own entry to scope which tools appear in the instruction manifest. |
+| `debug_logging` (field) | `bool` — when true, `AgenticLoop` writes per-turn intermediate data to session KV (see debug logging table above). |
 
 The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
 targets.
@@ -158,6 +214,7 @@ The agents subsystem intercepts session query bus methods before agent routing:
 | `agents/sessions/detail` | `SessionQuery { session_id }` | `JsonResponse` — session metadata + full transcript |
 | `agents/sessions/memory` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, content }`, where `content` is current working memory |
 | `agents/sessions/files` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, files[] }` with `name`, `size_bytes`, `modified` |
+| `agents/sessions/debug` | `SessionQuery { session_id, agent_id? }` | `JsonResponse` — `{ session_id, turns: [{n, user_input, instruct_prompt, instruction_response, tool_calls_json, tool_outputs_json, context, response_prompt}] }`. Only populated when `debug_logging = true`. HTTP: `GET /api/sessions/{session_id}/debug`. |
 
 These are handled directly by `AgentsSubsystem` (not routed to individual agents).
 
@@ -260,9 +317,11 @@ See [kg_docstore.md](kg_docstore.md) for full parameter reference.
 |-------|------|---------|-------------|
 | `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
 | `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
+| `agents.debug_logging` | bool | `false` | Write per-turn intermediate data (`instruct_prompt`, `tool_calls_json`, `context`, etc.) to session KV store for all agentic agents. Read via `GET /api/sessions/{id}/debug`. |
 | `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
 | `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke (e.g. `["gmail", "newsmail_aggregator"]`). Only listed tools appear in the agent's instruction manifest. |
+| `agents.agentic-chat.use_instruction_llm` | bool | `false` | Route the instruction pass through `llm/instruct`. Requires `[llm.instruction]` for a separate SLM; falls back to the main provider otherwise. |
 | `agents.docs.path` | string | `docs/quick-intro.md` | Fallback Markdown file when KG is disabled. |
 | `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path via `IKGDocStore`. Requires feature `ikgdocstore`. |
 | `agents.docs.kg.min_entity_mentions` | usize | `2` | Minimum mentions for an entity to survive the KG filter. |

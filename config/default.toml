@@ -44,6 +44,7 @@ debug_logging = false
 
 [agents.routing]
 # Optional channel_id -> agent_id overrides.
+# Use these for security: possibly via manager interface/firewall
 # Example:
 # pty0 = "echo"
 
@@ -63,12 +64,14 @@ enabled = false
 # The `plugin-chat` Cargo feature is compiled in by default; to activate
 # this plugin simply change `enabled = false` to `enabled = true`.
 enabled = false
+# TODO: Explain what basic session is?
 memory = ["basic_session"]
 # skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
 
 [agents.gmail]
 # Gmail agent — calls tools/gmail to read the latest email.
 # Bus method: agents/gmail/read
+enabled = false
 
 [agents.news]
 # News agent — calls tools/newsmail_aggregator/get and returns the raw payload.

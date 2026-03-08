@@ -1,0 +1,56 @@
+[
+  {
+    "description": "Simple greeting — no tools needed",
+    "input": "hi",
+    "expect_empty": true
+  },
+  {
+    "description": "Greeting variant — no tools needed",
+    "input": "hello there",
+    "expect_empty": true
+  },
+  {
+    "description": "Farewell — no tools needed",
+    "input": "bye, thanks!",
+    "expect_empty": true
+  },
+  {
+    "description": "General factual question — no external data needed",
+    "input": "what is a knowledge graph?",
+    "expect_empty": true
+  },
+  {
+    "description": "Project explanation — no external data needed",
+    "input": "explain this project",
+    "expect_empty": true
+  },
+  {
+    "description": "Follow-up clarification — answered from context",
+    "input": "can you say more about that?",
+    "expect_empty": true
+  },
+  {
+    "description": "News request — should call newsmail_aggregator",
+    "input": "what news do I have?",
+    "expect_tool": "newsmail_aggregator",
+    "expect_action": "get"
+  },
+  {
+    "description": "News request variant",
+    "input": "show me my latest news",
+    "expect_tool": "newsmail_aggregator",
+    "expect_action": "get"
+  },
+  {
+    "description": "Email request — should call gmail",
+    "input": "read my latest emails",
+    "expect_tool": "gmail",
+    "expect_action": "read_latest"
+  },
+  {
+    "description": "Email request variant",
+    "input": "show me my gmail",
+    "expect_tool": "gmail",
+    "expect_action": "read_latest"
+  }
+]

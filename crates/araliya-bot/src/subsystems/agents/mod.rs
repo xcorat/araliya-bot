@@ -1992,4 +1992,246 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(enabled, vec![serde_json::Value::String("echo".to_string())]);
     }
+
+    // ── AgenticLoop integration tests ─────────────────────────────────────────
+    //
+    // These tests verify the full 3-phase instruction loop:
+    //   1. Instruction pass (llm/instruct) → parse tool calls
+    //   2. Tool execution (skipped when instruction returns [])
+    //   3. Response pass (llm/complete) → reply with session_id
+    //
+    // The fake bus responder handles llm/instruct and llm/complete sequentially.
+    // Instruction pass returning "[]" exercises graceful degradation (no tools called).
+
+    /// Verifies agentic-chat completes the full 3-phase loop and returns a session_id.
+    ///
+    /// Fake LLM handles two requests:
+    ///   - llm/instruct → "[]"  (no tool calls, graceful)
+    ///   - llm/complete → "[fake] hello" (response)
+    #[cfg(feature = "plugin-agentic-chat")]
+    #[tokio::test]
+    async fn agentic_chat_returns_session_id() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut bus_rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        tokio::spawn(async move {
+            // Request 1: llm/instruct → empty JSON array (no tools)
+            if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
+                bus_rx.recv().await
+            {
+                if let BusPayload::LlmRequest { channel_id, .. } = payload {
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: "[]".to_string(),
+                        session_id: None,
+                        usage: None,
+                    }));
+                }
+            }
+            // Request 2: llm/complete → response
+            if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
+                bus_rx.recv().await
+            {
+                if let BusPayload::LlmRequest { channel_id, .. } = payload {
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: "[fake] hello".to_string(),
+                        session_id: None,
+                        usage: None,
+                    }));
+                }
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "agentic-chat".to_string(),
+            enabled: HashSet::from(["agentic-chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: Some(crate::config::AgenticChatConfig {
+                use_instruction_llm: false,
+            }),
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "hello".to_string(),
+                session_id: None,
+                usage: None,
+            },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, session_id, .. }) => {
+                assert_eq!(content, "[fake] hello");
+                assert!(session_id.is_some(), "agentic loop must return a session_id");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Verifies that a second message with the returned session_id reuses the same session.
+    #[cfg(feature = "plugin-agentic-chat")]
+    #[tokio::test]
+    async fn agentic_chat_second_turn_reuses_session() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut bus_rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        // Handle 4 sequential LLM requests (2 per turn: instruct + complete).
+        tokio::spawn(async move {
+            for i in 0..4u32 {
+                if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
+                    bus_rx.recv().await
+                {
+                    if let BusPayload::LlmRequest { channel_id, .. } = payload {
+                        let content = if i % 2 == 0 {
+                            "[]".to_string() // instruct pass → no tools
+                        } else {
+                            format!("[fake-turn-{}] response", i / 2 + 1)
+                        };
+                        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                            channel_id,
+                            content,
+                            session_id: None,
+                            usage: None,
+                        }));
+                    }
+                }
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "agentic-chat".to_string(),
+            enabled: HashSet::from(["agentic-chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: Some(crate::config::AgenticChatConfig {
+                use_instruction_llm: false,
+            }),
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        // Turn 1 — no session_id provided.
+        let (tx1, rx1) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "first message".to_string(),
+                session_id: None,
+                usage: None,
+            },
+            tx1,
+        );
+        let session_id = match rx1.await.unwrap() {
+            Ok(BusPayload::CommsMessage { session_id, .. }) => {
+                session_id.expect("first turn must return a session_id")
+            }
+            other => panic!("unexpected response: {other:?}"),
+        };
+
+        // Turn 2 — pass the session_id back.
+        let (tx2, rx2) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "second message".to_string(),
+                session_id: Some(session_id.clone()),
+                usage: None,
+            },
+            tx2,
+        );
+        match rx2.await.unwrap() {
+            Ok(BusPayload::CommsMessage { session_id: sid2, .. }) => {
+                assert_eq!(sid2, Some(session_id), "session_id must be reused across turns");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    /// Verifies debug_logging writes turn KV data when enabled.
+    ///
+    /// Checks that the session returned by the loop has a session_id — the actual
+    /// KV key contents are verifiable via the debug API endpoint once it is wired up.
+    /// This test ensures the flag does not break the loop.
+    #[cfg(feature = "plugin-agentic-chat")]
+    #[tokio::test]
+    async fn agentic_chat_debug_logging_does_not_break_loop() {
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut bus_rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        tokio::spawn(async move {
+            for _ in 0..2u32 {
+                if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
+                    bus_rx.recv().await
+                {
+                    if let BusPayload::LlmRequest { channel_id, .. } = payload {
+                        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                            channel_id,
+                            content: "[]".to_string(),
+                            session_id: None,
+                            usage: None,
+                        }));
+                    }
+                }
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "agentic-chat".to_string(),
+            enabled: HashSet::from(["agentic-chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: Some(crate::config::AgenticChatConfig {
+                use_instruction_llm: false,
+            }),
+            runtime_cmd: None,
+            debug_logging: true,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "test debug".to_string(),
+                session_id: None,
+                usage: None,
+            },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { session_id, .. }) => {
+                assert!(session_id.is_some(), "debug_logging=true must not break session creation");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
 }
