@@ -233,6 +233,26 @@ impl Default for RuntimeCmdAgentConfig {
 }
 
 /// Agents subsystem configuration.
+///
+/// # v0.6 extension points (PR2 — StaticAgent config)
+///
+/// The following fields are planned for PR2 and are not present yet:
+///
+/// - `static_agents: Vec<StaticAgentConfig>` — startup-defined agents loaded
+///   from TOML.  Each entry will carry: agent ID, `kind = "static"`, runtime
+///   class, memory requirements, tool allowlist, and prompt file references.
+///   See `docs/architecture/subsystems/agents_v0.6.md` for the full schema.
+///
+/// When PR2 lands, `raw.rs` will gain a corresponding `RawStaticAgentConfig`
+/// type, and `load.rs` will map it through validation into a typed
+/// `StaticAgentConfig` here.  Supported runtime classes for static agents will
+/// be `RequestResponse`, `Session`, and `Agentic` only — `Workflow` and
+/// `Background` are deferred to later phases.
+// TODO(PR2): add `pub static_agents: Vec<StaticAgentConfig>` here.
+// TODO(PR2): add `StaticAgentConfig` struct with id, runtime_class, memory,
+//            skills, prompt_files fields.
+// TODO(PR2): add validation in load.rs that rejects Workflow/Background classes
+//            for static agents in this phase.
 #[derive(Debug, Clone)]
 pub struct AgentsConfig {
     /// Agent that handles messages with no explicit routing.
@@ -261,6 +281,7 @@ pub struct AgentsConfig {
     /// (`instruct_prompt`, `instruction_response`, `tool_calls_json`, etc.)
     /// under `debug:turn:{n}:*` KV keys.  Off by default.
     pub debug_logging: bool,
+    // TODO(PR2): static_agents: Vec<StaticAgentConfig>,
 }
 
 // ── Config (root) ────────────────────────────────────────────────────────────

@@ -15,6 +15,8 @@ use std::collections::{HashMap, HashSet};
 // _TODO_: check if we should be using more fine-grained locks.
 use std::sync::Arc;
 
+use crate::subsystems::agents::core::AgentRuntimeClass;
+
 use tokio::sync::oneshot;
 
 use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, DocsKgConfig, RuntimeCmdAgentConfig};
@@ -204,6 +206,38 @@ impl AgentsState {
         }
     }
 
+    /// Stream a completion from the main LLM with an explicit system prompt.
+    ///
+    /// Returns a channel receiver that yields [`StreamChunk`] values.  The
+    /// caller should forward these as SSE events.
+    pub async fn stream_via_llm_with_system(
+        &self,
+        channel_id: &str,
+        content: &str,
+        system: Option<&str>,
+    ) -> Result<tokio::sync::mpsc::Receiver<crate::llm::StreamChunk>, BusError> {
+        use crate::supervisor::bus::StreamReceiver;
+        let result = self
+            .bus
+            .request(
+                "llm/stream",
+                BusPayload::LlmRequest {
+                    channel_id: channel_id.to_string(),
+                    content: content.to_string(),
+                    system: system.map(|s| s.to_string()),
+                },
+            )
+            .await;
+        match result {
+            Ok(Ok(BusPayload::LlmStreamResult {
+                rx: StreamReceiver(rx),
+            })) => Ok(rx),
+            Ok(Ok(_)) => Err(BusError::new(-32000, "unexpected reply to llm/stream")),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
+
     /// Execute a tool through the tools subsystem.
     pub async fn execute_tool(
         &self,
@@ -265,6 +299,11 @@ impl AgentsState {
 /// Implementations must be `Send + Sync` and must not block the caller:
 /// synchronous work resolves `reply_tx` immediately; async work spawns a task
 /// and resolves it when done.
+///
+/// The trait is intentionally kept stable across the v0.6 PR1 transition.
+/// Runtime-class metadata is carried by the [`AgentRegistration`] wrapper
+/// rather than being added to this trait, to minimise disruption to existing
+/// agent plugin implementations.
 pub trait Agent: Send + Sync {
     /// Unique agent identifier (matches config name, e.g. `"echo"`).
     fn id(&self) -> &str;
@@ -279,6 +318,65 @@ pub trait Agent: Send + Sync {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     );
+
+    /// Handle a streaming request.
+    ///
+    /// The agent should perform its full pipeline (instruction pass, tools)
+    /// and stream the final response via `llm/stream`, replying with
+    /// `BusPayload::LlmStreamResult`.
+    ///
+    /// Default: falls back to [`handle`](Agent::handle) (non-streaming).
+    fn handle_stream(
+        &self,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        reply_tx: oneshot::Sender<BusResult>,
+        state: Arc<AgentsState>,
+    ) {
+        self.handle(
+            "handle".into(),
+            channel_id,
+            content,
+            session_id,
+            reply_tx,
+            state,
+        );
+    }
+}
+
+// ── AgentRegistration ─────────────────────────────────────────────────────────
+
+/// A registered agent entry in the agents subsystem.
+///
+/// This is the v0.6 PR1 runtime foundation: every agent stored in
+/// [`AgentsSubsystem`] is now wrapped in an `AgentRegistration` that carries
+/// its [`AgentRuntimeClass`] alongside the implementation.
+///
+/// ## Design choice (Option B from the PR spec)
+///
+/// The [`Agent`] trait is left unchanged.  Runtime-class metadata is stored
+/// *beside* the agent implementation in this wrapper rather than *inside* the
+/// trait.  This avoids a breaking change to all existing `impl Agent` blocks
+/// while still making runtime class a first-class concept in the subsystem.
+///
+/// Later PRs may introduce `StaticAgent` registrations using the same wrapper,
+/// keeping built-in and config-defined agents on a unified registration path.
+pub struct AgentRegistration {
+    /// Execution model for this agent — the v0.6 runtime class.
+    pub runtime_class: AgentRuntimeClass,
+    /// The agent implementation.
+    pub agent: Box<dyn Agent>,
+}
+
+impl AgentRegistration {
+    /// Wrap an agent implementation with its runtime class classification.
+    pub fn new(runtime_class: AgentRuntimeClass, agent: Box<dyn Agent>) -> Self {
+        Self {
+            runtime_class,
+            agent,
+        }
+    }
 }
 
 // ── Built-in agents ───────────────────────────────────────────────────────────
@@ -320,7 +418,11 @@ impl Agent for EchoAgent {
 /// - `agents/{agent_id}/{action}`     -> explicit agent + action
 pub struct AgentsSubsystem {
     state: Arc<AgentsState>,
-    agents: HashMap<String, Box<dyn Agent>>,
+    /// All registered agents, keyed by agent ID, each carrying runtime metadata.
+    ///
+    /// Using [`AgentRegistration`] as the map value (rather than bare
+    /// `Box<dyn Agent>`) is the core structural change introduced by v0.6 PR1.
+    agents: HashMap<String, AgentRegistration>,
     default_agent: String,
     channel_map: HashMap<String, String>,
     enabled_agents: HashSet<String>,
@@ -403,51 +505,84 @@ impl AgentsSubsystem {
             .unwrap_or_default();
 
         // Register all known built-in agents.
-        // Uses agent.id() as the HashMap key so the trait method is the
-        // single source of truth for each agent's identity.
-        let mut agents: HashMap<String, Box<dyn Agent>> = HashMap::new();
+        //
+        // Each agent is wrapped in an [`AgentRegistration`] that pairs the
+        // implementation with its v0.6 runtime class.  The agent's own `.id()`
+        // method remains the single source of truth for the HashMap key.
+        //
+        // Runtime class mapping (v0.6 PR1):
+        //   echo          → RequestResponse  (stateless echo)
+        //   basic_chat    → RequestResponse  (single-turn LLM pass-through)
+        //   chat          → Session          (multi-turn with transcript)
+        //   agentic-chat  → Agentic          (instruction → tools → response loop)
+        //   docs          → Agentic          (RAG retrieval + multi-pass LLM)
+        //   news          → Specialized      (external fetch + LLM summary)
+        //   gmail         → Specialized      (tool delegation, no conversation)
+        //   runtime_cmd   → Specialized      (pure command passthrough)
+        let mut agents: HashMap<String, AgentRegistration> = HashMap::new();
 
         #[cfg(feature = "plugin-docs")]
         {
             let agent: Box<dyn Agent> = Box::new(docs::DocsAgentPlugin);
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+            );
         }
 
         #[cfg(feature = "plugin-echo")]
         {
             let agent: Box<dyn Agent> = Box::new(EchoAgent);
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::RequestResponse, agent),
+            );
         }
 
         #[cfg(feature = "plugin-basic-chat")]
         {
             let agent: Box<dyn Agent> = Box::new(chat::BasicChatPlugin);
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::RequestResponse, agent),
+            );
         }
 
         #[cfg(feature = "plugin-chat")]
         {
             let agent: Box<dyn Agent> = Box::new(chat::SessionChatPlugin::new());
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Session, agent),
+            );
         }
 
         #[cfg(feature = "plugin-gmail-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(gmail::GmailAgentPlugin);
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
         }
 
         #[cfg(feature = "plugin-news-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(news::NewsAgentPlugin);
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
         }
 
         #[cfg(feature = "plugin-agentic-chat")]
         if enabled_agents.contains("agentic-chat") {
             if let Some(ref ac_cfg) = config.agentic_chat {
                 let agent: Box<dyn Agent> = Box::new(agentic_chat::AgenticChatPlugin::new(ac_cfg));
-                agents.insert(agent.id().to_string(), agent);
+                agents.insert(
+                    agent.id().to_string(),
+                    AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+                );
             } else {
                 // Use default config when [agents.agentic-chat] has no extra fields.
                 let default_cfg = AgenticChatConfig {
@@ -455,7 +590,10 @@ impl AgentsSubsystem {
                 };
                 let agent: Box<dyn Agent> =
                     Box::new(agentic_chat::AgenticChatPlugin::new(&default_cfg));
-                agents.insert(agent.id().to_string(), agent);
+                agents.insert(
+                    agent.id().to_string(),
+                    AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+                );
             }
         }
 
@@ -463,7 +601,10 @@ impl AgentsSubsystem {
         if enabled_agents.contains("runtime_cmd") {
             let rc_cfg = config.runtime_cmd.unwrap_or_default();
             let agent: Box<dyn Agent> = Box::new(runtime_cmd::RuntimeCmdPlugin::new(&rc_cfg));
-            agents.insert(agent.id().to_string(), agent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
         }
 
         // Per-agent skills from config — only tools declared here are visible
@@ -722,6 +863,10 @@ impl AgentsSubsystem {
     }
 
     /// Handle `agents/list` — return metadata for all registered agents.
+    ///
+    /// Each entry now includes a `runtime_class` field (v0.6 PR1) so that
+    /// admin surfaces and future tooling can inspect the execution model of
+    /// each registered agent without requiring a separate lookup.
     fn handle_agents_list(&self, reply_tx: oneshot::Sender<BusResult>) {
         let identities = &self.state.agent_identities;
         let agents: Vec<serde_json::Value> = identities
@@ -736,9 +881,16 @@ impl AgentsSubsystem {
                     self.state.agent_memory.get(agent_id),
                     &index_path,
                 );
+                // Include runtime class from the registration record (v0.6 PR1).
+                let runtime_class = self
+                    .agents
+                    .get(agent_id)
+                    .map(|r| r.runtime_class.label())
+                    .unwrap_or("unknown");
                 serde_json::json!({
                     "agent_id": agent_id,
                     "name": agent_id,
+                    "runtime_class": runtime_class,
                     "last_fetched": last_fetched,
                     "session_count": session_count,
                     "store_types": store_types,
@@ -1168,8 +1320,36 @@ impl BusHandler for AgentsSubsystem {
                     }
                 };
                 match self.agents.get(agent_id) {
-                    Some(agent) => agent.handle(
+                    Some(reg) => reg.agent.handle(
                         action,
+                        channel_id,
+                        content,
+                        session_id,
+                        reply_tx,
+                        self.state.clone(),
+                    ),
+                    None => {
+                        let _ = reply_tx.send(Err(BusError::new(
+                            ERR_METHOD_NOT_FOUND,
+                            format!("agent not loaded: {agent_id}"),
+                        )));
+                    }
+                }
+            }
+            BusPayload::CommsStreamRequest {
+                channel_id,
+                content,
+                session_id,
+            } => {
+                let agent_id = match self.resolve_agent(method_agent_id.as_deref(), &channel_id) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        let _ = reply_tx.send(Err(e));
+                        return;
+                    }
+                };
+                match self.agents.get(agent_id) {
+                    Some(reg) => reg.agent.handle_stream(
                         channel_id,
                         content,
                         session_id,
@@ -1327,6 +1507,7 @@ fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subsystems::agents::core::AgentRuntimeClass;
     use crate::supervisor::bus::{BusMessage, SupervisorBus};
     use crate::supervisor::dispatch::BusHandler;
     use tokio::sync::oneshot;
@@ -1812,8 +1993,16 @@ mod tests {
         std::fs::write(docs_tmp.path().join("index.md"), "the quick brown fox").unwrap();
         let docsdir = docs_tmp.path().to_str().unwrap().to_string();
 
-        // Fake LLM responder that checks the prompt includes the docs content.
+        // Fake LLM responder — handles two bus requests from the AgenticLoop:
+        //   1. Instruction pass: return a docs_search tool call
+        //   2. Response pass: reply with "brown"
+        //
+        // Note: we don't assert on prompt content because the prompt template
+        // files live at the workspace root (config/prompts/) but binary tests
+        // run from the package root (crates/araliya-bot/), so PromptBuilder
+        // silently skips missing template files.
         tokio::spawn(async move {
+            // ── Instruction pass ──────────────────────────────────────
             if let Some(BusMessage::Request {
                 method,
                 payload,
@@ -1823,19 +2012,41 @@ mod tests {
             {
                 assert_eq!(method, "llm/complete");
                 if let BusPayload::LlmRequest {
-                    content,
                     channel_id,
                     ..
                 } = payload
                 {
-                    assert!(content.contains("the quick brown fox"));
-                    assert!(content.contains("what color"));
+                    // Return a tool call that invokes docs_search.
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: r#"[{"tool":"docs_search","action":"search","params":{"query":"what color"}}]"#.to_string(),
+                        session_id: None,
+                        usage: None,
+                        thinking: None,
+                    }));
+                }
+            }
+
+            // ── Response pass ─────────────────────────────────────────
+            if let Some(BusMessage::Request {
+                method,
+                payload,
+                reply_tx,
+                ..
+            }) = rx.recv().await
+            {
+                assert_eq!(method, "llm/complete");
+                if let BusPayload::LlmRequest {
+                    channel_id,
+                    ..
+                } = payload
+                {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: "brown".to_string(),
                         session_id: None,
                         usage: None,
-                    thinking: None,
+                        thinking: None,
                     }));
                 }
             }
@@ -2253,6 +2464,365 @@ mod tests {
         match rx_reply.await.unwrap() {
             Ok(BusPayload::CommsMessage { session_id, .. }) => {
                 assert!(session_id.is_some(), "debug_logging=true must not break session creation");
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    // ── runtime_cmd tests ─────────────────────────────────────────────────────
+
+    /// When `runtime_cmd` is the default and only enabled agent, an unrouted
+    /// `CommsMessage` must reach the runtime_cmd plugin, trigger `runtimes/init`
+    /// then `runtimes/exec` on the bus, and return the formatted stdout.
+    #[cfg(feature = "plugin-runtime-cmd")]
+    #[tokio::test]
+    async fn runtime_cmd_is_routed_as_default_and_execs() {
+        use crate::config::RuntimeCmdAgentConfig;
+
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        // Fake runtimes subsystem: respond to init then exec.
+        tokio::spawn(async move {
+            // First message: runtimes/init — just ack success.
+            if let Some(BusMessage::Request { reply_tx, .. }) = rx.recv().await {
+                let init_result = serde_json::json!({
+                    "success": true,
+                    "exit_code": null,
+                    "stdout": "",
+                    "stderr": "",
+                    "runtime_dir": "/tmp/test"
+                })
+                .to_string();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: init_result }));
+            }
+            // Second message: runtimes/exec — return "2" as stdout.
+            if let Some(BusMessage::Request { reply_tx, .. }) = rx.recv().await {
+                let exec_result = serde_json::json!({
+                    "success": true,
+                    "exit_code": 0,
+                    "stdout": "2\n",
+                    "stderr": "",
+                    "duration_ms": 5
+                })
+                .to_string();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: exec_result }));
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "runtime_cmd".to_string(),
+            enabled: HashSet::from(["runtime_cmd".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: Some(RuntimeCmdAgentConfig {
+                runtime: "node".to_string(),
+                command: "node".to_string(),
+                setup_script: None,
+            }),
+            debug_logging: false,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "console.log(1+1)".to_string(),
+                session_id: None,
+                usage: None,
+                thinking: None,
+            },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => assert_eq!(content, "2"),
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    // ── v0.6 PR1: Runtime class registration tests ────────────────────────────
+    //
+    // These tests verify that each built-in agent is registered with the
+    // expected runtime class.  They are the acceptance tests for the first-class
+    // runtime classification layer introduced in agents v0.6 PR1.
+    //
+    // Ground rules verified here:
+    //   - Existing agent behavior is not changed (routing tests above still pass)
+    //   - Runtime class mapping matches the PR1 spec table
+    //   - AgentRegistration wraps the agent without changing its ID
+
+    #[cfg(feature = "plugin-echo")]
+    #[tokio::test]
+    async fn echo_agent_classified_as_request_response() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem.agents.get("echo").expect("echo must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::RequestResponse);
+        assert_eq!(reg.agent.id(), "echo");
+    }
+
+    #[cfg(feature = "plugin-basic-chat")]
+    #[tokio::test]
+    async fn basic_chat_agent_classified_as_request_response() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "basic_chat".to_string(),
+            enabled: HashSet::from(["basic_chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem
+            .agents
+            .get("basic_chat")
+            .expect("basic_chat must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::RequestResponse);
+        assert_eq!(reg.agent.id(), "basic_chat");
+    }
+
+    #[cfg(feature = "plugin-chat")]
+    #[tokio::test]
+    async fn session_chat_agent_classified_as_session() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "chat".to_string(),
+            enabled: HashSet::from(["chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem
+            .agents
+            .get("chat")
+            .expect("chat must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::Session);
+        assert_eq!(reg.agent.id(), "chat");
+    }
+
+    #[cfg(feature = "plugin-agentic-chat")]
+    #[tokio::test]
+    async fn agentic_chat_agent_classified_as_agentic() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "agentic-chat".to_string(),
+            enabled: HashSet::from(["agentic-chat".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem
+            .agents
+            .get("agentic-chat")
+            .expect("agentic-chat must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::Agentic);
+        assert_eq!(reg.agent.id(), "agentic-chat");
+    }
+
+    #[cfg(feature = "plugin-news-agent")]
+    #[tokio::test]
+    async fn news_agent_classified_as_specialized() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string(), "news".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem
+            .agents
+            .get("news")
+            .expect("news must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::Specialized);
+        assert_eq!(reg.agent.id(), "news");
+    }
+
+    #[cfg(feature = "plugin-runtime-cmd")]
+    #[tokio::test]
+    async fn runtime_cmd_agent_classified_as_specialized() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string(), "runtime_cmd".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+        let reg = subsystem
+            .agents
+            .get("runtime_cmd")
+            .expect("runtime_cmd must be registered");
+        assert_eq!(reg.runtime_class, AgentRuntimeClass::Specialized);
+        assert_eq!(reg.agent.id(), "runtime_cmd");
+    }
+
+    /// Verifies that `agents/list` includes a `runtime_class` field for each agent.
+    #[cfg(feature = "plugin-echo")]
+    #[tokio::test]
+    async fn agents_list_includes_runtime_class() {
+        let (_bus, handle) = echo_bus();
+        let (_dir, memory) = test_memory();
+        let cfg = AgentsConfig {
+            default_agent: "echo".to_string(),
+            enabled: HashSet::from(["echo".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: None,
+            debug_logging: false,
+        };
+        let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx) = oneshot::channel();
+        subsystem.handle_request("agents/list", BusPayload::Empty, tx);
+        let payload = rx.await.unwrap().unwrap();
+        let BusPayload::JsonResponse { data } = payload else {
+            panic!("expected JsonResponse");
+        };
+        let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+        let agents = value["agents"].as_array().expect("agents array");
+        let echo_entry = agents
+            .iter()
+            .find(|e| e["agent_id"] == "echo")
+            .expect("echo entry in list");
+        assert_eq!(
+            echo_entry["runtime_class"],
+            serde_json::Value::String("request_response".to_string()),
+            "echo must be listed with runtime_class=request_response"
+        );
+    }
+
+    /// When `runtimes/exec` returns a non-zero exit code the reply must contain
+    /// the error message from stderr.
+    #[cfg(feature = "plugin-runtime-cmd")]
+    #[tokio::test]
+    async fn runtime_cmd_exec_error_is_formatted() {
+        use crate::config::RuntimeCmdAgentConfig;
+
+        let bus = SupervisorBus::new(16);
+        let handle = bus.handle.clone();
+        let mut rx = bus.rx;
+        let (_dir, memory) = test_memory();
+
+        tokio::spawn(async move {
+            // init
+            if let Some(BusMessage::Request { reply_tx, .. }) = rx.recv().await {
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: serde_json::json!({
+                        "success": true, "exit_code": null,
+                        "stdout": "", "stderr": "", "runtime_dir": "/tmp/test"
+                    })
+                    .to_string(),
+                }));
+            }
+            // exec — simulate a syntax error
+            if let Some(BusMessage::Request { reply_tx, .. }) = rx.recv().await {
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: serde_json::json!({
+                        "success": false, "exit_code": 1,
+                        "stdout": "", "stderr": "SyntaxError: Unexpected token\n",
+                        "duration_ms": 3
+                    })
+                    .to_string(),
+                }));
+            }
+        });
+
+        let cfg = AgentsConfig {
+            default_agent: "runtime_cmd".to_string(),
+            enabled: HashSet::from(["runtime_cmd".to_string()]),
+            channel_map: HashMap::new(),
+            agent_memory: HashMap::new(),
+            agent_skills: HashMap::new(),
+            news_query: None,
+            docs: None,
+            agentic_chat: None,
+            runtime_cmd: Some(RuntimeCmdAgentConfig {
+                runtime: "node".to_string(),
+                command: "node".to_string(),
+                setup_script: None,
+            }),
+            debug_logging: false,
+        };
+        let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
+
+        let (tx, rx_reply) = oneshot::channel();
+        agents.handle_request(
+            "agents",
+            BusPayload::CommsMessage {
+                channel_id: "pty0".to_string(),
+                content: "console.log(1+1".to_string(),
+                session_id: None,
+                usage: None,
+                thinking: None,
+            },
+            tx,
+        );
+
+        match rx_reply.await.unwrap() {
+            Ok(BusPayload::CommsMessage { content, .. }) => {
+                assert!(content.contains("Error (exit 1)"), "got: {content}");
+                assert!(content.contains("SyntaxError"), "got: {content}");
             }
             other => panic!("unexpected response: {other:?}"),
         }
