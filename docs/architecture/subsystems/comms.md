@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.7.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · **HTTP channel split into `http/` module (mod, api, ui) with full `/api/` surface (health, message, sessions, session detail) · POST body parsing · session-id threading · optional UI backend delegation · Telegram channel (teloxide)**.
+**Status:** v0.8.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · HTTP channel split into `http/` module · **Axum channel (`channel-axum`) with full `/api/` surface including `POST /api/message/stream` SSE endpoint · `stream_direct()` on `CommsState` for direct LLM streaming · `thinking` field threaded through `CommsReply` and JSON responses · Telegram channel (teloxide)**.
 
 ---
 
@@ -36,19 +36,48 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
   - `/help` prints protocol usage
 - Keeps comms behavior consistent by reusing the virtual PTY channel id (`pty0`)
 
-### HTTP Layer — Implemented
-- Single HTTP channel on a configurable bind address (default `127.0.0.1:8080`)
-- Request parsing supports both GET and POST methods with Content-Length body reading
-- API routes under the `/api/` prefix:
-  - `GET  /api/health`              — returns enriched health JSON (bot_id, llm_provider, model, timeout, tools, session_count)
-  - `POST /api/message`             — accepts `{"message", "session_id?", "mode?"}`, forwards to agents via bus with session-id threading, returns `MessageResponse` JSON with `session_id`
-  - `GET  /api/sessions`            — returns session list from agents/memory subsystem
-  - `GET  /api/session/{session_id}` — returns session detail (metadata + transcript) from agents/memory subsystem
-- When the UI subsystem is enabled (`[ui.svui]`), non-API GET paths are delegated to the active `UiServeHandle`; the HTTP channel receives the handle at construction
-- When the UI subsystem is disabled, non-API paths return 404
+### HTTP Layer — Implemented (legacy)
 - Raw TCP listener with minimal request parsing (no framework dependency)
+- Superseded by the Axum channel for new deployments; retained for minimal-feature builds
 
 **Source:** `src/subsystems/comms/http/` (mod.rs — server loop & dispatch, api.rs — API route handlers, ui.rs — welcome page & UI delegation)
+
+### Axum Channel — Implemented (`channel-axum`, default)
+- axum/hyper-based HTTP channel on a configurable bind address (default `127.0.0.1:8080`)
+- Drop-in replacement for the legacy HTTP channel; enabled by `channel-axum` feature flag (on by default)
+- Full `/api/` surface:
+  - `GET  /api/health`                          — enriched health JSON
+  - `POST /api/health/refresh`                  — trigger live subsystem health re-check
+  - `GET  /api/tree`                            — component tree (no private data)
+  - `POST /api/message`                         — buffered chat; returns `{"reply", "thinking", "session_id", ...}`
+  - `POST /api/message/stream`                  — **SSE streaming**; emits `thinking`, `content`, and `done` events
+  - `GET  /api/sessions`                        — session list
+  - `GET  /api/agents`                          — agent list
+  - `GET  /api/agents/{agent_id}/kg`            — knowledge graph for agent's KGDocStore
+  - `GET  /api/session/{session_id}`            — session detail (metadata + transcript)
+  - `GET  /api/sessions/{session_id}/memory`    — working memory
+  - `GET  /api/sessions/{session_id}/debug`     — per-turn debug data
+  - `GET  /api/sessions/{session_id}/files`     — session file list
+- Non-API paths delegated to `UiServeHandle` when the UI subsystem is enabled; otherwise 404
+
+#### SSE Streaming (`POST /api/message/stream`)
+
+Calls `CommsState::stream_direct()` which issues `llm/stream` on the bus and returns an `mpsc::Receiver<StreamChunk>`. The receiver is converted to a `futures::Stream` via `stream::unfold` and served as `text/event-stream`:
+
+```
+event: thinking
+data: {"delta": "..."}   ← reasoning_content chunks (Qwen3, DeepSeek-R1, QwQ)
+
+event: content
+data: {"delta": "..."}   ← answer token deltas
+
+event: done
+data: {"usage": {...}}   ← final usage totals; stream closes
+```
+
+Bypasses session history (direct LLM call). The frontend uses this endpoint for all sends, pre-creating an assistant message and updating it reactively as chunks arrive.
+
+**Source:** `src/subsystems/comms/axum_channel/` (mod.rs — router, state, server loop; api.rs — all API handlers; ui.rs — SPA fallback)
 
 ### Telegram Channel — Implemented
 - Connects to Telegram Bot API via `teloxide`
@@ -76,12 +105,16 @@ src/
     runtime.rs          — Component trait, SubsystemHandle, spawn_components
     comms/
       mod.rs            — start(config, bus, shutdown, [ui_handle]) → SubsystemHandle
-      state.rs          — CommsState (private bus, send_message, management_http_get, request_sessions, request_session_detail, report_event, CommsEvent, CommsReply)
+      state.rs          — CommsState · send_message · stream_direct · management_* · request_* · CommsReply · CommsEvent
       pty.rs            — PtyChannel: Component
-      http/
-        mod.rs          — HttpChannel: Component (server loop, connection dispatch, request parsing, response helpers)
-        api.rs          — API route handlers (/api/health, /api/message, /api/sessions, /api/session/{id})
-        ui.rs           — UI route handlers (root welcome page, /ui/* delegation, 404 catch-all)
+      http/             — (legacy) raw TCP HTTP channel
+        mod.rs          — HttpChannel: Component
+        api.rs          — API route handlers
+        ui.rs           — UI delegation
+      axum_channel/     — (default) axum/hyper HTTP channel
+        mod.rs          — AxumChannel: Component · AxumState · build_router
+        api.rs          — All API handlers incl. message_stream (SSE)
+        ui.rs           — SPA fallback
       telegram.rs       — TelegramChannel: Component
     ui/
       mod.rs            — UiServe trait, UiServeHandle, start(config) → Option<UiServeHandle>
@@ -95,11 +128,21 @@ channels call typed methods:
 
 | Method | Description |
 |--------|-------------|
-| `send_message(channel_id, content, session_id)` | Route a message to the agents subsystem; return `CommsReply` (reply string + optional session_id). |
+| `send_message(channel_id, content, session_id, agent_id)` | Route a message to the agents subsystem; return `CommsReply` (reply, optional session_id, optional thinking). |
+| `stream_direct(channel_id, content, system)` | Issue `llm/stream` on the bus; return `mpsc::Receiver<StreamChunk>` for token-by-token delivery. Bypasses session history. |
 | `management_http_get()` | Request health/status JSON from the management bus route. |
-| `request_sessions()` | Request session list JSON from the agents subsystem via `agents/sessions`. |
-| `request_session_detail(session_id)` | Request session detail JSON from agents via `agents/sessions/detail`. |
+| `management_health_refresh()` | Trigger a live health re-check across all subsystems; return updated health JSON. |
+| `management_http_tree()` | Request component tree JSON. |
+| `request_sessions()` | Request session list JSON from the agents subsystem. |
+| `request_agents()` | Request agent list JSON from the agents subsystem. |
+| `request_session_detail(session_id, agent_id)` | Request session detail (metadata + transcript). |
+| `request_session_memory(session_id, agent_id)` | Request working memory content. |
+| `request_session_files(session_id, agent_id)` | Request session file list. |
+| `request_session_debug(session_id, agent_id)` | Request per-turn debug data. |
+| `request_agent_kg(agent_id)` | Request knowledge graph for an agent's KGDocStore. |
 | `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
+
+`CommsReply` carries `reply: String`, `session_id: Option<String>`, and `thinking: Option<String>`. The `thinking` field is populated when the underlying agent's LLM call produced reasoning content.
 
 `CommsEvent` variants: `ChannelShutdown { channel_id }`, `SessionStarted { channel_id }`.
 

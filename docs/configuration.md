@@ -109,7 +109,7 @@ base = "default.toml"
 log_level = "debug"
 
 [llm.openai]
-model = "gpt-4o-mini"
+model = "gpt-5-nano"
 ```
 
 ```bash

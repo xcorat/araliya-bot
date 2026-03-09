@@ -1,6 +1,6 @@
 # LLM Subsystem
 
-**Status:** v0.5.0 — `LlmResponse` + `LlmUsage` + `ModelRates` · token usage deserialized from OpenAI wire format (incl. cached tokens) · cost computed per-call · per-session spend accumulated to `spend.json` · pricing rates in config.
+**Status:** v0.6.0 — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · Qwen provider · per-session spend accumulation.
 
 ---
 
@@ -14,11 +14,12 @@ The Agents subsystem uses the bus to call `llm/complete` rather than holding a d
 
 ## Responsibilities
 
-- Receive `llm/complete` and `llm/instruct` requests via the supervisor bus
+- Receive `llm/complete`, `llm/instruct`, and `llm/stream` requests via the supervisor bus
 - Forward each prompt to the appropriate `LlmProvider` (main or instruction)
-- Deserialize token usage from the provider response
+- Deserialize token usage and reasoning content from the provider response
 - Compute per-call cost using configured pricing rates and log it
-- Return the reply as `BusPayload::CommsMessage` (preserving `channel_id` and `usage`)
+- Return the reply as `BusPayload::CommsMessage` (preserving `channel_id`, `usage`, and `thinking`)
+- For streaming: return `BusPayload::LlmStreamResult` immediately, then emit `StreamChunk`s asynchronously
 - Spawn one task per request so the supervisor loop is non-blocking
 
 ---
@@ -28,11 +29,12 @@ The Agents subsystem uses the bus to call `llm/complete` rather than holding a d
 ```
 src/
   llm/
-    mod.rs              LlmProvider enum · LlmResponse · LlmUsage · ModelRates
+    mod.rs              LlmProvider enum · LlmResponse · LlmUsage · ModelRates · StreamChunk (re-export)
     providers/
-      mod.rs            build(name) factory function
+      mod.rs            build(config) factory function
       dummy.rs          DummyProvider — returns "[echo] {input}", usage: None
-      openai_compatible.rs  reqwest HTTP client; deserializes usage + cached tokens
+      openai_compatible.rs  reqwest HTTP client; reasoning_content extraction; SSE streaming; StreamChunk
+      qwen.rs           QwenProvider — wraps OpenAiCompatibleProvider with Qwen defaults
   subsystems/
     llm/
       mod.rs            LlmSubsystem — handle_request, tokio::spawn per call
@@ -48,6 +50,7 @@ pub struct LlmUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cached_input_tokens: u64,   // from prompt_tokens_details.cached_tokens
+    pub reasoning_tokens: u64,      // from completion_tokens_details.reasoning_tokens (o-series)
 }
 ```
 
@@ -64,65 +67,120 @@ pub struct ModelRates {
 ```rust
 pub struct LlmResponse {
     pub text: String,
+    pub thinking: Option<String>,  // reasoning_content (Qwen3, QwQ, DeepSeek-R1); None for standard models
     pub usage: Option<LlmUsage>,   // None for DummyProvider and keyless endpoints
 }
 ```
 
 `LlmUsage::cost_usd(rates: &ModelRates) -> f64` applies per-million-token pricing.
 
+### `StreamChunk`
+```rust
+pub enum StreamChunk {
+    Thinking(String),        // reasoning_content delta from reasoning models
+    Content(String),         // content delta (answer text)
+    Done(Option<LlmUsage>),  // end of stream with usage totals
+}
+```
+
+Re-exported as `crate::llm::StreamChunk` and `crate::supervisor::bus::StreamChunk`.
+
 ---
 
 ## Provider Abstraction
 
-`LlmProvider` is an enum over concrete implementations. Enum dispatch avoids `dyn` trait objects and the `async-trait` dependency. Adding a backend = new module + new variant + new `complete` arm + new `build()` match arm.
+`LlmProvider` is an enum over concrete implementations. Enum dispatch avoids `dyn` trait objects and the `async-trait` dependency. Adding a backend = new module + new variant + new match arms.
 
 ```rust
 pub enum LlmProvider {
     Dummy(DummyProvider),
     OpenAiCompatible(OpenAiCompatibleProvider),
+    Qwen(QwenProvider),
 }
 
 impl LlmProvider {
-    pub async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError>;
+    /// Buffered completion — waits for the full response.
+    pub async fn complete(
+        &self,
+        content: &str,
+        system: Option<&str>,
+    ) -> Result<LlmResponse, ProviderError>;
+
+    /// Streaming completion — emits StreamChunks on `tx` as they arrive.
+    /// Returns when the stream is finished or on error.
+    pub async fn complete_stream(
+        &self,
+        content: &str,
+        system: Option<&str>,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<(), ProviderError>;
+
+    pub async fn ping(&self) -> Result<(), ProviderError>;
 }
 ```
+
+`DummyProvider.complete_stream()` emits a single `Content` chunk then `Done(None)` — useful for tests.
 
 ---
 
 ## Bus Protocol
 
-### `llm/complete` — main response pass
+### `llm/complete` — main buffered completion
 
 **Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
 
 Used by the response pass of `AgenticLoop` and by simple chat agents. Routes to the main configured provider.
 
-**Reply payload:** `BusPayload::CommsMessage { channel_id, content: reply, session_id: None, usage: Option<LlmUsage> }`
+**Reply payload:** `BusPayload::CommsMessage { channel_id, content: reply, session_id: None, usage: Option<LlmUsage>, thinking: Option<String> }`
 
 ### `llm/instruct` — instruction pass (SLM router)
 
 **Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
 
-Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the main provider** when no instruction provider is configured — so callers don't need to check; the LLM subsystem handles the fallback transparently.
+Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the main provider** when no instruction provider is configured.
 
 The instruction pass expects structured JSON output from the model. Use a model tuned for structured output or apply few-shot examples in the prompt (`config/prompts/agentic_instruct.txt`).
 
-`usage` is `None` when the provider does not report token counts.
+### `llm/stream` — streaming completion
+
+**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
+
+**Immediate reply:** `BusPayload::LlmStreamResult { rx: StreamReceiver }` — the receiver is returned *before* generation begins. The caller then reads `StreamChunk`s from `rx` as the provider emits them.
+
+`StreamReceiver` is a newtype over `mpsc::Receiver<StreamChunk>`. It is in-process only — it implements `Serialize` as a unit value and `Deserialize` as an error to satisfy the `BusPayload: Serialize + Deserialize` bounds, but it is never serialized over a wire.
+
+Bypasses session history — used by the SSE endpoint for direct streaming to HTTP clients.
 
 ---
 
 ## Request Lifecycle
 
+### Buffered (`llm/complete`, `llm/instruct`)
+
 ```
 supervisor receives Request { method: "llm/complete", payload: LlmRequest { .. }, reply_tx }
   → llm.handle_request(method, payload, reply_tx)       // supervisor returns immediately
     → tokio::spawn {
-        provider.complete(&content).await
-          → Ok(LlmResponse { text, usage })
-              → log input_tokens, output_tokens, cached_tokens, cost_usd  [DEBUG]
-              → reply_tx.send(Ok(CommsMessage { channel_id, content: text, usage }))
+        provider.complete(&content, system).await
+          → Ok(LlmResponse { text, thinking, usage })
+              → log input_tokens, output_tokens, cached_tokens, reasoning_tokens, cost_usd  [DEBUG]
+              → reply_tx.send(Ok(CommsMessage { channel_id, content: text, thinking, usage }))
           → Err(e)
               → reply_tx.send(Err(BusError { .. }))
+      }
+```
+
+### Streaming (`llm/stream`)
+
+```
+supervisor receives Request { method: "llm/stream", payload: LlmRequest { .. }, reply_tx }
+  → llm.handle_request(method, payload, reply_tx)
+    → tokio::spawn {
+        let (tx, rx) = mpsc::channel(64);
+        reply_tx.send(Ok(LlmStreamResult { rx: StreamReceiver(rx) }))  // immediate
+        provider.complete_stream(&content, system, tx).await
+          // provider emits: Thinking(..) → ... → Content(..) → ... → Done(usage)
+          // when tx is dropped, rx sees None → stream closed
       }
 ```
 
@@ -146,11 +204,29 @@ After each LLM call in `SessionChatPlugin`, if the response carries `usage` and 
 
 ---
 
+## Thinking / Reasoning Content
+
+Reasoning models expose their chain-of-thought separately from their final answer:
+
+| Model family | Thinking exposed? | How |
+|---|---|---|
+| Qwen3 / QwQ / DeepSeek-R1 | YES | `choices[0].message.reasoning_content` (buffered) or `delta.reasoning_content` (stream) |
+| OpenAI o3 / o4-mini | count only | `completion_tokens_details.reasoning_tokens` — content hidden |
+| Standard (GPT-4o, Qwen2.5, etc.) | no | `thinking` is `None` |
+
+`LlmResponse.thinking` carries the reasoning text when present. It flows through `BusPayload::CommsMessage.thinking` → `CommsReply.thinking` → `"thinking"` field in the JSON API response → `ChatMessage.thinking` in the frontend, where it is rendered in a collapsible "Reasoning" block.
+
+`reasoning_tokens` in `LlmUsage` is always populated (0 when not reported).
+
+---
+
 ## Current Providers
 
-`DummyProvider` requires no API key. It returns `"[echo] {input}"` with `usage: None`.
+`DummyProvider` requires no API key. Returns `"[echo] {input}"` with `usage: None`. Supports `complete_stream()` for test coverage.
 
-`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env. It deserializes the OpenAI `usage` object including `prompt_tokens_details.cached_tokens`.
+`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env. Extracts `reasoning_content` and `reasoning_tokens`. Supports full SSE streaming via `complete_stream()`.
+
+`QwenProvider` wraps `OpenAiCompatibleProvider` with Qwen-specific defaults and endpoint handling. Full streaming and reasoning content support.
 
 ---
 
@@ -176,7 +252,7 @@ cached_input_per_million_usd = 0.275
 # [llm.instruction]
 # provider = "openai"
 # [llm.instruction.openai]
-# model = "gpt-4o-mini"
+# model = "gpt-5-nano"
 # temperature = 0.1
 ```
 
@@ -184,7 +260,7 @@ cached_input_per_million_usd = 0.275
 |-------|------|---------|-------------|
 | `llm.default` | string | `"dummy"` | Active provider. Supported: `"dummy"`, `"openai"`, `"qwen"`. |
 | `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Set to a local server for Ollama / LM Studio. |
-| `llm.openai.model` | string | `"gpt-4o-mini"` | Model name sent in the request body. |
+| `llm.openai.model` | string | `"gpt-5-nano"` | Model name sent in the request body. |
 | `llm.openai.temperature` | float | `0.2` | Sampling temperature (silently omitted for `gpt-5` family). |
 | `llm.openai.timeout_seconds` | integer | `60` | Per-request HTTP timeout. |
 | `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
@@ -200,10 +276,10 @@ Pricing fields default to `0.0` so cost is silently omitted rather than wrong wh
 
 ## Adding a Real Provider
 
-1. Create `src/llm/providers/{name}.rs` — implement `async fn complete(&self, content: &str) -> Result<LlmResponse, ProviderError>`.
+1. Create `src/llm/providers/{name}.rs` — implement `complete()` and `complete_stream()`.
 2. Add a variant to `LlmProvider` in `src/llm/mod.rs`.
-3. Add a match arm to `LlmProvider::complete`.
-4. Add a match arm to `providers::build(name)` in `src/llm/providers/mod.rs`.
+3. Add match arms to `LlmProvider::complete`, `complete_stream`, and `ping`.
+4. Add a match arm to `providers::build(config)` in `src/llm/providers/mod.rs`.
 5. Update `[llm] default = "{name}"` in `config/default.toml`.
 6. Pass secrets via environment variable or `.env` (never in config files).
 
@@ -214,5 +290,6 @@ Pricing fields default to `0.0` so cost is silently omitted rather than wrong wh
 | Provider | Auth | Notes |
 |----------|------|-------|
 | OpenAI-compatible | `LLM_API_KEY` | Implemented (`default = "openai"`) |
+| Qwen | `LLM_API_KEY` | Implemented (`default = "qwen"`) |
 | Dummy | none | Implemented (`default = "dummy"`) |
 | Anthropic | `ANTHROPIC_API_KEY` | Planned |
