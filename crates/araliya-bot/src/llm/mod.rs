@@ -9,6 +9,8 @@
 
 pub mod providers;
 
+pub use providers::openai_compatible::StreamChunk;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,6 +33,11 @@ pub struct LlmUsage {
     pub output_tokens: u64,
     /// Tokens that matched the provider-side prompt cache (billed at a lower rate).
     pub cached_input_tokens: u64,
+    /// Internal reasoning tokens consumed before producing the visible output
+    /// (OpenAI o-series only). Zero for models that expose reasoning via
+    /// `reasoning_content` instead (Qwen3, DeepSeek-R1).
+    #[serde(default)]
+    pub reasoning_tokens: u64,
 }
 
 /// Per-model pricing rates (USD per 1 million tokens).
@@ -56,6 +63,10 @@ impl LlmUsage {
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub text: String,
+    /// Internal chain-of-thought produced by reasoning models (Qwen3, QwQ,
+    /// DeepSeek-R1, …). `None` for standard models or when the model did not
+    /// return a `reasoning_content` field.
+    pub thinking: Option<String>,
     /// `None` for providers that do not report token counts (e.g. `DummyProvider`).
     pub usage: Option<LlmUsage>,
 }
@@ -91,6 +102,24 @@ impl LlmProvider {
             LlmProvider::Dummy(p) => p.complete(content, system).await,
             LlmProvider::OpenAiCompatible(p) => p.complete(content, system).await,
             LlmProvider::Qwen(p) => p.complete(content, system).await,
+        }
+    }
+
+    /// Stream `content` as the user message to the provider.
+    ///
+    /// Emits [`StreamChunk`]s through `tx` and closes the sender when done.
+    /// For `Dummy`, emits a single `Content` chunk then `Done`.
+    /// For OpenAI-compatible providers, emits real SSE deltas.
+    pub async fn complete_stream(
+        &self,
+        content: &str,
+        system: Option<&str>,
+        tx: tokio::sync::mpsc::Sender<StreamChunk>,
+    ) -> Result<(), ProviderError> {
+        match self {
+            LlmProvider::Dummy(p) => p.complete_stream(content, system, tx).await,
+            LlmProvider::OpenAiCompatible(p) => p.complete_stream(content, system, tx).await,
+            LlmProvider::Qwen(p) => p.complete_stream(content, system, tx).await,
         }
     }
 
@@ -131,6 +160,7 @@ mod tests {
             input_tokens: 1_000_000,
             output_tokens: 500_000,
             cached_input_tokens: 0,
+            reasoning_tokens: 0,
         };
         let rates = ModelRates {
             input_per_million_usd: 1.10,
@@ -152,6 +182,7 @@ mod tests {
             input_tokens: 0,
             output_tokens: 0,
             cached_input_tokens: 1_000_000,
+            reasoning_tokens: 0,
         };
         let rates = ModelRates {
             input_per_million_usd: 0.0,

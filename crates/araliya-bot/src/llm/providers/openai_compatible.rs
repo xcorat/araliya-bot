@@ -5,11 +5,30 @@
 //! module — callers never see them. Tool-call handling belongs at the agent
 //! layer (agent plugins manage the loop); this provider is stateless.
 
+use futures_util::StreamExt as _;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, trace};
+use tokio::sync::mpsc;
+use tracing::{debug, error, trace, warn};
 
 use crate::llm::{LlmResponse, LlmUsage, ProviderError};
+
+// ── Stream chunk ──────────────────────────────────────────────────────────────
+
+/// A single chunk emitted during a streaming completion.
+///
+/// Chunks arrive in two phases: first all `Thinking` deltas (reasoning content),
+/// then all `Content` deltas (final answer), then one `Done` with usage totals.
+/// Providers that do not support streaming emit exactly one `Content` + one `Done`.
+#[derive(Debug, Clone)]
+pub enum StreamChunk {
+    /// A delta from the model's internal reasoning phase (`reasoning_content`).
+    Thinking(String),
+    /// A delta from the model's visible output (`content`).
+    Content(String),
+    /// End of stream; carries token usage if the provider reported it.
+    Done(Option<LlmUsage>),
+}
 
 // ── Public provider ───────────────────────────────────────────────────────────
 
@@ -184,14 +203,19 @@ impl OpenAiCompatibleProvider {
             trace!(response = %json, "full LLM response payload");
         }
 
-        let text = parsed
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|c| c.message.content)
+        let first_choice = parsed.choices.into_iter().next();
+
+        let text = first_choice
+            .as_ref()
+            .and_then(|c| c.message.content.as_deref())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| ProviderError::Request("empty or missing content in response".into()))?;
+
+        let thinking = first_choice
+            .and_then(|c| c.message.reasoning_content)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         let usage = parsed.usage.map(|u| LlmUsage {
             input_tokens: u.prompt_tokens,
@@ -200,9 +224,132 @@ impl OpenAiCompatibleProvider {
                 .prompt_tokens_details
                 .map(|d| d.cached_tokens)
                 .unwrap_or(0),
+            reasoning_tokens: u
+                .completion_tokens_details
+                .and_then(|d| d.reasoning_tokens)
+                .unwrap_or(0),
         });
 
-        Ok(LlmResponse { text, usage })
+        Ok(LlmResponse { text, thinking, usage })
+    }
+
+    /// Stream a completion via Server-Sent Events (`stream: true`).
+    ///
+    /// Emits [`StreamChunk::Thinking`] deltas, then [`StreamChunk::Content`]
+    /// deltas, then a final [`StreamChunk::Done`] with usage totals.
+    /// Falls back to a single-chunk emission if the model does not support
+    /// streaming (i.e. returns a non-streaming JSON response).
+    ///
+    /// The sender is closed when the stream ends or on error — callers should
+    /// loop until `rx.recv()` returns `None`.
+    pub async fn complete_stream(
+        &self,
+        content: &str,
+        system: Option<&str>,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<(), ProviderError> {
+        let temperature = if self.model.starts_with("gpt-5") {
+            None
+        } else {
+            Some(self.temperature)
+        };
+
+        let mut messages = Vec::new();
+        if let Some(sys) = system {
+            messages.push(Message {
+                role: "system".to_string(),
+                content: sys.to_string(),
+            });
+        }
+        messages.push(Message {
+            role: "user".to_string(),
+            content: content.to_string(),
+        });
+
+        let payload = ChatCompletionStreamRequest {
+            model: self.model.clone(),
+            messages,
+            temperature,
+            stream: true,
+            stream_options: Some(StreamOptions { include_usage: true }),
+        };
+
+        debug!(model = %payload.model, "sending streaming LLM request");
+
+        let mut req = self.client.post(&self.api_base_url).json(&payload);
+        if let Some(key) = &self.api_key {
+            req = req.bearer_auth(key);
+        }
+
+        let response = req.send().await.map_err(|e| {
+            error!(url = %self.api_base_url, error = %e, "streaming LLM HTTP request failed");
+            ProviderError::Request(e.to_string())
+        })?;
+
+        let response = check_status(response).await?;
+
+        // Parse the SSE stream line by line.
+        let mut stream = response.bytes_stream();
+        let mut buf = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(|e| ProviderError::Request(format!("stream read error: {e}")))?;
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Process all complete `data: ...` lines in the buffer.
+            while let Some(newline) = buf.find('\n') {
+                let line = buf[..newline].trim().to_string();
+                buf = buf[newline + 1..].to_string();
+
+                if line.is_empty() || line == "data: [DONE]" {
+                    continue;
+                }
+                let json_str = match line.strip_prefix("data: ") {
+                    Some(s) => s,
+                    None => continue, // skip non-data lines (e.g. "event:", ":")
+                };
+
+                let chunk_val: serde_json::Value = match serde_json::from_str(json_str) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!(error = %e, line = %json_str, "failed to parse SSE chunk");
+                        continue;
+                    }
+                };
+
+                // Extract usage from final chunk (some providers send it last).
+                if let Some(usage_val) = chunk_val.get("usage").filter(|v| !v.is_null()) {
+                    let usage = LlmUsage {
+                        input_tokens: usage_val["prompt_tokens"].as_u64().unwrap_or(0),
+                        output_tokens: usage_val["completion_tokens"].as_u64().unwrap_or(0),
+                        cached_input_tokens: usage_val["prompt_tokens_details"]["cached_tokens"]
+                            .as_u64()
+                            .unwrap_or(0),
+                        reasoning_tokens: usage_val["completion_tokens_details"]["reasoning_tokens"]
+                            .as_u64()
+                            .unwrap_or(0),
+                    };
+                    let _ = tx.send(StreamChunk::Done(Some(usage))).await;
+                    return Ok(());
+                }
+
+                let delta = &chunk_val["choices"][0]["delta"];
+                if delta.is_null() {
+                    continue;
+                }
+
+                if let Some(rc) = delta["reasoning_content"].as_str().filter(|s| !s.is_empty()) {
+                    let _ = tx.send(StreamChunk::Thinking(rc.to_string())).await;
+                }
+                if let Some(ct) = delta["content"].as_str().filter(|s| !s.is_empty()) {
+                    let _ = tx.send(StreamChunk::Content(ct.to_string())).await;
+                }
+            }
+        }
+
+        // Stream ended without an explicit usage chunk — send Done without usage.
+        let _ = tx.send(StreamChunk::Done(None)).await;
+        Ok(())
     }
 }
 
@@ -222,6 +369,22 @@ struct ChatCompletionRequest {
     temperature: Option<f32>,
 }
 
+#[derive(Debug, Serialize)]
+struct ChatCompletionStreamRequest {
+    model: String,
+    messages: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<StreamOptions>,
+}
+
+#[derive(Debug, Serialize)]
+struct StreamOptions {
+    include_usage: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatCompletionResponse {
     choices: Vec<Choice>,
@@ -235,12 +398,23 @@ struct UsageData {
     completion_tokens: u64,
     #[serde(default)]
     prompt_tokens_details: Option<PromptTokensDetails>,
+    #[serde(default)]
+    completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
 #[derive(Debug, serde::Serialize, Deserialize)]
 struct PromptTokensDetails {
     #[serde(default)]
     cached_tokens: u64,
+}
+
+#[derive(Debug, serde::Serialize, Deserialize)]
+struct CompletionTokensDetails {
+    /// Internal reasoning tokens (OpenAI o-series). Not the same as
+    /// `reasoning_content` on Qwen/DeepSeek — those models expose their
+    /// reasoning text but don't populate this field.
+    #[serde(default)]
+    reasoning_tokens: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -252,6 +426,10 @@ struct Choice {
 struct ChoiceMessage {
     #[serde(default)]
     content: Option<String>,
+    /// Reasoning/thinking content returned by Qwen3, QwQ, DeepSeek-R1, and
+    /// compatible models. Absent (null/missing) for standard models.
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 // Error envelope used by OpenAI and compatible APIs.

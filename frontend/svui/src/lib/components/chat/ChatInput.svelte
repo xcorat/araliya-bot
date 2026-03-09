@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { getIsLoading, doSendMessage } from '$lib/state.svelte';
+	import { getIsLoading, doSendMessageStreaming } from '$lib/state.svelte';
 	import { SendHorizontal, Loader2 } from '@lucide/svelte';
 
 	let inputText = $state('');
@@ -23,7 +23,7 @@
 		if (textareaEl) {
 			textareaEl.style.height = 'auto';
 		}
-		await doSendMessage(text);
+		await doSendMessageStreaming(text);
 		textareaEl?.focus();
 	}
 

@@ -73,6 +73,7 @@ impl Agent for RuntimeCmdPlugin {
                             content: format!("Runtime init failed: {e:?}"),
                             session_id,
                             usage: None,
+                            thinking: None,
                         }));
                         return;
                     }
@@ -95,6 +96,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: reply,
                         session_id,
                         usage: None,
+                        thinking: None,
                     }));
                 }
                 Ok(other) => {
@@ -103,6 +105,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: format!("Unexpected response: {other:?}"),
                         session_id,
                         usage: None,
+                        thinking: None,
                     }));
                 }
                 Err(e) => {
@@ -111,6 +114,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: format!("Execution error: {e:?}"),
                         session_id,
                         usage: None,
+                        thinking: None,
                     }));
                 }
             }

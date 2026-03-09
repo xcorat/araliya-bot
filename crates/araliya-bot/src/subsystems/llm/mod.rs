@@ -13,7 +13,9 @@ use tracing::{debug, warn};
 use crate::config::LlmConfig;
 use crate::llm::providers;
 use crate::llm::{LlmProvider, ModelRates, ProviderError};
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use tokio::sync::mpsc;
+
+use crate::supervisor::bus::{BusError, BusPayload, BusResult, StreamReceiver, ERR_METHOD_NOT_FOUND};
 use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
@@ -266,6 +268,7 @@ impl BusHandler for LlmSubsystem {
                                 content: resp.text,
                                 session_id: None,
                                 usage: resp.usage,
+                                thinking: resp.thinking,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));
@@ -275,6 +278,31 @@ impl BusHandler for LlmSubsystem {
                 let _ = reply_tx.send(Err(BusError::new(
                     ERR_METHOD_NOT_FOUND,
                     "llm/instruct requires LlmRequest payload".to_string(),
+                )));
+            }
+            return;
+        }
+
+        // ── llm/stream: start a streaming completion ─────────────────────────
+        if method == "llm/stream" {
+            if let BusPayload::LlmRequest { channel_id, content, system } = payload {
+                let provider = self.provider.clone();
+                debug!(%method, %channel_id, "dispatching streaming to llm provider");
+                tokio::spawn(async move {
+                    let (tx, rx) = mpsc::channel(64);
+                    let _ = reply_tx.send(Ok(BusPayload::LlmStreamResult {
+                        rx: StreamReceiver(rx),
+                    }));
+                    // Provider writes chunks to tx; when complete_stream() returns,
+                    // tx is dropped and the receiver sees None.
+                    if let Err(e) = provider.complete_stream(&content, system.as_deref(), tx).await {
+                        warn!(error = %e, "streaming LLM provider error");
+                    }
+                });
+            } else {
+                let _ = reply_tx.send(Err(BusError::new(
+                    ERR_METHOD_NOT_FOUND,
+                    "llm/stream requires LlmRequest payload".to_string(),
                 )));
             }
             return;
@@ -309,6 +337,7 @@ impl BusHandler for LlmSubsystem {
                                 content: resp.text,
                                 session_id: None,
                                 usage: resp.usage,
+                                thinking: resp.thinking,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));

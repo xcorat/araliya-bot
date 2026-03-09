@@ -93,6 +93,7 @@ pub fn start(
                                         content,
                                         session_id: None,
                                         usage: None,
+                                        thinking: None,
                                     },
                                 )
                                 .await
@@ -112,6 +113,7 @@ pub fn start(
                                         content: "health".to_string(),
                                         session_id: None,
                                         usage: None,
+                                        thinking: None,
                                     },
                                 )
                                 .await

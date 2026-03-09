@@ -3,7 +3,9 @@
 //! Wraps the generic OpenAI-compatible provider and uses `[llm.qwen]` config
 //! so local Qwen-style endpoints can be selected explicitly with `llm.default = "qwen"`.
 
-use crate::llm::{LlmResponse, ProviderError};
+use tokio::sync::mpsc;
+
+use crate::llm::{LlmResponse, ProviderError, StreamChunk};
 
 use super::openai_compatible::OpenAiCompatibleProvider;
 
@@ -36,6 +38,15 @@ impl QwenProvider {
         system: Option<&str>,
     ) -> Result<LlmResponse, ProviderError> {
         self.inner.complete(content, system).await
+    }
+
+    pub async fn complete_stream(
+        &self,
+        content: &str,
+        system: Option<&str>,
+        tx: mpsc::Sender<StreamChunk>,
+    ) -> Result<(), ProviderError> {
+        self.inner.complete_stream(content, system, tx).await
     }
 
     pub async fn ping(&self) -> Result<(), ProviderError> {

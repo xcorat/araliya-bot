@@ -14,12 +14,16 @@ use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::error::AppError;
-use crate::supervisor::bus::{BusHandle, BusPayload};
+use crate::llm::StreamChunk;
+use crate::supervisor::bus::{BusHandle, BusPayload, StreamReceiver};
 
 #[derive(Debug, Clone)]
 pub struct CommsReply {
     pub reply: String,
     pub session_id: Option<String>,
+    /// Internal chain-of-thought from reasoning models (Qwen3, DeepSeek-R1, …).
+    /// `None` for standard models or turns where no thinking was produced.
+    pub thinking: Option<String>,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -70,6 +74,7 @@ impl CommsState {
             content,
             session_id,
             usage: None,
+            thinking: None,
         };
 
         match self.bus.request(method, payload).await {
@@ -81,9 +86,41 @@ impl CommsState {
             Ok(Ok(BusPayload::CommsMessage {
                 content: reply,
                 session_id,
+                thinking,
                 ..
-            })) => Ok(CommsReply { reply, session_id }),
+            })) => Ok(CommsReply { reply, session_id, thinking }),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    /// Request a streaming LLM completion directly (bypasses agent session history).
+    ///
+    /// Returns a [`StreamReceiver`] whose inner `mpsc::Receiver<StreamChunk>` the
+    /// caller can poll for [`StreamChunk::Thinking`], [`StreamChunk::Content`], and
+    /// [`StreamChunk::Done`] events. Used by the SSE endpoint for low-latency
+    /// token-by-token delivery.
+    pub async fn stream_direct(
+        &self,
+        channel_id: &str,
+        content: String,
+        system: Option<String>,
+    ) -> Result<mpsc::Receiver<StreamChunk>, AppError> {
+        let result = self
+            .bus
+            .request(
+                "llm/stream",
+                BusPayload::LlmRequest {
+                    channel_id: channel_id.to_string(),
+                    content,
+                    system,
+                },
+            )
+            .await;
+        match result {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!("llm stream error: {}", e.message))),
+            Ok(Ok(BusPayload::LlmStreamResult { rx: StreamReceiver(rx) })) => Ok(rx),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply to llm/stream".to_string())),
         }
     }
 

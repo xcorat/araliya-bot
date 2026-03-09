@@ -17,6 +17,45 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
+pub use crate::llm::providers::openai_compatible::StreamChunk;
+
+// ── Streaming receiver wrapper ────────────────────────────────────────────────
+
+/// A wrapper around [`tokio::sync::mpsc::Receiver<StreamChunk>`] returned by
+/// `llm/stream` requests.
+///
+/// Serde impls are no-ops (this type is in-process only; the IPC migration
+/// path would need a separate mechanism for streaming).
+pub struct StreamReceiver(pub mpsc::Receiver<StreamChunk>);
+
+impl Serialize for StreamReceiver {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_unit()
+    }
+}
+
+impl<'de> Deserialize<'de> for StreamReceiver {
+    fn deserialize<D: serde::Deserializer<'de>>(_d: D) -> Result<Self, D::Error> {
+        Err(serde::de::Error::custom(
+            "StreamReceiver cannot be deserialized (in-process only)",
+        ))
+    }
+}
+
+impl std::fmt::Debug for StreamReceiver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamReceiver").finish_non_exhaustive()
+    }
+}
+
+impl Clone for StreamReceiver {
+    fn clone(&self) -> Self {
+        // Receivers are not actually cloneable; this impl exists only because
+        // `BusPayload` derives `Clone`. `LlmStreamResult` must never be cloned.
+        panic!("StreamReceiver::clone called — LlmStreamResult must not be cloned");
+    }
+}
+
 // ── Payload ──────────────────────────────────────────────────────────────────
 
 /// All known message bodies. Add one variant per new message type.
@@ -39,6 +78,10 @@ pub enum BusPayload {
         /// or when the provider does not report usage (e.g. dummy).
         #[serde(default)]
         usage: Option<crate::llm::LlmUsage>,
+        /// Internal chain-of-thought produced by reasoning models (Qwen3, QwQ,
+        /// DeepSeek-R1, …). `None` for standard models.
+        #[serde(default)]
+        thinking: Option<String>,
     },
     /// A completion request to the LLM subsystem.
     /// `channel_id` is threaded through so the LLM subsystem can attach it to
@@ -96,6 +139,11 @@ pub enum BusPayload {
     CronList,
     /// Reply to `cron/list`.
     CronListResult { entries: Vec<CronEntryInfo> },
+
+    /// Reply to an `llm/stream` request: the caller reads chunks from `rx`.
+    ///
+    /// The receiver is in-process only and not serializable; see [`StreamReceiver`].
+    LlmStreamResult { rx: StreamReceiver },
 
     /// No payload — used by notifications whose meaning is in the method alone.
     Empty,

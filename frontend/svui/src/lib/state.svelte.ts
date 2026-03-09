@@ -158,7 +158,8 @@ export async function doSendMessage(text: string) {
 			role: 'assistant',
 			content: res.reply || '(no reply)',
 			timestamp: now(),
-			intermediateSteps: res.intermediate_steps
+			intermediateSteps: res.intermediate_steps,
+			thinking: res.thinking ?? undefined
 		};
 		messages = [...messages, assistantMsg];
 
@@ -174,6 +175,121 @@ export async function doSendMessage(text: string) {
 			timestamp: now()
 		};
 		messages = [...messages, errorMsg];
+	} finally {
+		isLoading = false;
+	}
+}
+
+/// Stream a message via POST /api/message/stream (SSE).
+///
+/// Appends an assistant message immediately (empty content) then fills it
+/// in token-by-token as `content` and `thinking` chunks arrive.
+/// Falls back to the buffered path on any fetch error.
+export async function doSendMessageStreaming(text: string) {
+	if (!text.trim() || !baseUrl || isLoading) return;
+
+	const userMsg: ChatMessage = {
+		id: generateId(),
+		role: 'user',
+		content: text.trim(),
+		timestamp: now()
+	};
+	messages = [...messages, userMsg];
+	isLoading = true;
+
+	// Pre-create the assistant message with an empty placeholder so the UI
+	// can show the streaming cursor immediately.
+	const assistantId = generateId();
+	const assistantMsg: ChatMessage = {
+		id: assistantId,
+		role: 'assistant',
+		content: '',
+		timestamp: now()
+	};
+	messages = [...messages, assistantMsg];
+
+	const updateAssistant = (patch: Partial<ChatMessage>) => {
+		messages = messages.map((m) =>
+			m.id === assistantId ? { ...m, ...patch } : m
+		);
+	};
+
+	try {
+		const res = await fetch(`${baseUrl}/api/message/stream`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ message: text.trim() })
+		});
+
+		if (!res.ok || !res.body) {
+			throw new Error(`HTTP ${res.status}`);
+		}
+
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buf = '';
+		let thinkingBuf = '';
+		let contentBuf = '';
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buf += decoder.decode(value, { stream: true });
+
+			// Process complete SSE lines from the buffer.
+			let newline: number;
+			while ((newline = buf.indexOf('\n')) !== -1) {
+				const rawLine = buf.slice(0, newline).trim();
+				buf = buf.slice(newline + 1);
+
+				if (!rawLine || rawLine === 'data: [DONE]') continue;
+
+				let eventName = 'message';
+				let dataStr: string | null = null;
+
+				if (rawLine.startsWith('event: ')) {
+					eventName = rawLine.slice(7).trim();
+				} else if (rawLine.startsWith('data: ')) {
+					dataStr = rawLine.slice(6);
+				}
+
+				if (!dataStr) {
+					// Peek at next line for the data field.
+					const nextNewline = buf.indexOf('\n');
+					if (nextNewline !== -1) {
+						const nextLine = buf.slice(0, nextNewline).trim();
+						if (nextLine.startsWith('data: ')) {
+							dataStr = nextLine.slice(6);
+							buf = buf.slice(nextNewline + 1);
+						}
+					}
+				}
+
+				if (!dataStr) continue;
+
+				try {
+					const payload = JSON.parse(dataStr) as Record<string, unknown>;
+					if (eventName === 'thinking' && typeof payload.delta === 'string') {
+						thinkingBuf += payload.delta;
+						updateAssistant({ thinking: thinkingBuf });
+					} else if (eventName === 'content' && typeof payload.delta === 'string') {
+						contentBuf += payload.delta;
+						updateAssistant({ content: contentBuf || '…' });
+					} else if (eventName === 'done') {
+						if (!contentBuf) updateAssistant({ content: '(no reply)' });
+					}
+				} catch {
+					// Ignore malformed JSON chunks.
+				}
+			}
+		}
+
+		void refreshSessions({ force: true });
+	} catch (e: unknown) {
+		updateAssistant({
+			role: 'error',
+			content: e instanceof Error ? e.message : 'Stream failed'
+		});
 	} finally {
 		isLoading = false;
 	}

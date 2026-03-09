@@ -36,6 +36,7 @@ impl Agent for NewsAgentPlugin {
                     content: "news component: active".to_string(),
                     session_id,
                     usage: None,
+                    thinking: None,
                 }));
                 return;
             }
@@ -145,6 +146,7 @@ impl Agent for NewsAgentPlugin {
                     content: summary,
                     session_id,
                     usage: None,
+                    thinking: None,
                 }));
                 return;
             }
@@ -157,6 +159,7 @@ impl Agent for NewsAgentPlugin {
                     content: NO_NEWS_MSG.to_string(),
                     session_id,
                     usage: None,
+                    thinking: None,
                 }));
                 return;
             }
@@ -172,8 +175,8 @@ impl Agent for NewsAgentPlugin {
                 .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
                 .await;
 
-            let (summary, usage) = match llm_result {
-                Ok(BusPayload::CommsMessage { content, usage, .. }) => (content, usage),
+            let (summary, usage, thinking) = match llm_result {
+                Ok(BusPayload::CommsMessage { content, usage, thinking, .. }) => (content, usage, thinking),
                 Ok(other) => {
                     let _ = reply_tx.send(Err(BusError::new(
                         -32000,
@@ -205,6 +208,7 @@ impl Agent for NewsAgentPlugin {
                 content: summary,
                 session_id,
                 usage,
+                thinking,
             }));
         });
     }

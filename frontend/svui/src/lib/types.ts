@@ -6,6 +6,8 @@ export interface ChatMessage {
 	content: string;
 	timestamp: string;
 	intermediateSteps?: ToolStep[];
+	/** Internal chain-of-thought from reasoning models (Qwen3, DeepSeek-R1, …). */
+	thinking?: string;
 }
 
 export interface ToolStep {
@@ -31,6 +33,8 @@ export interface MessageResponse {
 	mode: SessionMode;
 	run_id?: string;
 	reply: string;
+	/** Internal chain-of-thought from reasoning models. Null for standard models. */
+	thinking?: string | null;
 	working_memory_updated: boolean;
 	intermediate_steps?: ToolStep[];
 	usage?: UsageInfo;

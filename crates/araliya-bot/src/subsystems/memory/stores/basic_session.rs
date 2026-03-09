@@ -412,11 +412,11 @@ mod tests {
     fn kv_as_doc() {
         let (dir, store) = setup();
         store.kv_set(dir.path(), "agent", "chat").unwrap();
-        store.kv_set(dir.path(), "model", "gpt-4o").unwrap();
+        store.kv_set(dir.path(), "model", "gpt-5").unwrap();
 
         let doc = store.read_kv_doc(dir.path()).unwrap();
         assert_eq!(doc.get("agent"), Some(&PrimaryValue::Str("chat".into())));
-        assert_eq!(doc.get("model"), Some(&PrimaryValue::Str("gpt-4o".into())));
+        assert_eq!(doc.get("model"), Some(&PrimaryValue::Str("gpt-5".into())));
         assert_eq!(doc.len(), 2);
     }
 

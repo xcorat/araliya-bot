@@ -10,11 +10,19 @@ use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, Sse},
+    },
 };
+use std::convert::Infallible;
+
+use futures_util::stream;
 use serde::Deserialize;
 use serde_json::json;
 use tracing::warn;
+
+use crate::llm::StreamChunk;
 
 use super::AxumState;
 
@@ -135,6 +143,7 @@ pub(super) async fn message(
                 "session_id": reply.session_id.unwrap_or_else(|| NO_SESSION_ID.to_string()),
                 "mode": req.mode.as_deref().unwrap_or("chat"),
                 "reply": reply.reply,
+                "thinking": reply.thinking,
                 "working_memory_updated": false,
             });
             (StatusCode::OK, Json(body)).into_response()
@@ -149,6 +158,60 @@ pub(super) async fn message(
         )
             .into_response(),
     }
+}
+
+/// POST /api/message/stream — SSE streaming completion (bypasses session history).
+///
+/// Events emitted:
+/// - `event: thinking` / `data: {"delta": "..."}` — reasoning token delta
+/// - `event: content`  / `data: {"delta": "..."}` — answer token delta
+/// - `event: done`     / `data: {"usage": {...}}` — end of stream with usage
+pub(super) async fn message_stream(
+    State(state): State<AxumState>,
+    Json(req): Json<MessageRequest>,
+) -> Response {
+    let channel_id = state.channel_id.to_string();
+    let rx = match state
+        .comms
+        .stream_direct(&channel_id, req.message, None)
+        .await
+    {
+        Ok(rx) => rx,
+        Err(e) => {
+            warn!(%channel_id, "stream_direct failed: {e}");
+            return (StatusCode::BAD_GATEWAY, json_error("internal", e)).into_response();
+        }
+    };
+
+    // Convert mpsc::Receiver into a futures Stream for axum's SSE.
+    let event_stream = stream::unfold(rx, |mut rx| async move {
+        let chunk = rx.recv().await?;
+        let event: Result<Event, Infallible> = Ok(match chunk {
+            StreamChunk::Thinking(delta) => {
+                let data = json!({"delta": delta}).to_string();
+                Event::default().event("thinking").data(data)
+            }
+            StreamChunk::Content(delta) => {
+                let data = json!({"delta": delta}).to_string();
+                Event::default().event("content").data(data)
+            }
+            StreamChunk::Done(usage) => {
+                let data = json!({
+                    "usage": usage.map(|u| json!({
+                        "prompt_tokens": u.input_tokens,
+                        "completion_tokens": u.output_tokens,
+                        "reasoning_tokens": u.reasoning_tokens,
+                        "cached_input_tokens": u.cached_input_tokens,
+                    }))
+                })
+                .to_string();
+                Event::default().event("done").data(data)
+            }
+        });
+        Some((event, rx))
+    });
+
+    Sse::new(event_stream).into_response()
 }
 
 /// GET /api/sessions

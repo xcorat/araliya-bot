@@ -147,6 +147,7 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/health/refresh", post(api::health_refresh))
         .route("/api/tree", get(api::tree))
         .route("/api/message", post(api::message))
+        .route("/api/message/stream", post(api::message_stream))
         .route("/api/sessions", get(api::sessions))
         .route("/api/agents", get(api::agents))
         .route("/api/agents/{agent_id}/kg", get(api::agent_kg))

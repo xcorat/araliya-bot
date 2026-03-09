@@ -305,6 +305,7 @@ impl Agent for EchoAgent {
             content,
             session_id,
             usage: None,
+            thinking: None,
         }));
     }
 }
@@ -1374,6 +1375,7 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1413,6 +1415,7 @@ mod tests {
                 content: "mapped".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1449,6 +1452,7 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1482,6 +1486,7 @@ mod tests {
                 content: "fallback".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1522,6 +1527,7 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1555,6 +1561,7 @@ mod tests {
                         content: format!("[fake] {content}"),
                         session_id: None,
                         usage: None,
+                    thinking: None,
                     }));
                 }
             }
@@ -1582,6 +1589,7 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1648,6 +1656,7 @@ mod tests {
                         content: "Summary: Test Headline from news@example.com.".to_string(),
                         session_id: None,
                         usage: None,
+                    thinking: None,
                     }));
                 }
             }
@@ -1675,6 +1684,7 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1735,6 +1745,7 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1775,6 +1786,7 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1823,6 +1835,7 @@ mod tests {
                         content: "brown".to_string(),
                         session_id: None,
                         usage: None,
+                    thinking: None,
                     }));
                 }
             }
@@ -1857,6 +1870,7 @@ mod tests {
                 content: "what color".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -1897,6 +1911,7 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -2027,6 +2042,7 @@ mod tests {
                         content: "[]".to_string(),
                         session_id: None,
                         usage: None,
+                    thinking: None,
                     }));
                 }
             }
@@ -2040,6 +2056,7 @@ mod tests {
                         content: "[fake] hello".to_string(),
                         session_id: None,
                         usage: None,
+                    thinking: None,
                     }));
                 }
             }
@@ -2069,6 +2086,7 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );
@@ -2108,6 +2126,7 @@ mod tests {
                             content,
                             session_id: None,
                             usage: None,
+                            thinking: None,
                         }));
                     }
                 }
@@ -2139,6 +2158,7 @@ mod tests {
                 content: "first message".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx1,
         );
@@ -2158,6 +2178,7 @@ mod tests {
                 content: "second message".to_string(),
                 session_id: Some(session_id.clone()),
                 usage: None,
+                thinking: None,
             },
             tx2,
         );
@@ -2193,6 +2214,7 @@ mod tests {
                             content: "[]".to_string(),
                             session_id: None,
                             usage: None,
+                            thinking: None,
                         }));
                     }
                 }
@@ -2223,6 +2245,7 @@ mod tests {
                 content: "test debug".to_string(),
                 session_id: None,
                 usage: None,
+                thinking: None,
             },
             tx,
         );

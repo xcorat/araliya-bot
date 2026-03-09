@@ -13,6 +13,7 @@
 	const hasSteps = $derived(
 		message.intermediateSteps && message.intermediateSteps.length > 0
 	);
+	const hasThinking = $derived(!!message.thinking && !message.role.match(/user|error/));
 
 	const time = $derived(() => {
 		try {
@@ -50,6 +51,14 @@
 					: 'rounded-bl-md bg-muted text-foreground'
 		)}
 	>
+		{#if hasThinking}
+			<details class="mb-2">
+				<summary class="cursor-pointer select-none text-[11px] text-muted-foreground opacity-70 hover:opacity-100">
+					Reasoning
+				</summary>
+				<pre class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{message.thinking}</pre>
+			</details>
+		{/if}
 		{#if hasSteps}
 			<div class="mb-2">
 				<ToolSteps steps={message.intermediateSteps!} />

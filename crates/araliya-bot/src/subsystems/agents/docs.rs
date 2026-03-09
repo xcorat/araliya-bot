@@ -148,6 +148,7 @@ impl Agent for DocsAgentPlugin {
                     content: "docs component: active".to_string(),
                     session_id,
                     usage: None,
+                    thinking: None,
                 }));
                 return;
             }

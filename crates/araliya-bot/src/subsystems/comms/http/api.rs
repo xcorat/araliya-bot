@@ -175,6 +175,7 @@ pub(super) async fn handle_message(
                 "session_id": reply.session_id.unwrap_or_else(|| NO_SESSION_ID.to_string()),
                 "mode": msg_req.mode.as_deref().unwrap_or("chat"),
                 "reply": reply.reply,
+                "thinking": reply.thinking,
                 "working_memory_updated": false,
             });
             super::write_json_response(socket, "200 OK", resp_body.to_string().as_bytes()).await

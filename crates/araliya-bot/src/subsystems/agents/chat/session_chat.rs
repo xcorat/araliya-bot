@@ -177,12 +177,14 @@ async fn handle_with_memory(
             channel_id,
             content,
             usage,
+            thinking,
             ..
         }) => Ok(BusPayload::CommsMessage {
             channel_id,
             content,
             session_id: Some(handle.session_id.clone()),
             usage,
+            thinking,
         }),
         other => other,
     }
