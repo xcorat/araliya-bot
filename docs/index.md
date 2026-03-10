@@ -18,9 +18,9 @@ Deep dives:
 - [Architecture Overview](architecture/overview.md)
 - [UI Subsystem](architecture/subsystems/ui.md)
 - [Identity](architecture/identity.md)
-- [Agents](architecture/subsystems/agents.md)
+- [Agents](architecture/subsystems/agents.md) — runtime classes, agent families, orchestration, routing, session queries
 - [Tools Subsystem](architecture/subsystems/tools.md)
-- [Memory Subsystem](architecture/subsystems/memory.md) — typed value model, TmpStore, SessionHandle (v0.4.0: typed Value/Collection model, `TmpStore`, memory always enabled)
+- [Memory Subsystem](architecture/subsystems/memory.md) — sessions, transcripts, KV store, agent stores, spend accounting
 
 Operations:
 

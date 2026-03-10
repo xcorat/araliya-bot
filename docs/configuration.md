@@ -181,40 +181,103 @@ The build output goes to `frontend/build/`, which matches the default `static_di
 
 ## Agents Configuration
 
+The agents subsystem routes inbound messages to registered agents. In v0.6, every agent has an explicit **runtime class** that describes its execution model. The `agents/list` bus method (and `GET /api/agents/list` over HTTP) returns each registered agent's `runtime_class` label alongside its ID, session count, and store types.
+
+| Runtime class | Execution model |
+|---|---|
+| `request_response` | Stateless single-turn exchange — no session state. |
+| `session` | Persistent multi-turn conversation with transcript memory. |
+| `agentic` | Bounded multi-step orchestration: instruction → tools → response. |
+| `specialized` | Built-in agents with specific delegation or passthrough patterns. |
+
+See [Agents Subsystem](architecture/subsystems/agents.md) for a full description of runtime classes and the orchestration model.
+
+### Core Settings
+
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `agents.default` | string | `"basic_chat"` | Which agent handles unrouted messages. |
-| `agents.routing` | map<string,string> | `{}` | Optional `channel_id -> agent_id` routing overrides. |
-| `agents.{id}.memory` | array<string> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
-| `agents.{id}.skills` | array<string> | `[]` | Bus tools this agent may invoke (e.g. `["gmail", "newsmail_aggregator"]`). Only listed tools appear in the agent's instruction manifest and response preamble. Agents without this field cannot call any bus tools. |
+|---|---|---|---|
+| `agents.default` | string | `"basic_chat"` | Agent that handles messages with no explicit routing. Must be present in `enabled` when `enabled` is non-empty. |
+| `agents.enabled` | array\<string\> | `[]` | Agent IDs reachable via routing. An empty list means all registered agents are reachable. |
+| `agents.debug_logging` | bool | `false` | Write per-turn intermediate data (`instruct_prompt`, `tool_calls_json`, `context`, etc.) to session KV for all agentic agents. Read via `GET /api/sessions/{id}/debug`. |
 
-Gmail agent endpoint:
+### Routing
 
-- Bus method: `agents/gmail/read`
-- Internal tool call: `tools/execute` with `tool = "gmail"`, `action = "read_latest"`
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.routing` | map\<string, string\> | `{}` | `channel_id → agent_id` overrides. Takes priority over the default agent. Example: `pty0 = "echo"`. |
 
-Newsmail aggregator tool endpoint:
+### Per-Agent Settings
 
-- Bus method: `tools/execute`
-- Tool/action: `tool = "newsmail_aggregator"`, `action = "get"`
-- Current request shape: empty `{}` supported; optional keys are `label`, `mailbox`, `n_last`, `t_interval` (preferred), `tsec_last` (legacy)
-- Healthcheck action: `tool = "newsmail_aggregator"`, `action = "healthcheck"` (returns one `newsletter`-filtered sample when available)
+These fields appear under `[agents.{id}]` for any agent ID:
 
-News agent endpoint (MVP):
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.{id}.enabled` | bool | `true` | Set to `false` to disable this agent without removing its config section. |
+| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires. Example: `["basic_session"]`. |
+| `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke. Only listed tools appear in the instruction manifest. Agents without this field cannot call any bus tools. |
 
-- Bus methods: `agents/news` (default `handle` action), `agents/news/read`, `agents/news/health`
-- Internal tool call: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
-- Health path: `agents/news/health` returns local component status text
-- Interactive shortcut: `/health news` in stdio mode
-- Default query args can be set in config via `[agents.news.query]`
+### Agentic Chat (`agentic-chat`)
 
-`agents.news.query` fields:
+Runtime class: `agentic`. Dual-model instruction loop — a fast model selects tools, the main model generates the response.
 
-- `label` (optional string, Gmail label name e.g. `n/News`)
-- `mailbox` (optional string)
-- `n_last` (optional integer)
-- `t_interval` (optional string duration, e.g. `1min`, `1d`, `1mon`)
-- `tsec_last` (optional integer seconds, legacy fallback)
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.agentic-chat.use_instruction_llm` | bool | `false` | Route the instruction pass through `llm/instruct`. When `[llm.instruction]` is configured, that provider handles tool selection; otherwise falls back to the main provider. |
+
+### Docs Agent (`docs`)
+
+Runtime class: `agentic`. Retrieval-augmented document QA. Supports two retrieval paths selected by `use_kg`.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.docs.docsdir` | string | none | Source directory to import into the agent's document store on startup. |
+| `agents.docs.index` | string | `"index.md"` | Fallback document (relative to `docsdir`) when no search result is returned. |
+| `agents.docs.use_kg` | bool | `false` | Enable KG+FTS retrieval via `IKGDocStore`. Requires the `ikgdocstore` Cargo feature. |
+| `agents.docs.kg.min_entity_mentions` | integer | `2` | Minimum occurrences for an entity to enter the knowledge graph. |
+| `agents.docs.kg.bfs_max_depth` | integer | `2` | BFS hop limit from seed entities during graph traversal. |
+| `agents.docs.kg.edge_weight_threshold` | float | `0.15` | Minimum relation weight to follow during BFS. |
+| `agents.docs.kg.max_chunks` | integer | `8` | Total chunk budget in the assembled retrieval context. |
+| `agents.docs.kg.fts_share` | float | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
+| `agents.docs.kg.max_seeds` | integer | `5` | Maximum seed entities used for BFS per query. |
+
+### Runtime Command Agent (`runtime_cmd`)
+
+Runtime class: `specialized`. Passes every user message directly to an external language runtime as source code. No LLM is involved.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.runtime_cmd.runtime` | string | `"bash"` | Runtime environment name, used as the working directory under the agent's identity area. |
+| `agents.runtime_cmd.command` | string | `"bash"` | Interpreter binary passed to `runtimes/exec`. |
+| `agents.runtime_cmd.setup_script` | string | none | Optional shell script run once to initialize the runtime environment on first use. |
+
+### News Agent (`news`)
+
+Runtime class: `specialized`. Fetches recent emails from the newsmail aggregator tool and summarizes them with the LLM.
+
+Bus methods: `agents/news` (default handle), `agents/news/read`, `agents/news/health`.
+
+Default query arguments for the newsmail aggregator can be set under `[agents.news.query]`:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.news.query.label` | string | none | Gmail label name to filter (e.g. `n/News`). |
+| `agents.news.query.n_last` | integer | none | Maximum number of recent emails to fetch. |
+| `agents.news.query.t_interval` | string | none | Recency window as a duration string (e.g. `1min`, `1d`, `1mon`). |
+| `agents.news.query.tsec_last` | integer | none | Recency window in seconds (legacy fallback for `t_interval`). |
+
+### Gmail Agent (`gmail`)
+
+Runtime class: `specialized`. Reads the latest Gmail messages via the Gmail tool and returns a formatted summary.
+
+Bus method: `agents/gmail/read`. Internally dispatches `tools/execute` with `tool = "gmail"`, `action = "read_latest"`.
+
+### Newsmail Aggregator Tool Endpoints
+
+The newsmail aggregator is a tool (not an agent) invoked by the `news` agent and available for `skills`-configured agents:
+
+- Bus method: `tools/execute` with `tool = "newsmail_aggregator"`, `action = "get"`
+- Optional request keys: `label`, `mailbox`, `n_last`, `t_interval` (preferred), `tsec_last` (legacy)
+- Healthcheck: `action = "healthcheck"` returns one `newsletter`-filtered sample when available
 
 ## Tools Configuration
 

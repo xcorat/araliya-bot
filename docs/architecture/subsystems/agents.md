@@ -1,332 +1,471 @@
 # Agents Subsystem
 
-**Status:** v0.5.1 — `Agent` trait (with `session_id`) · `AgentsState` capability boundary · `BusHandler` impl · agent dispatch · **`ChatCore` composition layer** · `SessionChatPlugin` with memory integration and session reload · session query handlers (`agents/sessions`, `agents/sessions/detail`, `agents/sessions/memory`, `agents/sessions/files`) · **`DocsAgentPlugin` with optional KG-RAG path (`IKGDocStore`) and externalised prompt templates** · **`AgenticChatPlugin` + `AgenticLoop` — dual-model instruction loop (SLM router + LLM responder)** · **`RuntimeCmdPlugin` — external script execution passthrough** · **per-turn debug logging to session KV**.
+**Version:** v0.6 — runtime-classified agents · `AgentRegistration` wrapper · built-in agent classification · `AgentRuntimeClass` taxonomy · `AgentsState` capability boundary · `AgenticLoop` dual-model orchestration · `ChatCore` composition · session queries · docs RAG/KG-RAG · per-turn debug logging · externalized prompt templates.
 
 ---
 
 ## Overview
 
-The Agents subsystem receives agent-targeted requests from the supervisor bus and routes each message to an agent. Agent handlers are non-blocking: each handler receives ownership of `reply_tx` and resolves it in its own time — synchronously for simple agents, via `tokio::spawn` for agents that perform I/O.
+The Agents subsystem is the policy and execution layer of the bot. It receives agent-targeted requests from the supervisor bus, resolves which agent should handle each request, and delegates execution to that agent's runtime.
+
+An agent is not just a function — it is a named entity that couples:
+
+- a stable cryptographic identity and identity-bound working area
+- memory stores (sessions, transcripts, key-value data)
+- prompt files that define behavioral policy
+- a declared set of tools it may invoke
+- access to one or more LLM completion paths
+- I/O routing from comms channels
+- a **runtime class** that defines its execution model
+
+The runtime class is the central organizing concept in v0.6. Every agent — built-in or future config-defined — has a runtime class that describes how it processes work: whether it handles a single stateless exchange, maintains a conversation, runs a multi-step orchestration loop, or something else entirely.
+
+Agents are non-blocking by design. Each agent receives ownership of `reply_tx` and resolves it in its own time — inline for simple agents, via a spawned async task for agents that perform I/O or multi-step orchestration.
 
 ---
 
-## Agents
+## Runtime Classes
 
-| Agent | Behaviour |
-|-------|-----------|
-| `basic_chat` | Calls `ChatCore::basic_complete` → `llm/complete` on the bus. |
-| `chat` | Session-aware chat via `SessionChatPlugin`. Creates or reloads a memory session (via `session_id`), appends user/assistant turns to a Markdown transcript, and injects recent history as LLM context. Returns `session_id` in the reply. Default agent. Configured with `memory = ["basic_session"]`. |
-| `agentic-chat` | Dual-pass agentic chat via `AgenticChatPlugin` + `AgenticLoop`. Small model selects tools (instruction pass → `llm/instruct`), tools execute, large model generates the reply (response pass → `llm/complete`). Session-aware. Configured with `use_instruction_llm`, `skills`, `memory`. |
-| `news` | Calls `tools/execute` with `newsmail_aggregator/get` and returns the raw tool payload as comms content. |
-| `docs` | Retrieves context from the agent's document store and answers questions with the LLM.  Uses `IKGDocStore` (KG+FTS) when `use_kg = true` is set in config and the `ikgdocstore` feature is compiled; falls back to plain `IDocStore` (FTS only) otherwise. |
-| `runtime_cmd` | REPL-style passthrough to an external language runtime (Node.js, Python, Bash). Initialises the runtime on first use via `runtimes/init`, then executes each user message as source code via `runtimes/exec`. Configured with `runtime`, `command`, `setup_script`. |
-| `echo` | Returns the input unchanged. Used as safety fallback when `enabled` is empty. |
+The runtime class of an agent describes its execution model — not what the agent does, but the shape in which it does it. Runtime classes are represented by the `AgentRuntimeClass` type and are recorded on every registered agent.
+
+### RequestResponse
+
+A `RequestResponse` agent handles a single inbound message and produces a single reply. No session state is created or required. Execution is synchronous from the perspective of the conversation: the caller sends a message and receives a response.
+
+This is the simplest runtime class. It is appropriate for agents that perform stateless transformations, simple LLM pass-throughs, or pure lookups.
+
+Built-in agents classified as `RequestResponse`:
+
+- **`echo`** — returns the input unchanged; the zero-dependency fallback agent
+- **`basic_chat`** — forwards the message to the LLM and returns the response
+
+### Session
+
+A `Session` agent maintains persistent conversation state across turns. Each interaction belongs to a session identified by a session ID, which is either supplied by the caller or created automatically on the first message.
+
+Session agents persist a transcript of user and assistant messages. On each turn, recent history is injected into the LLM prompt to provide multi-turn context. Sessions are stored in the agent's identity-bound working area and survive restarts.
+
+Built-in agents classified as `Session`:
+
+- **`chat`** — session-aware LLM conversation via `SessionChatPlugin`
+
+### Agentic
+
+An `Agentic` agent runs a bounded multi-step orchestration loop on each request. The typical sequence is: an instruction pass that selects and parameterizes tools, tool execution, context assembly, and a final response pass. The agent may use session memory to persist state across requests.
+
+What distinguishes `Agentic` from `Session` is that the agent's internal turns are driven by tool calls, not by the user's conversational messages. The user sends one message; the agent may internally run multiple LLM and tool steps before replying.
+
+Built-in agents classified as `Agentic`:
+
+- **`agentic-chat`** — dual-model instruction loop: a fast model selects tools, the main model generates the response
+- **`docs`** — retrieval-augmented QA: the agent formulates a search query, retrieves documentation chunks, and answers with the retrieved context
+
+### Specialized
+
+`Specialized` is a transitional runtime class for built-in agents whose execution model does not cleanly map to `RequestResponse`, `Session`, or `Agentic`. These agents use specific delegation and passthrough patterns that predate the v0.6 classification model.
+
+Built-in agents classified as `Specialized`:
+
+- **`news`** — fetches email via the newsmail aggregator tool and summarizes with the LLM
+- **`gmail`** — delegates to the Gmail tool and formats the result as a comms reply
+- **`runtime_cmd`** — passes user messages directly to an external language runtime (Node.js, Python, Bash) via the runtimes subsystem; no LLM is involved
+
+### Planned: Workflow and Background
+
+Two additional runtime classes are part of the v0.6 architecture but are not yet implemented:
+
+**`Workflow`** covers bounded orchestrated processes with more explicit step transitions than freeform agentic interaction. Examples include document processing pipelines, bounded multi-step assistant flows, and delegated task graphs that may include approval steps or checkpointing.
+
+**`Background`** covers event-driven long-running agents that operate independently of individual inbound messages. A background agent would subscribe to event sources, emit outputs asynchronously, maintain state over time, and have its own supervised start/stop lifecycle.
+
+Both classes exist as enum variants in `AgentRuntimeClass` and are clearly marked as deferred in the implementation. No routing or execution path supports them yet. Their lifecycle semantics — supervision model, resource controls, output channels, security boundaries — will be designed in a dedicated later phase.
+
+---
+
+## Agent Families
+
+### Built-in Agents
+
+Built-in agents are implemented in Rust and compiled into the binary. They cover baseline functionality and serve as the reference implementations for each runtime class. Built-in agents are registered at subsystem startup and controlled by Cargo feature flags and config `enabled` lists.
+
+The current built-in agents, their runtime classes, and their roles:
+
+| Agent ID | Runtime class | Role |
+|---|---|---|
+| `echo` | `RequestResponse` | Stateless echo; safety fallback when `enabled` is empty |
+| `basic_chat` | `RequestResponse` | Single-turn LLM pass-through |
+| `chat` | `Session` | Multi-turn session-aware LLM conversation |
+| `agentic-chat` | `Agentic` | Dual-model instruction → tool → response loop |
+| `docs` | `Agentic` | RAG or KG-RAG document QA |
+| `news` | `Specialized` | News email fetch and LLM summarization |
+| `gmail` | `Specialized` | Gmail read via tool delegation |
+| `runtime_cmd` | `Specialized` | Direct passthrough to an external language runtime |
+
+### Static Agents (Upcoming)
+
+Static agents are config-defined agent instances loaded at startup. Rather than a dedicated Rust implementation, a static agent is assembled from a configuration section that declares its ID, runtime class, prompt files, memory requirements, and tool allowlist.
+
+Static agents use the same runtime classes, session infrastructure, identity model, and capability boundary as built-in agents. They are the v0.6 path for adding new prompt-and-policy-driven behaviors without writing Rust code.
+
+Static agent support is the next implementation phase. The runtime foundation introduced in v0.6 is designed to accommodate static agents directly alongside built-in ones.
 
 ---
 
 ## Routing
 
-Agents are resolved in this priority order:
+Agents are resolved from the inbound request in this priority order:
 
-1. Explicit `{agent_id}` from the method path
-2. Channel mapping: `channel_id → agent_id` in `[agents.routing]`
-3. Default agent: first entry in `agents.enabled` (falls back to `echo` if `enabled` is empty)
+1. **Explicit agent ID** from the method path (e.g. `agents/chat/handle`)
+2. **Channel mapping** — `channel_id → agent_id` override from `[agents.routing]` in config
+3. **Default agent** — the agent named in `agents.default`, provided it is in the `enabled` set; falls back to `echo` if `enabled` is empty
+
+The routing layer is not aware of runtime classes. It resolves a target agent ID and delegates; the registered agent's runtime handles the rest.
+
+An explicit agent ID that is not in the `enabled` set is rejected with a not-found error. A default agent that is not in `enabled` is also rejected unless `enabled` is empty (empty `enabled` means no restriction — all registered agents are reachable).
 
 ---
 
 ## Method Grammar
 
-- `agents` — default agent, default action
-- `agents/{agent_id}` — explicit agent, default action
-- `agents/{agent_id}/{action}` — explicit agent + action (`{action}` accepted but not yet differentiated)
+The bus method path determines the target agent and action:
+
+| Method | Effect |
+|---|---|
+| `agents` | Default agent, default action |
+| `agents/{agent_id}` | Explicit agent, default action |
+| `agents/{agent_id}/{action}` | Explicit agent, named action |
+
+The `{action}` segment is forwarded to the agent's `handle` method as the `action` parameter. Most agents treat any non-special action as equivalent to the default. Specialized agents (such as `gmail` and `news`) use the action to distinguish `read`, `health`, and other operations.
+
+Several method paths are intercepted by the subsystem before agent routing and never reach individual agents — see [Session Queries](#session-queries) below.
 
 ---
 
-## Handle Request Contract
+## Request Handling Contract
 
-`AgentsSubsystem` implements `BusHandler` with prefix `"agents"`. The supervisor
-calls `handle_request` and returns immediately:
+`AgentsSubsystem` implements `BusHandler` with prefix `"agents"`. The supervisor calls `handle_request` and returns immediately; ownership of `reply_tx` is transferred to the handler.
 
-- **`echo`** — `EchoAgent::handle` resolves `reply_tx` inline; zero latency.
-- **`basic_chat`** — `BasicChatPlugin::handle` moves `reply_tx` into a
-  `tokio::spawn`ed task that calls `AgentsState::complete_via_llm`.
-- **`chat`** — `SessionChatPlugin::handle` spawns a task that initialises a
-  memory session on first use, appends to transcript, builds context, calls
-  `ChatCore::basic_complete`, and appends the LLM reply.
+- **Synchronous agents** (`echo`) resolve `reply_tx` inline on the calling thread.
+- **Async agents** (`basic_chat`, `chat`, `agentic-chat`, `docs`, `news`, `gmail`, `runtime_cmd`) move `reply_tx` into a `tokio::spawn`ed task and resolve it when the async work completes.
+
+The supervisor is never blocked waiting for a reply. Every code path must resolve `reply_tx` exactly once — either with a success payload or an error.
 
 ---
 
-## basic_chat Flow
+## Internal Architecture
+
+### Agent Registration
+
+Each agent in `AgentsSubsystem` is stored as an `AgentRegistration`:
 
 ```
-handle_request("agents", CommsMessage { channel_id, content }, reply_tx)
-  → resolve agent → "basic_chat"
-  → tokio::spawn {
-      bus.request("llm/complete", LlmRequest { channel_id, content }).await
-        → LlmSubsystem.handle_request → DummyProvider::complete
-        ← Ok(CommsMessage { channel_id, content: "[echo] {input}" })
-      reply_tx.send(Ok(CommsMessage { .. }))
-    }
-```
-
----
-
-## Agent Architecture
-
-`Agent` is the extension trait for all agent implementations:
-
-```rust
-pub trait Agent: Send + Sync {
-    fn id(&self) -> &str;
-    fn handle(
-        &self,
-        action: String,
-        channel_id: String,
-        content: String,
-        session_id: Option<String>,
-        reply_tx: oneshot::Sender<BusResult>,
-        state: Arc<AgentsState>,
-    );
+AgentRegistration {
+    runtime_class: AgentRuntimeClass,   // RequestResponse | Session | Agentic | Specialized | …
+    agent: Box<dyn Agent>,              // the implementation
 }
 ```
 
-Agents are stored in a `HashMap<String, Box<dyn Agent>>` inside
-`AgentsSubsystem`. Resolution order (by `id()`) maps to the routing priority
-table above.
+This pairing is the v0.6 structural foundation. Runtime class is not stored inside the `Agent` trait itself — it lives alongside the implementation in the registration record. This keeps existing agent implementations unchanged while making runtime class a first-class attribute of every registered agent.
 
-### Agent and Subagent Identities
+`AgentsSubsystem` maintains a `HashMap<String, AgentRegistration>` keyed by agent ID. The agent's own `id()` method is the single source of truth for its key.
 
-Each registered agent is provisioned with its own cryptographic identity (`ed25519` keypair) during subsystem initialization. These identities are stored in `AgentsState::agent_identities` and persisted under `{memory_root}/agent/{agent_id}-{public_id}/`.
+The `agents/list` bus method returns all registered agents, including the `runtime_class` label for each entry.
 
-Agents can also spawn **subagents** — ephemeral or task-specific workers that operate under their parent's identity structure. Subagents are provisioned via `AgentsState::get_or_create_subagent(agent_id, subagent_name)`, which creates a nested identity at `{memory_root}/agent/{agent_id}-{public_id}/subagents/{subagent_name}-{public_id}/`.
+### The `Agent` Trait
 
-> **Naming convention:** `Agent` for autonomous actors in the agents subsystem;
-> `Plugin` is reserved for capability extensions in the future tools subsystem.
-
-### Agentic Loop (`AgenticLoop`)
-
-`AgenticLoop` is the shared building block for multi-pass agent plugins (`agentic-chat`, `docs`). It implements the **heterogeneous orchestration** pattern: a small, fast model handles structured output (tool selection), while the main model handles complex reasoning and generation.
-
-**3-phase flow per request:**
+All agent plugins implement the `Agent` trait:
 
 ```
-1. Instruction pass
-   instruct_prompt = render(agentic_instruct.txt, {tools, user_input})
-   instruction_text = llm/instruct(instruct_prompt)          ← SLM (fast, structured)
-   tool_calls = parse_json_array(instruction_text)           ← [] on error (graceful)
-
-2. Tool execution
-   for call in tool_calls:
-     if local_tool: spawn_blocking(tool.call(params))        ← in-process (e.g. docs search)
-     else:          bus.request("tools/execute", ...)        ← external via bus
-   context = join(outputs)
-
-3. Response pass
-   response_prompt = render(agentic_context.txt, {context, history, user_input})
-   reply = llm/complete(response_prompt, system=preamble)    ← main LLM (larger, smarter)
+trait Agent: Send + Sync {
+    fn id(&self) -> &str;
+    fn handle(action, channel_id, content, session_id, reply_tx, state);
+    fn handle_stream(channel_id, content, session_id, reply_tx, state);  // default: falls back to handle
+}
 ```
 
-**Key types:**
-- `AgenticLoop::new(agent_id, use_instruction_llm, instruct_prompt_file, context_prompt_file, local_tools, allowed_tools, prompts_dir, debug_logging)`
-- `LocalTool` trait — in-process blocking tools (implemented by `DocsSearchTool`)
-- `allowed_tools: Vec<String>` — bus tool allowlist from agent `skills` config; only listed tools appear in the instruction manifest
+`handle_stream` is provided with a default implementation that falls back to `handle`. Agents that support streaming LLM output override it to call `llm/stream` on the bus and reply with `BusPayload::LlmStreamResult`.
 
-**Routing the instruction pass:**
-- `use_instruction_llm = false` (default) — instruction pass uses `llm/complete` (same model as response)
-- `use_instruction_llm = true` — instruction pass uses `llm/instruct`, which routes to `[llm.instruction]` if configured, falling back to the main provider otherwise
+### AgentsState Capability Boundary
 
-**Per-turn debug logging** (`debug_logging = true` in `[agents]` config):
+Agents receive `Arc<AgentsState>`, not a raw bus handle. The capability surface available to every agent is:
 
-Each turn writes intermediate data to the session KV store under `debug:turn:{n}:*`:
+| Method or field | Description |
+|---|---|
+| `complete_via_llm(channel_id, content)` | Forward to `llm/complete`; return `BusResult` |
+| `complete_via_llm_with_system(channel_id, content, system)` | Forward to `llm/complete` with a system prompt |
+| `complete_via_instruct_llm(channel_id, content, system)` | Forward to `llm/instruct`; routes to `[llm.instruction]` if configured, else falls back to the main provider |
+| `stream_via_llm_with_system(channel_id, content, system, reply_tx)` | Forward to `llm/stream` for streaming responses |
+| `execute_tool(tool, action, params_json, channel_id, session_id)` | Dispatch a tool call through `tools/execute` |
+| `open_agent_store(agent_id)` | Open the agent's `AgentStore` (sessions index, KV store, text files) |
+| `get_or_create_subagent(agent_id, subagent_name)` | Provision a subagent identity under the given agent |
+| `runtime_init(…)` | Initialize an external runtime environment via `runtimes/init` |
+| `runtime_exec(…)` | Execute source code in an external runtime via `runtimes/exec` |
+| `memory` | `Arc<MemorySystem>` — create or load session handles |
+| `agent_memory` | `HashMap<String, Vec<String>>` — per-agent declared memory store types |
+| `agent_identities` | `HashMap<String, Identity>` — cryptographic identities per agent |
+| `agent_skills` | `HashMap<String, Vec<String>>` — per-agent bus-tool allowlists |
+| `llm_rates` | `ModelRates` — current LLM token pricing for spend accounting |
+| `debug_logging` | `bool` — whether per-turn debug data should be written to session KV |
 
-| KV key | Content |
-|--------|---------|
-| `debug:turn:{n}:user_input` | Raw user message |
-| `debug:turn:{n}:instruct_prompt` | Rendered instruction prompt sent to SLM |
-| `debug:turn:{n}:instruction_response` | Raw SLM output (JSON array or empty) |
-| `debug:turn:{n}:tool_calls_json` | Parsed tool calls (same as instruction_response) |
-| `debug:turn:{n}:tool_outputs_json` | JSON array of tool results with ok/error |
-| `debug:turn:{n}:context` | Assembled context string passed to response pass |
-| `debug:turn:{n}:response_prompt` | Rendered response prompt sent to main LLM |
+The raw bus handle is private. Agents cannot address arbitrary bus targets. This boundary keeps agent implementations testable in isolation and limits accidental subsystem coupling.
 
-Read via: `GET /api/sessions/{session_id}/debug` (bus: `agents/sessions/debug`, payload: `SessionQuery { session_id, agent_id? }`)
+### Agentic Loop
 
----
+`AgenticLoop` is the shared orchestration engine for multi-step agent plugins. Both `agentic-chat` and `docs` use it. It implements a three-phase execution model per request:
 
-### Chat-family composition (`ChatCore`)
+**Phase 1 — Instruction pass**
 
-Chat-family agents (`basic_chat`, `chat`, and future variants) share logic
-through composition rather than inheritance:
+The agent renders an instruction prompt that includes the user message and a manifest of tools the agent is permitted to call. This prompt is sent to the instruction LLM (`llm/instruct` or `llm/complete` depending on configuration). The response is parsed as a JSON array of `{tool, action, params}` objects. If parsing fails, the phase degrades gracefully to an empty tool list.
+
+**Phase 2 — Tool execution**
+
+Each parsed tool call is dispatched in sequence. Local tools (implemented in-process, such as `docs_search`) run via `tokio::task::spawn_blocking`. Bus tools run via `AgentsState::execute_tool`. Outputs are collected into a context string.
+
+**Phase 3 — Response pass**
+
+The context from tool execution, recent conversation history, and the original user message are combined into a response prompt. This is sent to the main LLM (`llm/complete`) with an optional system preamble. The reply is returned to the caller with the session ID attached.
+
+**Session lifecycle**
+
+`AgenticLoop` manages session state across the three phases. On the first request for a session, a new session is created in the agent's identity-scoped area. On subsequent requests with the same session ID, the existing session is reloaded. The transcript is appended after each complete turn.
+
+**Configuration**
+
+`AgenticLoop` is constructed with:
+
+- `agent_id` — used for identity and session scoping
+- `use_instruction_llm` — when `true`, routes the instruction pass through `llm/instruct`; when `false`, both passes use `llm/complete`
+- `instruct_prompt_file` — prompt template for the instruction pass
+- `context_prompt_file` — prompt template for the response pass
+- `local_tools` — in-process tools implementing the `LocalTool` trait
+- `allowed_tools` — bus tool allowlist from agent skills config
+- `prompts_dir` — directory from which prompt files are loaded
+- `debug_logging` — whether to write per-turn debug data to session KV
+
+**Routing the instruction pass**
+
+When `use_instruction_llm = false` (the default), both passes use the same LLM provider. When `use_instruction_llm = true`, the instruction pass is routed through `llm/instruct`. If `[llm.instruction]` is configured with a separate provider, that provider handles the instruction pass; otherwise it falls back to the main provider. This allows a small fast model to handle tool selection while a larger model handles final response generation.
+
+### Chat-Family Composition
+
+Chat-family agents (`basic_chat`, `chat`) share logic through `ChatCore`, a stateless composition layer rather than a shared base class:
 
 ```
 src/subsystems/agents/chat/
-├── mod.rs           # feature-gated re-exports
-├── core.rs          # ChatCore — shared building blocks
-├── basic_chat.rs    # BasicChatPlugin (thin wrapper over ChatCore)
-└── session_chat.rs  # SessionChatPlugin (ChatCore + future extensions)
+├── mod.rs           — feature-gated re-exports
+├── core.rs          — ChatCore: shared async building blocks
+├── basic_chat.rs    — BasicChatPlugin: thin wrapper over ChatCore
+└── session_chat.rs  — SessionChatPlugin: ChatCore + session/memory
 ```
 
-`ChatCore` is a stateless struct providing composable methods:
+`ChatCore::basic_complete` handles the common case: build an LLM request from the message content, dispatch to `llm/complete` on the bus, and return the result. `BasicChatPlugin` calls it directly. `SessionChatPlugin` calls it after loading (or creating) a session, appending the user message to the transcript, and injecting recent history as context.
 
-```rust
-impl ChatCore {
-    pub async fn basic_complete(state, channel_id, content) -> BusResult;
-    // Future: prompt_template(), inject_memory(), tool_dispatch(), ...
-}
-```
+### Agent and Subagent Identities
 
-Each chat agent calls `ChatCore` methods and layers its own behaviour on top.
-This avoids code duplication while allowing progressive enhancement:
+Each registered agent is provisioned with its own persistent ed25519 cryptographic identity during subsystem initialization. Identities are stored under `{memory_root}/agent/{agent_id}-{public_id}/` and survive restarts. The agent's identity directory is the root of its working area — session indexes, KV stores, document stores, and subagent directories all live under it.
 
-```
-ChatCore::basic_complete()        ← shared logic
-    ↑                    ↑
-BasicChatPlugin     SessionChatPlugin  (core + session/memory/tools)
-                         ↑
-                  AdvancedChatPlugin   (future — further extensions)
-```
-
-### Capability boundary — `AgentsState`
-
-Agents receive `Arc<AgentsState>`, not a raw `BusHandle`. Available methods:
-
-| Method | Description |
-|--------|-------------|
-| `complete_via_llm(channel_id, content)` | Forward to `llm/complete` on the bus; return `BusResult`. |
-| `complete_via_llm_with_system(channel_id, content, system)` | Like above but with an optional system prompt. Used by the response pass. |
-| `complete_via_instruct_llm(channel_id, content, system)` | Forward to `llm/instruct`; routes to `[llm.instruction]` if configured, else falls back to main provider. Used by the instruction pass. |
-| `execute_tool(tool, action, params_json, channel_id, session_id)` | Dispatch a bus tool call through `tools/execute`. |
-| `memory` (field) | `Arc<MemorySystem>` — create/load sessions. In builds that include `subsystem-agents`, memory is available to agents directly. |
-| `agent_memory` (field) | `HashMap<String, Vec<String>>` — per-agent memory store requirements from config. |
-| `agent_skills` (field) | `HashMap<String, Vec<String>>` — per-agent bus-tool allowlists from config (`skills = [...]`). Each agent reads its own entry to scope which tools appear in the instruction manifest. |
-| `debug_logging` (field) | `bool` — when true, `AgenticLoop` writes per-turn intermediate data to session KV (see debug logging table above). |
-
-The raw bus is private to `AgentsState`. Agents cannot call arbitrary bus
-targets.
-
-## Session queries
-
-The agents subsystem intercepts session query bus methods before agent routing:
-
-| Method | Payload | Response |
-|--------|---------|----------|
-| `agents/sessions` | `Empty` | `JsonResponse` — JSON array of all sessions (id, created_at, store_types, last_agent) |
-| `agents/sessions/detail` | `SessionQuery { session_id }` | `JsonResponse` — session metadata + full transcript |
-| `agents/sessions/memory` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, content }`, where `content` is current working memory |
-| `agents/sessions/files` | `SessionQuery { session_id }` | `JsonResponse` — `{ session_id, files[] }` with `name`, `size_bytes`, `modified` |
-| `agents/sessions/debug` | `SessionQuery { session_id, agent_id? }` | `JsonResponse` — `{ session_id, turns: [{n, user_input, instruct_prompt, instruction_response, tool_calls_json, tool_outputs_json, context, response_prompt}] }`. Only populated when `debug_logging = true`. HTTP: `GET /api/sessions/{session_id}/debug`. |
-
-These are handled directly by `AgentsSubsystem` (not routed to individual agents).
-
-## Initialisation
-
-`AgentsSubsystem::new(config: AgentsConfig, bus: BusHandle, memory: Arc<MemorySystem>)` — the `BusHandle`
-is injected at init and wrapped inside `AgentsState`. Built-in agents
-(`EchoAgent`, `BasicChatPlugin`, `SessionChatPlugin`) are registered behind
-Cargo feature gates; the `enabled` list controls which ones are reachable via
-routing.
-
-## Next phases
-
-- Primary agents will have a stable identity value derived from key material and identity payload, modeled as `hash(prv:pub, id.md|{json})`.
-- A single primary agent identity can own multiple sessions concurrently.
-- A subagent is a delegated worker without its own unique persistent identity; it executes under a parent agent context.
+A subagent is a delegated worker provisioned under a parent agent's identity structure. Subagents are created via `AgentsState::get_or_create_subagent(agent_id, subagent_name)`, which creates a nested identity at `{agent_dir}/subagents/{subagent_name}-{public_id}/`. Subagents are lightweight delegated workers in the current design; a later phase may evolve them into full runtime-managed children with their own lifecycle.
 
 ---
 
+## Session Queries
+
+The following bus methods are intercepted by the subsystem before agent routing and handled directly by `AgentsSubsystem`. They never reach individual agents.
+
+| Method | Payload | Response |
+|---|---|---|
+| `agents/sessions` | `Empty` | JSON array of all sessions: `session_id`, `created_at`, `updated_at`, `store_types`, `last_agent` |
+| `agents/sessions/detail` | `SessionQuery { session_id }` | Session metadata and full transcript |
+| `agents/sessions/memory` | `SessionQuery { session_id }` | `{ session_id, content }` — current working memory |
+| `agents/sessions/files` | `SessionQuery { session_id }` | `{ session_id, files[] }` with `name`, `size_bytes`, `modified` |
+| `agents/sessions/debug` | `SessionQuery { session_id, agent_id? }` | Per-turn debug data (see below) |
+| `agents/list` | `Empty` | JSON array of all registered agents: `agent_id`, `name`, `runtime_class`, `session_count`, `store_types`, `last_fetched` |
+| `agents/kg_graph` | `SessionQuery { agent_id }` | The agent's knowledge graph as JSON |
+| `agents/health` | `Empty` | Subsystem health status |
+| `agents/status` | `Empty` | Operational status |
+| `agents/detailed_status` | `Empty` | Extended status including session count and enabled agents |
+| `agents/{agent_id}/status` | `Empty` | Per-agent status |
+| `agents/{agent_id}/detailed_status` | `Empty` | Per-agent extended status including session count and last fetch |
+
+---
+
+## Per-Turn Debug Logging
+
+When `debug_logging = true` is set in `[agents]` config, the `AgenticLoop` writes intermediate execution data into the session KV store after each turn. This data is readable via the `agents/sessions/debug` bus method and `GET /api/sessions/{session_id}/debug` over HTTP.
+
+Each turn's data is stored under `debug:turn:{n}:*` keys:
+
+| Key | Content |
+|---|---|
+| `debug:turn:{n}:user_input` | The raw user message for this turn |
+| `debug:turn:{n}:instruct_prompt` | The rendered instruction prompt sent to the LLM |
+| `debug:turn:{n}:instruction_response` | The raw LLM output from the instruction pass |
+| `debug:turn:{n}:tool_calls_json` | The parsed tool call array |
+| `debug:turn:{n}:tool_outputs_json` | JSON array of tool results with `ok`/`error` per call |
+| `debug:turn:{n}:context` | The assembled context string passed to the response pass |
+| `debug:turn:{n}:response_prompt` | The rendered response prompt sent to the main LLM |
+
+Debug logging is off by default. It is intended for development, troubleshooting, and session inspection — not for production use where session storage is a concern.
+
+---
 
 ## Prompt Configuration
 
-Agent prompts are now externalized as plain text files in `config/prompts/`. Each agent loads its default prompt template from a corresponding file (e.g., `news_summary.txt`, `docs_qa.txt`, `chat_context.txt`).
+Agent prompts are externalized as plain text files under `config/prompts/`. Each agent loads its prompt templates from the prompts directory at startup. Templates use `{{variable}}` syntax for interpolation (e.g. `{{items}}`, `{{docs}}`, `{{question}}`, `{{history}}`, `{{user_input}}`).
 
-This approach improves maintainability and security (see [identity.md](../identity.md)), and allows prompt updates without code changes. Templates support variable interpolation using `{{variable}}` syntax (e.g., `{{items}}`, `{{docs}}`, `{{question}}`, `{{history}}`, `{{user_input}}`).
+Externalizing prompts means behavioral policy can be updated without code changes or recompilation. Agents fall back to a minimal built-in prompt if the expected file is absent.
 
-Example directory structure:
+Example layout:
 
 ```
 config/
-  prompts/
-    news_summary.txt
-    docs_qa.txt
-    chat_context.txt
+└── prompts/
+    ├── agentic_instruct.txt    — instruction pass prompt for AgenticLoop
+    ├── agentic_context.txt     — response pass prompt for AgenticLoop
+    ├── news_summary.txt        — news agent summarization prompt
+    ├── docs_qa.txt             — docs agent QA prompt
+    └── chat_context.txt        — session chat context prompt
 ```
 
-Agents will fallback to a minimal built-in prompt if the file is missing.
+The `PromptBuilder` utility handles file loading, variable substitution, and tool manifest rendering. Agents that need a preamble summarizing available tools (used by the instruction pass) use `PromptBuilder` to generate one from the agent's skill list.
+
+---
+
+## Docs Agent — RAG and KG-RAG
+
+The `docs` agent answers questions about documentation using retrieval-augmented generation. It supports two retrieval paths, selected at runtime by the `use_kg` configuration flag.
+
+### Path 1 — Full-Text Search (default)
+
+Requires the `idocstore` Cargo feature. The agent's document store is indexed using BM25 full-text search. At query time, the instruction pass formulates a search query, and the top-K matching document chunks are retrieved and injected into the response prompt.
+
+### Path 2 — Knowledge Graph + Full-Text Search
+
+Requires the `ikgdocstore` Cargo feature and `use_kg = true` in config. At index time, an entity and relation graph is extracted from the documentation and stored as `kg/graph.json` in the agent's identity directory. At query time:
+
+1. Entity names from the query are matched against the graph.
+2. Matched entities become BFS seeds; the graph is traversed up to `bfs_max_depth` hops.
+3. Chunk IDs associated with visited entities and relations are collected.
+4. A separate FTS pass retrieves `ceil(max_chunks × fts_share)` additional passages.
+5. Results are merged, ranked (KG signal + FTS score), and trimmed to `max_chunks`.
+6. A knowledge graph context summary is prepended, listing seed entities and their top neighbours.
+7. If the graph is absent or no seeds match, the agent falls back to pure FTS.
+
+### Docs Agent Configuration
+
+```toml
+[agents.docs]
+docsdir = "docs/"           # source directory to import into the agent's document store
+index   = "index.md"        # fallback document when no search result is returned
+use_kg  = true              # enable KG+FTS retrieval (default: false)
+
+[agents.docs.kg]
+min_entity_mentions   = 2     # minimum occurrences for an entity to enter the graph
+bfs_max_depth         = 2     # hop limit from seed entities during graph traversal
+edge_weight_threshold = 0.15  # minimum relation weight to follow during BFS
+max_chunks            = 8     # total chunk budget in the assembled context
+fts_share             = 0.50  # fraction of max_chunks allocated to FTS results
+max_seeds             = 5     # maximum BFS seed entities per query
+```
+
+See [Knowledge Graph Doc Store](kg_docstore.md) and [Intelligent Doc Store](intelligent_doc_store.md) for full parameter reference and indexing details.
+
+---
+
+## Configuration Reference
+
+### Core Agent Settings
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.default` | string | `"basic_chat"` | Agent that handles messages with no explicit routing. Must be in `enabled` when `enabled` is non-empty. |
+| `agents.enabled` | array\<string\> | `[]` | Agent IDs that are reachable via routing. An empty list means all registered agents are reachable. Set explicitly to restrict. |
+| `agents.debug_logging` | bool | `false` | Write per-turn intermediate data to session KV for all agentic agents. Read via `GET /api/sessions/{id}/debug`. |
+
+### Routing
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.routing` | map\<string, string\> | `{}` | `channel_id → agent_id` overrides. Takes priority over the default agent. |
+
+### Per-Agent Settings
+
+These fields appear under `[agents.{id}]` sections:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.{id}.enabled` | bool | `true` | Set to `false` to disable this agent without removing its config section. |
+| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires. Example: `["basic_session"]`. |
+| `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke. Only listed tools appear in the instruction manifest. Agents without this field cannot call any bus tools. |
+
+### Agentic Chat Settings
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.agentic-chat.use_instruction_llm` | bool | `false` | Route the instruction pass through `llm/instruct`. Requires `[llm.instruction]` for a separate provider; falls back to the main provider otherwise. |
+
+### Docs Agent Settings
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.docs.docsdir` | string | none | Source directory to import into the agent's document store on startup. |
+| `agents.docs.index` | string | `"index.md"` | Fallback document path (relative to `docsdir`) when no search result is returned for a query. |
+| `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path. Requires the `ikgdocstore` Cargo feature. |
+| `agents.docs.kg.min_entity_mentions` | integer | `2` | Minimum mentions for an entity to be retained in the knowledge graph. |
+| `agents.docs.kg.bfs_max_depth` | integer | `2` | BFS hop limit from seed entities during graph traversal. |
+| `agents.docs.kg.edge_weight_threshold` | float | `0.15` | Minimum relation weight to follow during BFS. |
+| `agents.docs.kg.max_chunks` | integer | `8` | Total chunk budget in the assembled retrieval context. |
+| `agents.docs.kg.fts_share` | float | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
+| `agents.docs.kg.max_seeds` | integer | `5` | Maximum seed entities used for BFS per query. |
+
+### Runtime Command Agent Settings
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.runtime_cmd.runtime` | string | `"bash"` | Runtime environment name. Used as the working directory under the agent's identity area. |
+| `agents.runtime_cmd.command` | string | `"bash"` | Interpreter binary passed to `runtimes/exec`. |
+| `agents.runtime_cmd.setup_script` | string | none | Optional shell script run once to initialize the runtime environment. |
+
+### News Agent Settings
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.news.query.label` | string | none | Gmail label name to filter (e.g. `n/News`). |
+| `agents.news.query.n_last` | integer | none | Maximum number of recent emails to fetch. |
+| `agents.news.query.t_interval` | string | none | Recency window as a duration string (e.g. `1d`, `1mon`). |
+| `agents.news.query.tsec_last` | integer | none | Recency window in seconds (legacy fallback). |
+
+### Example Configuration
 
 ```toml
 [agents]
-default = "chat"
+default       = "chat"
+debug_logging = false
 
 [agents.routing]
-# pty0 = "echo"
+# pty0 = "echo"    # map a specific channel directly to an agent
 
 [agents.chat]
 memory = ["basic_session"]
-skills = ["gmail", "newsmail_aggregator"]  # bus tools this agent may invoke
+skills = []   # no bus tools for plain chat
+
+[agents.agentic-chat]
+memory              = ["basic_session"]
+skills              = ["gmail", "newsmail_aggregator"]
+use_instruction_llm = false
 
 [agents.docs]
-memory = ["basic_session"]
-# skills = []  # default: no bus tools, only local docs_search
+memory  = ["basic_session"]
+docsdir = "docs/"
+index   = "index.md"
+use_kg  = false
+
+[agents.runtime_cmd]
+runtime      = "node"
+command      = "node"
+setup_script = "npm init -y"
+
+[agents.news.query]
+label  = "n/News"
+n_last = 20
 ```
-
-## Docs Agent — RAG & KG-RAG
-
-The `docs` agent supports two retrieval paths, selected at runtime by the `use_kg` config flag:
-
-### Path 1 — FTS only (`use_kg = false`, default)
-
-Uses `IDocStore` (feature `idocstore`).  BM25 full-text search over indexed chunks returns the top-K passages which are injected into the LLM prompt.
-
-### Path 2 — KG+FTS (`use_kg = true`, requires feature `ikgdocstore`)
-
-Uses `IKGDocStore` (feature `ikgdocstore`).  At query time:
-
-1. Load `kg/graph.json` built by the last `rebuild_kg` call.
-2. Match entity names from the query against the graph.
-3. BFS-traverse from matched seeds up to `bfs_max_depth` hops.
-4. Collect chunk IDs from visited entities and relations.
-5. Also run FTS for `ceil(max_chunks × fts_share)` passages.
-6. Merge, rank (KG bonus + FTS bonus), trim to `max_chunks`.
-7. Prepend a `## Knowledge Graph Context` summary (seed entities + their top neighbours).
-8. Falls back to pure FTS if the graph is absent or no seeds match.
-
-### Docs agent config
-
-```toml
-[agents.docs]
-use_kg = true          # enable KG path (default: false)
-
-[agents.docs.kg]
-min_entity_mentions   = 2
-bfs_max_depth         = 2
-edge_weight_threshold = 0.15
-max_chunks            = 8
-fts_share             = 0.50
-max_seeds             = 5
-```
-
-See [kg_docstore.md](kg_docstore.md) for full parameter reference.
-
-### Future
-
-- **Embeddings / vector store** — semantic search alongside BM25 and KG for a three-signal ranking.
-- **Incremental KG update** — re-extract only changed/new chunks instead of full rebuild.
-- **Cross-agent queries** — shared KG across agents of the same identity group.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `agents.default` | string | `"chat"` | Which agent handles unrouted messages. |
-| `agents.routing` | map\<string,string\> | `{}` | Optional `channel_id → agent_id` routing overrides. |
-| `agents.debug_logging` | bool | `false` | Write per-turn intermediate data (`instruct_prompt`, `tool_calls_json`, `context`, etc.) to session KV store for all agentic agents. Read via `GET /api/sessions/{id}/debug`. |
-| `agents.{id}.enabled` | bool | `true` | Set to `false` to disable without removing the section. |
-| `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires (e.g. `["basic_session"]`). |
-| `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke (e.g. `["gmail", "newsmail_aggregator"]`). Only listed tools appear in the agent's instruction manifest. |
-| `agents.agentic-chat.use_instruction_llm` | bool | `false` | Route the instruction pass through `llm/instruct`. Requires `[llm.instruction]` for a separate SLM; falls back to the main provider otherwise. |
-| `agents.docs.path` | string | `docs/quick-intro.md` | Fallback Markdown file when KG is disabled. |
-| `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path via `IKGDocStore`. Requires feature `ikgdocstore`. |
-| `agents.docs.kg.min_entity_mentions` | usize | `2` | Minimum mentions for an entity to survive the KG filter. |
-| `agents.docs.kg.bfs_max_depth` | usize | `2` | BFS hop limit from seed entities. |
-| `agents.docs.kg.edge_weight_threshold` | f32 | `0.15` | Minimum edge weight to follow during BFS. |
-| `agents.docs.kg.max_chunks` | usize | `8` | Total chunk budget in the assembled context. |
-| `agents.docs.kg.fts_share` | f32 | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
-| `agents.docs.kg.max_seeds` | usize | `5` | Maximum seed entities used for BFS. |
