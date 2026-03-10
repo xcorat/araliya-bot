@@ -38,11 +38,17 @@ rendering all Mermaid blocks in this file to `docs/architecture/generated/`.
 ## Diagram Index
 
 1. [System Overview](#1-system-overview)
+   - 1a. [System Context (Process and Network Boundaries)](#1a-system-context-process-and-network-boundaries)
+   - 1b. [Internal Bus Topology](#1b-internal-bus-topology)
 2. [Bus Message Protocol](#2-bus-message-protocol)
 3. [Startup / Bootstrap Sequence](#3-startup--bootstrap-sequence)
 4. [Chat Workflow (end-to-end)](#4-chat-workflow-end-to-end)
 5. [Comms Subsystem and Channels](#5-comms-subsystem-and-channels)
+   - 5a. [Channel Architecture](#5a-channel-architecture)
+   - 5b. [HTTP API and UI Integration](#5b-http-api-and-ui-integration)
 6. [Memory System](#6-memory-system)
+   - 6a. [Runtime Memory Structures](#6a-runtime-memory-structures)
+   - 6b. [Disk Persistence Layout](#6b-disk-persistence-layout)
 7. [Identity Hierarchy](#7-identity-hierarchy)
 8. [Component Runtime and Fail-fast](#8-component-runtime-and-fail-fast)
 
@@ -50,54 +56,82 @@ rendering all Mermaid blocks in this file to `docs/architecture/generated/`.
 
 ## 1. System Overview
 
-High-level structure of the single-process supervisor model.  
-All subsystems run as Tokio tasks within one OS process and communicate
-**exclusively** through the Supervisor Bus (star topology).
+### 1a. System Context (Process and Network Boundaries)
+
+External view: the araliya-bot process as a whole, external actors, and the
+network boundaries it crosses. Solid arrows are in-process; dashed arrows cross
+the network boundary.
 
 ```mermaid
 graph TB
-    subgraph PROCESS["SUPERVISOR PROCESS"]
+    subgraph EXTERNAL["── External Network ──────────────────────────────"]
+        USER_PTY["User (stdin/stdout)"]
+        USER_HTTP["User / Browser"]
+        TG_APP["Telegram App"]
+        LLM_API["LLM API<br/>(OpenAI · Qwen · …)"]
+        GMAIL_API["Gmail API<br/>(OAuth 2.0)"]
+    end
+
+    subgraph PROCESS["── araliya-bot Process ───────────────────────────"]
+        COMMS["Comms<br/>PTY · HTTP · Telegram"]
+        CORE["Supervisor Bus<br/>+ Subsystems"]
+        LLM["LLM Subsystem"]
+        TOOLS["Tools Subsystem"]
+    end
+
+    USER_PTY   <-->|"stdin/stdout (text)"| COMMS
+    USER_HTTP  <-->|"HTTP REST / WebUI"| COMMS
+    TG_APP     <-.->|"Telegram API (HTTPS)"| COMMS
+    COMMS      --> CORE
+    CORE       --> LLM
+    CORE       --> TOOLS
+    LLM        -.->|"HTTPS completion API"| LLM_API
+    TOOLS      -.->|"HTTPS Gmail API"| GMAIL_API
+```
+
+### 1b. Internal Bus Topology
+
+Internal view: all subsystems within the process, connected via the star-topology
+Supervisor Bus. All subsystem-to-subsystem traffic flows through the bus hub.
+
+```mermaid
+graph TB
+    subgraph PROCESS["── SUPERVISOR PROCESS (single OS process) ───────────────────"]
         direction TB
 
-        subgraph CORE["Core (always on)"]
-            CFG["Config\n(TOML + env)"]
-            ID["Identity\n(ed25519 keypair)"]
-            LOG["Logger\n(tracing)"]
+        subgraph CORE["Core — always active"]
+            CFG["Config<br/>(TOML layers + env)"]
+            ID["Identity<br/>(ed25519 keypair)"]
+            LOG["Logger<br/>(tracing)"]
         end
 
-        subgraph BUS["Supervisor Bus  ·  star hub  ·  ~100–500 ns/hop"]
+        subgraph BUS["── Supervisor Bus  ·  star hub  ·  ~100–500 ns/hop ──"]
             direction LR
-            ROUTER["Typed Channel Router\n(prefix → BusHandler)"]
-            CTRL["Control Plane\n(health · status · tree)"]
+            ROUTER["Typed Channel Router<br/>(prefix → BusHandler)"]
+            CTRL["Control Plane<br/>(health · status · tree)"]
         end
 
-        subgraph SUBSYSTEMS["Subsystems  (feature-gated Cargo features)"]
-            COMMS["Comms\nPTY · HTTP · Telegram"]
-            AGENTS["Agents\necho · chat · docs · gmail · news"]
-            LLM["LLM\ndummy · OpenAI-compat · Qwen"]
-            MEM["Memory\nsessions · collections · docstore"]
-            TOOLS["Tools\nGmail · newsmail"]
-            CRON["Cron\ninterval · one-shot"]
-            UI["UI\nsvui (SvelteKit) · gpui"]
-            MGMT["Management\nhealth · status · component tree"]
+        subgraph SUBSYSTEMS["Subsystems  (feature-gated via Cargo features)"]
+            COMMS["Comms<br/>PTY · HTTP · Telegram"]
+            AGENTS["Agents<br/>echo · chat · docs · gmail · news"]
+            LLM["LLM<br/>dummy · OpenAI-compat · Qwen"]
+            MEM["Memory<br/>sessions · collections · docstore"]
+            TOOLS["Tools<br/>Gmail · newsmail"]
+            CRON["Cron<br/>interval · one-shot"]
+            UI["UI<br/>svui (SvelteKit) · gpui"]
+            MGMT["Management<br/>health · status · component tree"]
         end
 
         CORE --> BUS
-        COMMS <-->|bus messages| ROUTER
+        COMMS  <-->|bus messages| ROUTER
         AGENTS <-->|bus messages| ROUTER
-        LLM <-->|bus messages| ROUTER
-        MEM <-->|bus messages| ROUTER
-        TOOLS <-->|bus messages| ROUTER
-        CRON <-->|notifications| ROUTER
-        UI <-->|bus messages| ROUTER
-        MGMT <-->|control plane| CTRL
+        LLM    <-->|bus messages| ROUTER
+        MEM    <-->|bus messages| ROUTER
+        TOOLS  <-->|bus messages| ROUTER
+        CRON   <-->|notifications| ROUTER
+        UI     <-->|bus messages| ROUTER
+        MGMT   <-->|control plane| CTRL
     end
-
-    USER_PTY["User\n(stdin/stdout)"] <-->|text I/O| COMMS
-    USER_HTTP["User / Browser\n(HTTP client)"] <-->|REST + WebUI| COMMS
-    TG["Telegram\n(teloxide)"] <-->|Telegram API| COMMS
-    EXT_LLM["External LLM API\n(OpenAI · Qwen · …)"] <-->|HTTPS| LLM
-    EXT_GMAIL["Gmail API\n(OAuth)"] <-->|HTTPS| TOOLS
 ```
 
 ---
@@ -143,7 +177,7 @@ sequenceDiagram
     Note over Caller: does NOT await — notify() returns immediately
     Bus->>Sup: dequeue
     Sup->>Handler: handle_notification(method, payload)
-    Note over Sup,Handler: lossy under backpressure; no error propagation
+    Note over Sup,Handler: lossy under backpressure, no error propagation
 ```
 
 ### 2c. Method Grammar
@@ -151,12 +185,12 @@ sequenceDiagram
 ```mermaid
 graph LR
     M["method string"]
-    M --> S1["segment 0\n= subsystem prefix\n(dispatch key)"]
-    M --> S2["segment 1\n= component / action\n(optional)"]
-    M --> S3["segment 2\n= action\n(optional)"]
-    S1 -->|examples| EX1["agents\nllm\ncron\ntools\nmanage\nmemory\ncomms"]
-    S2 -->|examples| EX2["chat\necho\ncomplete\nschedule"]
-    S3 -->|examples| EX3["handle\nexecute"]
+    M --> S1["segment 0<br/>= subsystem prefix<br/>(dispatch key)"]
+    M --> S2["segment 1<br/>= component / action<br/>(optional)"]
+    M --> S3["segment 2<br/>= action<br/>(optional)"]
+    S1 -->|examples| EX1["agents<br/>llm<br/>cron<br/>tools<br/>manage<br/>memory<br/>comms"]
+    S2 -->|examples| EX2["chat<br/>echo<br/>complete<br/>schedule"]
+    S3 -->|examples| EX3["handle<br/>execute"]
 ```
 
 ### 2d. BusPayload Variants
@@ -338,41 +372,84 @@ sequenceDiagram
 The Comms subsystem provides all external I/O. Each channel is an independent
 Tokio task using a shared `CommsState` capability boundary.
 
+### 5a. Channel Architecture
+
+Channels and the `CommsState` capability surface. All user-facing I/O enters
+and exits the process through channels; the bus is the only communication path
+inward.
+
 ```mermaid
 graph TB
-    subgraph COMMS["CommsSubsystem  (feature: subsystem-comms)"]
-        CS["CommsState\n(Arc — shared by all channels)\n─────────────────────\nsend_message(ch_id, content, sess_id)\nmanagement_http_get()\nrequest_sessions()\nrequest_session_detail(id)"]
+    subgraph EXTERNAL["── External (user-facing) ────────────────────────"]
+        USER1["stdin / stdout"]
+        USER2["Browser / curl"]
+        USER3["Telegram App"]
+        SVUI["SvelteKit UI<br/>(frontend/svui, port 5173 dev)"]
+    end
 
+    subgraph COMMS["── CommsSubsystem  (feature: subsystem-comms) ──────"]
         subgraph CHANNELS["Channels  (each = Box<dyn Component>)"]
-            PTY["PTY Channel\npty0, pty1, …\n─────────\nstdin/stdout\nline-based I/O\nauto-disabled in daemon"]
-            HTTP["HTTP Channel\n─────────\nAxum server\nbind: 127.0.0.1:8080"]
-            VPTY["Virtual PTY\n─────────\nslash protocol\n/chat /health /status /exit"]
-            TG["Telegram Channel\n(feature: comms-telegram)\n─────────\nteloxide\nrequires TELEGRAM_BOT_TOKEN"]
+            PTY["PTY Channel<br/>id: pty0, pty1, …<br/>stdin/stdout, line-based<br/>auto-disabled in daemon mode"]
+            HTTP["HTTP Channel<br/>Axum server<br/>bind: 127.0.0.1:8080"]
+            VPTY["Virtual PTY<br/>slash protocol<br/>/chat /health /status /exit"]
+            TG["Telegram Channel<br/>(feature: comms-telegram)<br/>teloxide, requires TELEGRAM_BOT_TOKEN"]
         end
 
-        PTY --> CS
+        CS["CommsState  (Arc — shared by all channels)<br/>send_message(ch_id, content, sess_id)<br/>management_http_get()<br/>request_sessions()<br/>request_session_detail(id)"]
+
+        PTY  --> CS
         HTTP --> CS
         VPTY --> CS
-        TG --> CS
+        TG   --> CS
     end
 
-    CS -->|BusHandle::request| BUS["Supervisor Bus"]
-
-    subgraph HTTP_API["HTTP API Routes  (axum router)"]
-        R1["GET  /api/health\n→ JSON health snapshot"]
-        R2["POST /api/message\n→ forwards to agents\n← MessageResponse { text, session_id }"]
-        R3["GET  /api/sessions\n→ session list JSON"]
-        R4["GET  /api/session/{id}\n→ metadata + transcript"]
-        R5["GET  /api/tree\n→ component tree JSON"]
-        R6["GET  /\n→ welcome page or UI delegate"]
+    subgraph INTERNAL["── Internal ──────────────────────────────────────"]
+        BUS["Supervisor Bus"]
     end
 
-    HTTP --> HTTP_API
+    USER1 <-->|text I/O| PTY
+    USER2 <-->|HTTP| HTTP
+    USER3 <-.->|Telegram API| TG
+    SVUI  <-->|proxied via HTTP| HTTP
+    CS    -->|BusHandle::request| BUS
+```
 
-    USER1["stdin/stdout"] <--> PTY
-    USER2["Browser / curl"] <--> HTTP
-    USER3["Telegram App"] <--> TG
-    SVUI["SvelteKit UI\n(frontend/svui)\nport 5173 (dev)"] <-->|proxied| HTTP
+### 5b. HTTP API and UI Integration
+
+REST routes served by the Axum HTTP channel, and how the SvelteKit frontend
+integrates.
+
+```mermaid
+graph LR
+    subgraph CLIENT["── Clients ───────────────────"]
+        BR["Browser"]
+        CLI["curl / HTTP client"]
+        ACTL["araliya-ctl CLI"]
+    end
+
+    subgraph HTTP_CHANNEL["── HTTP Channel (Axum) ───────────────────────────────────"]
+        subgraph API["REST API  /api/…"]
+            R1["GET  /api/health<br/>JSON health snapshot<br/>(bot_id, llm, model, sessions)"]
+            R2["POST /api/message<br/>body: MessageRequest<br/>reply: MessageResponse<br/>{ text, session_id }"]
+            R3["GET  /api/sessions<br/>session list JSON"]
+            R4["GET  /api/session/{id}<br/>metadata + transcript"]
+            R5["GET  /api/tree<br/>component tree JSON"]
+        end
+        R6["GET  /<br/>welcome page or UI delegate"]
+    end
+
+    subgraph SVUI["── SvelteKit UI  (frontend/svui) ──"]
+        SV_DEV["dev server :5173<br/>(proxies /api to :8080)"]
+        SV_PROD["prod: served from<br/>HTTP channel static dir"]
+    end
+
+    BR   --> R6
+    BR   --> API
+    CLI  --> API
+    ACTL --> R1
+    ACTL --> R5
+    SV_DEV <-->|proxy /api| HTTP_CHANNEL
+    SV_PROD --> HTTP_CHANNEL
 ```
 
 ---
@@ -382,28 +459,33 @@ graph TB
 The Memory subsystem manages sessions, key-value working memory,
 transcript history, token spend, and optional document indexing.
 
+### 6a. Runtime Memory Structures
+
+API surface and in-process data structures. Dashed borders indicate
+feature-gated components.
+
 ```mermaid
 graph TB
-    subgraph MEM["MemorySystem  (feature: subsystem-memory)"]
+    subgraph MEM["── MemorySystem  (feature: subsystem-memory) ──────────────────"]
         direction TB
 
-        MS["MemorySystem\n─────────────────────────\ncreate_session(store_types, agent)\nload_session(session_id)\nlist_sessions()"]
+        MS["MemorySystem<br/>create_session(store_types, agent)<br/>load_session(session_id)<br/>list_sessions()"]
 
         subgraph SESS["Session (per conversation)"]
-            SH["SessionHandle\n─────────────────────────\nkv_get / kv_set\nappend_turn(role, content)\nget_transcript(last_n)\naccumulate_spend(usage, rates)\nget_spend()"]
-            KV["kv.json\n(capped k-v store\nmax kv_cap entries)"]
-            TR["transcript.md\n(role: content lines\nmax transcript_cap turns)"]
-            SP["spend.json\n(input_tokens, output_tokens\ncost_usd running totals)"]
+            SH["SessionHandle<br/>kv_get / kv_set<br/>append_turn(role, content)<br/>get_transcript(last_n)<br/>accumulate_spend(usage, rates)<br/>get_spend()"]
+            KV["kv  (capped k-v store<br/>max kv_cap entries)"]
+            TR["transcript  (role: content lines<br/>max transcript_cap turns)"]
+            SP["spend  (input_tokens, output_tokens<br/>cost_usd running totals)"]
         end
 
         subgraph STORES["Session Store Backends"]
-            TMP["TmpStore\n(in-memory, no disk)"]
-            BASIC["BasicSessionStore\n(~/.araliya/bot-pkey{id}/memory/\nsessions.json index)"]
+            TMP["TmpStore<br/>(in-memory, no disk)"]
+            BASIC["BasicSessionStore<br/>(persists to disk)"]
         end
 
-        subgraph DOCS["Document Stores  (feature-gated)"]
-            DS["DocStore\n(feature: idocstore)\n─────────────\nSQLite + FTS5\nBM25 search\nadd_doc, search_chunks"]
-            KGD["KG DocStore\n(feature: ikgdocstore)\n─────────────\nentity graph\nBFS from seeds\nedge weighting\nhybrid FTS + KG"]
+        subgraph DOCSTORES["Document Stores  (feature-gated)"]
+            DS["DocStore<br/>(feature: idocstore)<br/>SQLite + FTS5<br/>BM25 search, add_doc, search_chunks"]
+            KGD["KG DocStore<br/>(feature: ikgdocstore)<br/>entity graph, BFS from seeds<br/>edge weighting, hybrid FTS+KG"]
         end
 
         MS --> SH
@@ -415,22 +497,44 @@ graph TB
         MS --> DS
         MS --> KGD
     end
+```
 
-    subgraph DISK["Disk Layout  (~/.araliya/bot-pkey{id}/)"]
-        D1["sessions.json\n(index: id · created_at · types · spend)"]
-        D2["sessions/{uuid}/kv.json"]
-        D3["sessions/{uuid}/transcript.md"]
-        D4["sessions/{uuid}/spend.json"]
-        D5["agent/{name}-{id}/docstore/chunks.db"]
-        D6["agent/{name}-{id}/kgdocstore/\nentities.json · relations.json · graph.json"]
+### 6b. Disk Persistence Layout
+
+How `BasicSessionStore` and the document stores map to files on disk.
+The `TmpStore` backend writes nothing.
+
+```mermaid
+graph TB
+    subgraph DISK["── Disk  (~/.araliya/bot-pkey{id}/) ────────────────────────────"]
+        direction TB
+
+        subgraph SESSION_FILES["BasicSessionStore"]
+            D1["sessions.json<br/>(index: id · created_at · store_types · spend)"]
+            subgraph SESSION_DIR["sessions/{uuid}/"]
+                D2["kv.json"]
+                D3["transcript.md"]
+                D4["spend.json"]
+            end
+        end
+
+        subgraph AGENT_DOC_FILES["Document Stores  (per agent identity)"]
+            subgraph DOCSTORE_DIR["agent/{name}-{id}/docstore/"]
+                D5["chunks.db  (SQLite + FTS5)"]
+                D6["docs/{doc_id}.txt"]
+            end
+            subgraph KGDOC_DIR["agent/{name}-{id}/kgdocstore/"]
+                D7["entities.json"]
+                D8["relations.json"]
+                D9["graph.json"]
+            end
+        end
     end
 
-    BASIC --> D1
-    BASIC --> D2
-    BASIC --> D3
-    BASIC --> D4
-    DS --> D5
-    KGD --> D6
+    BASIC["BasicSessionStore"] --> D1
+    BASIC --> SESSION_DIR
+    DS["DocStore"] --> DOCSTORE_DIR
+    KGD["KG DocStore"] --> KGDOC_DIR
 ```
 
 ---
@@ -444,18 +548,18 @@ Each bot instance and each named agent has a persistent ed25519 keypair.
 graph TB
     subgraph ID_SETUP["identity::setup()"]
         SCAN["Scan work_dir for bot-pkey*/ directory"]
-        LOAD["Load & validate existing keypair"]
-        GEN["Generate new keypair → derive public_id"]
+        LOAD["Load and validate existing keypair"]
+        GEN["Generate new keypair<br/>derive public_id = SHA256(vk)[..8]"]
         SCAN -->|found| LOAD
         SCAN -->|not found| GEN
     end
 
-    subgraph FS["File System  (~/.araliya/)"]
-        BOT_DIR["bot-pkey{8-hex-id}/\n(mode 0700)"]
+    subgraph FS["── File System  (~/.araliya/) ───────────────────────────────────────"]
+        BOT_DIR["bot-pkey{8-hex-id}/<br/>(mode 0700)"]
 
         subgraph BOT_KEYS["Bot Identity"]
-            PRIV["id_ed25519\n(32-byte seed, mode 0600)"]
-            PUB["id_ed25519.pub\n(32-byte verifying key, mode 0644)"]
+            PRIV["id_ed25519<br/>(32-byte seed, mode 0600)"]
+            PUB["id_ed25519.pub<br/>(32-byte verifying key, mode 0644)"]
         end
 
         subgraph MEM_DIR["memory/"]
@@ -463,7 +567,7 @@ graph TB
             SESS_DATA["sessions/{uuid}/…"]
 
             subgraph AGENT_DIR["agent/{name}-{agent-id}/"]
-                A_PRIV["id_ed25519\n(agent signing key)"]
+                A_PRIV["id_ed25519<br/>(agent signing key)"]
                 A_PUB["id_ed25519.pub"]
 
                 subgraph SUBAGENT_DIR["subagents/{sub-name}-{sub-id}/"]
@@ -483,10 +587,10 @@ graph TB
 
     ID_SETUP --> FS
 
-    subgraph IDENTITY_STRUCT["Identity struct"]
-        F1["public_id: String\n(e.g. '5d16993c')"]
-        F2["identity_dir: PathBuf\n(~/.araliya/bot-pkey5d16993c/)"]
-        F3["signing_key (private)\nverifying_key (public)"]
+    subgraph IDENTITY_STRUCT["Identity struct (in-process)"]
+        F1["public_id: String<br/>(e.g. '5d16993c')"]
+        F2["identity_dir: PathBuf"]
+        F3["signing_key (private)<br/>verifying_key (public)"]
     end
 ```
 
@@ -499,18 +603,18 @@ graph TB
 
 ```mermaid
 flowchart TB
-    subgraph SPAWN["spawn_components(components, shutdown)"]
+    subgraph RUNTIME["── spawn_components(components, shutdown) ──────────────────"]
         direction TB
 
-        MGR["Manager Task\n(internal JoinSet)"]
+        MGR["Manager Task<br/>(internal JoinSet)"]
 
         subgraph TASKS["Tokio Tasks"]
-            C1["Component A\n(e.g. HTTP channel)\nrun(shutdown) → Result"]
-            C2["Component B\n(e.g. PTY channel)\nrun(shutdown) → Result"]
-            C3["Component C\n(e.g. Telegram)\nrun(shutdown) → Result"]
+            C1["Component A<br/>(e.g. HTTP channel)<br/>run(shutdown) → Result"]
+            C2["Component B<br/>(e.g. PTY channel)<br/>run(shutdown) → Result"]
+            C3["Component C<br/>(e.g. Telegram)<br/>run(shutdown) → Result"]
         end
 
-        SH["SubsystemHandle\n─────────────\njoin() → Result\nfrom_handle(JoinHandle)"]
+        SH["SubsystemHandle<br/>join() → Result<br/>from_handle(JoinHandle)"]
 
         MGR --> C1
         MGR --> C2
@@ -518,22 +622,22 @@ flowchart TB
         MGR --> SH
     end
 
-    TOKEN["CancellationToken\n(shared)"]
+    TOKEN["CancellationToken<br/>(shared shutdown signal)"]
 
-    C1 <-->|"watches shutdown.cancelled()"| TOKEN
-    C2 <-->|"watches shutdown.cancelled()"| TOKEN
-    C3 <-->|"watches shutdown.cancelled()"| TOKEN
+    C1 <-->|watches shutdown.cancelled| TOKEN
+    C2 <-->|watches shutdown.cancelled| TOKEN
+    C3 <-->|watches shutdown.cancelled| TOKEN
 
     FAIL["Component A returns Err(AppError)"]
-    CANCEL["token.cancel()\n→ signal siblings"]
+    CANCEL["token.cancel()<br/>signal siblings to stop"]
     C1 --> FAIL
     FAIL --> CANCEL
     CANCEL --> C2
     CANCEL --> C3
 
     subgraph COMPONENT_TRAIT["Component trait"]
-        TID["id() → &str\n(unique label for logging)"]
-        TRUN["run(self, shutdown) → ComponentFuture\n(Pin<Box<dyn Future<Output=Result<(),AppError>>>>)"]
+        TID["id() str<br/>(unique label for logging)"]
+        TRUN["run(self, shutdown) ComponentFuture"]
     end
 ```
 
