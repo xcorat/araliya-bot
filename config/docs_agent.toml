@@ -2,26 +2,72 @@
 base = "default.toml"
 
 [supervisor]
-bot_name = "docs-bot"
+bot_name = "docs-agent"
 work_dir = "~/araliya"
-log_level = "info"
+log_level = "debug"
 
 [comms.pty]
 enabled = true
 
+[comms.http]
+enabled = false
+
 [comms.axum_channel]
 enabled = true
-bind = "127.0.0.1:8080"
+bind = "0.0.0.0:8080"
 
 [comms.telegram]
-# Telegram channel — requires TELEGRAM_BOT_TOKEN env var.
-enabled = true
+enabled = false
 
 [agents]
-default = "docs"
+default = "agentic-chat"
 debug_logging = true
 
-[agents.docs]
+[agents.echo]
+enabled = false
+
+[agents.basic_chat]
+enabled = false
+
+[agents.chat]
+enabled = false
+
+[agents.agentic-chat]
 enabled = true
+memory = ["basic_session"]
+use_instruction_llm = true
 docsdir = "docs/"
 index = "index.md"
+use_kg = true
+
+[agents.docs]
+enabled = false
+
+[llm]
+default = "openai"
+
+[llm.instruction]
+provider = "qwen"
+
+[llm.qwen]
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 1800
+max_tokens = 8192
+input_per_million_usd = 0.0
+output_per_million_usd = 0.0
+cached_input_per_million_usd = 0.0
+
+[llm.openai]
+api_base_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-5-nano"
+temperature = 0.2
+timeout_seconds = 60
+input_per_million_usd = 0.05
+output_per_million_usd = 0.40
+cached_input_per_million_usd = 0.005
+
+[ui.svui]
+enabled = true
+static_dir = "frontend/build"
