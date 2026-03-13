@@ -25,6 +25,7 @@ pub fn build(config: &LlmConfig, api_key: Option<String>) -> Result<LlmProvider,
                 oai.temperature,
                 oai.timeout_seconds,
                 api_key,
+                oai.max_tokens,
             )?;
             Ok(LlmProvider::OpenAiCompatible(p))
         }
@@ -57,6 +58,7 @@ pub fn build(config: &LlmConfig, api_key: Option<String>) -> Result<LlmProvider,
                 q.temperature,
                 q.timeout_seconds,
                 api_key,
+                q.max_tokens,
             )?;
             Ok(LlmProvider::Qwen(p))
         }

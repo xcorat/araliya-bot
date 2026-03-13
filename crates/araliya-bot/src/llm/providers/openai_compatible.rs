@@ -45,6 +45,8 @@ pub struct OpenAiCompatibleProvider {
     temperature: f32,
     timeout_seconds: u64,
     api_key: Option<String>,
+    /// Maximum output tokens sent in every request.  0 means no explicit limit.
+    max_tokens: usize,
 }
 
 impl OpenAiCompatibleProvider {
@@ -58,6 +60,7 @@ impl OpenAiCompatibleProvider {
         temperature: f32,
         timeout_seconds: u64,
         api_key: Option<String>,
+        max_tokens: usize,
     ) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(timeout_seconds))
@@ -71,6 +74,7 @@ impl OpenAiCompatibleProvider {
             temperature,
             timeout_seconds,
             api_key,
+            max_tokens,
         })
     }
 
@@ -104,6 +108,7 @@ impl OpenAiCompatibleProvider {
         &self,
         content: &str,
         system: Option<&str>,
+        max_tokens_override: Option<usize>,
     ) -> Result<LlmResponse, ProviderError> {
         // Some models (gpt-5 family) do not accept a temperature parameter.
         let temperature = if self.model.starts_with("gpt-5") {
@@ -111,6 +116,12 @@ impl OpenAiCompatibleProvider {
         } else {
             Some(self.temperature)
         };
+
+        let effective_max_tokens = max_tokens_override.or(if self.max_tokens > 0 {
+            Some(self.max_tokens)
+        } else {
+            None
+        });
 
         let mut messages = Vec::new();
         if let Some(sys) = system {
@@ -128,6 +139,7 @@ impl OpenAiCompatibleProvider {
             model: self.model.clone(),
             messages,
             temperature,
+            max_tokens: effective_max_tokens.map(|m| m as u32),
         };
 
         debug!(
@@ -247,12 +259,19 @@ impl OpenAiCompatibleProvider {
         content: &str,
         system: Option<&str>,
         tx: mpsc::Sender<StreamChunk>,
+        max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
         let temperature = if self.model.starts_with("gpt-5") {
             None
         } else {
             Some(self.temperature)
         };
+
+        let effective_max_tokens = max_tokens_override.or(if self.max_tokens > 0 {
+            Some(self.max_tokens)
+        } else {
+            None
+        });
 
         let mut messages = Vec::new();
         if let Some(sys) = system {
@@ -272,6 +291,7 @@ impl OpenAiCompatibleProvider {
             temperature,
             stream: true,
             stream_options: Some(StreamOptions { include_usage: true }),
+            max_tokens: effective_max_tokens.map(|m| m as u32),
         };
 
         debug!(model = %payload.model, "sending streaming LLM request");
@@ -367,6 +387,8 @@ struct ChatCompletionRequest {
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -378,6 +400,8 @@ struct ChatCompletionStreamRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<StreamOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]

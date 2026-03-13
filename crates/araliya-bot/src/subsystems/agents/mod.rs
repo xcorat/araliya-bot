@@ -19,7 +19,7 @@ use crate::subsystems::agents::core::AgentRuntimeClass;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, DocsKgConfig, RuntimeCmdAgentConfig};
+use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, RuntimeCmdAgentConfig};
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -69,13 +69,9 @@ pub struct AgentsState {
     pub llm_rates: ModelRates,
     /// Default args JSON forwarded by the `news` agent to `newsmail_aggregator/get`.
     pub news_query_args_json: String,
-    /// Index document ID (relative path) that the docs agent falls back to
-    /// when no RAG search result is returned for a query.
-    pub docs_index_name: Option<String>,
-    /// Enable the KG-RAG pipeline in the docs agent.
-    pub docs_use_kg: bool,
-    /// KG tuning parameters forwarded to IKGDocStore.
-    pub docs_kg_config: DocsKgConfig,
+    /// Per-agent docstore configuration: agent_id → docs config.
+    /// Agents with `docsdir` set in config get an entry here.
+    pub agent_docs: HashMap<String, DocsAgentConfig>,
     /// Per-agent bus-tool allowlists: agent_id → tool names.
     /// Each agent only sees tools declared in its `skills` config.
     pub agent_skills: HashMap<String, Vec<String>>,
@@ -90,9 +86,7 @@ impl AgentsState {
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
         news_query_args_json: String,
-        docs_index_name: Option<String>,
-        docs_use_kg: bool,
-        docs_kg_config: DocsKgConfig,
+        agent_docs: HashMap<String, DocsAgentConfig>,
         agent_skills: HashMap<String, Vec<String>>,
         debug_logging: bool,
     ) -> Self {
@@ -103,9 +97,7 @@ impl AgentsState {
             agent_identities,
             llm_rates: ModelRates::default(),
             news_query_args_json,
-            docs_index_name,
-            docs_use_kg,
-            docs_kg_config,
+            agent_docs,
             agent_skills,
             debug_logging,
         }
@@ -426,9 +418,6 @@ pub struct AgentsSubsystem {
     default_agent: String,
     channel_map: HashMap<String, String>,
     enabled_agents: HashSet<String>,
-    /// Source directory for docs import (populated from config).
-    #[cfg(feature = "plugin-docs")]
-    docs_source_dir: Option<std::path::PathBuf>,
     reporter: Option<HealthReporter>,
 }
 
@@ -486,23 +475,7 @@ impl AgentsSubsystem {
             None => "{}".to_string(),
         };
 
-        #[cfg(feature = "plugin-docs")]
-        let docs_source_dir: Option<std::path::PathBuf> = config
-            .docs
-            .as_ref()
-            .and_then(|d| d.docsdir.as_deref())
-            .map(std::path::PathBuf::from);
-        let docs_index_name: Option<String> = config
-            .docs
-            .as_ref()
-            .filter(|d| d.docsdir.is_some())
-            .map(|d| d.index.clone().unwrap_or_else(|| "index.md".to_string()));
-        let docs_use_kg = config.docs.as_ref().map(|d| d.use_kg).unwrap_or(false);
-        let docs_kg_config = config
-            .docs
-            .as_ref()
-            .map(|d| d.kg.clone())
-            .unwrap_or_default();
+        let agent_docs = config.agent_docs;
 
         // Register all known built-in agents.
         //
@@ -626,9 +599,7 @@ impl AgentsSubsystem {
                 agent_memory,
                 agent_identities,
                 news_query_args_json,
-                docs_index_name,
-                docs_use_kg,
-                docs_kg_config,
+                agent_docs,
                 agent_skills,
                 config.debug_logging,
             )),
@@ -636,61 +607,73 @@ impl AgentsSubsystem {
             default_agent,
             channel_map: config.channel_map,
             enabled_agents,
-            #[cfg(feature = "plugin-docs")]
-            docs_source_dir,
             reporter: None,
         })
     }
 
-    /// Initialise the docs agent docstore by importing content from the configured
-    /// source directory.  Should be called once after construction, before the
-    /// subsystem receives any requests.  Safe to call from an async context.
+    /// Initialise docstores for all agents that have `docsdir` configured.
+    /// Should be called once after construction, before the subsystem receives
+    /// any requests.  Safe to call from an async context.
     ///
-    /// If no `docsdir` is configured this is a no-op.
+    /// If no agent has a `docsdir` configured this is a no-op.
     #[cfg(feature = "plugin-docs")]
     pub async fn init_docs(&self) -> Result<(), AppError> {
-        let source_dir = match &self.docs_source_dir {
-            Some(d) => d.clone(),
-            None => return Ok(()),
-        };
+        for (agent_id, docs_cfg) in &self.state.agent_docs {
+            let source_dir = match docs_cfg.docsdir.as_deref() {
+                Some(d) => std::path::PathBuf::from(d),
+                None => continue,
+            };
 
-        let identity = match self.state.agent_identities.get("docs") {
-            Some(id) => id.clone(),
-            None => {
-                tracing::warn!("init_docs: 'docs' agent identity not found; skipping import");
-                return Ok(());
-            }
-        };
+            let identity = match self.state.agent_identities.get(agent_id) {
+                Some(id) => id.clone(),
+                None => {
+                    tracing::warn!(
+                        "init_docs: agent '{}' identity not found; skipping import",
+                        agent_id
+                    );
+                    continue;
+                }
+            };
 
-        let index_name = self
-            .state
-            .docs_index_name
-            .clone()
-            .unwrap_or_else(|| "index.md".to_string());
-        let identity_dir = identity.identity_dir.clone();
-
-        #[cfg(feature = "ikgdocstore")]
-        let use_kg = self.state.docs_use_kg;
-        #[cfg(feature = "ikgdocstore")]
-        let kg_cfg = self.state.docs_kg_config.clone();
-
-        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-            docs_import::populate_docstore_from_source(&identity_dir, &source_dir, &index_name)?;
+            let index_name = docs_cfg
+                .index
+                .clone()
+                .unwrap_or_else(|| "index.md".to_string());
+            let identity_dir = identity.identity_dir.clone();
 
             #[cfg(feature = "ikgdocstore")]
-            if use_kg {
-                docs_import::populate_kgdocstore_from_source(
+            let use_kg = docs_cfg.use_kg;
+            #[cfg(feature = "ikgdocstore")]
+            let kg_cfg = docs_cfg.kg.clone();
+
+            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+                docs_import::populate_docstore_from_source(
                     &identity_dir,
                     &source_dir,
                     &index_name,
-                    &kg_cfg,
                 )?;
-            }
 
-            Ok(())
-        })
-        .await
-        .map_err(|e| AppError::Memory(format!("init_docs: spawn_blocking panicked: {e}")))?
+                #[cfg(feature = "ikgdocstore")]
+                if use_kg {
+                    docs_import::populate_kgdocstore_from_source(
+                        &identity_dir,
+                        &source_dir,
+                        &index_name,
+                        &kg_cfg,
+                    )?;
+                }
+
+                Ok(())
+            })
+            .await
+            .map_err(|e| {
+                AppError::Memory(format!(
+                    "init_docs({}): spawn_blocking panicked: {e}",
+                    agent_id
+                ))
+            })??;
+        }
+        Ok(())
     }
 
     /// Set the LLM pricing rates on the shared state.
@@ -1541,7 +1524,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1581,7 +1564,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1618,7 +1601,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1652,7 +1635,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1693,7 +1676,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1755,7 +1738,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1850,7 +1833,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1911,7 +1894,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -1952,7 +1935,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2059,12 +2042,15 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: Some(DocsAgentConfig {
-                docsdir: Some(docsdir),
-                index: Some("index.md".to_string()),
-                use_kg: false,
-                kg: DocsKgConfig::default(),
-            }),
+            agent_docs: HashMap::from([(
+                "docs".to_string(),
+                DocsAgentConfig {
+                    docsdir: Some(docsdir),
+                    index: Some("index.md".to_string()),
+                    use_kg: false,
+                    kg: crate::config::DocsKgConfig::default(),
+                },
+            )]),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2106,7 +2092,7 @@ mod tests {
             agent_skills: HashMap::new(),
             news_query: None,
             // No docsdir configured — docstore will remain empty.
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2140,7 +2126,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2173,7 +2159,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2196,7 +2182,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2280,7 +2266,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
@@ -2351,7 +2337,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
@@ -2439,7 +2425,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
@@ -2519,7 +2505,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: Some(RuntimeCmdAgentConfig {
                 runtime: "node".to_string(),
@@ -2572,7 +2558,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2595,7 +2581,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2621,7 +2607,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2647,7 +2633,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2673,7 +2659,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2699,7 +2685,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2726,7 +2712,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
@@ -2795,7 +2781,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
-            docs: None,
+            agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: Some(RuntimeCmdAgentConfig {
                 runtime: "node".to_string(),

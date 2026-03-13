@@ -250,7 +250,7 @@ impl BusHandler for LlmSubsystem {
                 debug!(%channel_id, "dispatching to instruction llm provider");
                 tokio::spawn(async move {
                     let result = provider
-                        .complete(&content, system.as_deref())
+                        .complete(&content, system.as_deref(), Some(1024))
                         .await
                         .map(|resp| {
                             let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));
@@ -295,7 +295,7 @@ impl BusHandler for LlmSubsystem {
                     }));
                     // Provider writes chunks to tx; when complete_stream() returns,
                     // tx is dropped and the receiver sees None.
-                    if let Err(e) = provider.complete_stream(&content, system.as_deref(), tx).await {
+                    if let Err(e) = provider.complete_stream(&content, system.as_deref(), tx, None).await {
                         warn!(error = %e, "streaming LLM provider error");
                     }
                 });
@@ -319,7 +319,7 @@ impl BusHandler for LlmSubsystem {
                 debug!(%method, %channel_id, "dispatching to llm provider");
                 tokio::spawn(async move {
                     let result = provider
-                        .complete(&content, system.as_deref())
+                        .complete(&content, system.as_deref(), None)
                         .await
                         .map(|resp| {
                             let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));

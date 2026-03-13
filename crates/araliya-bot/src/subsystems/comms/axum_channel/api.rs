@@ -160,7 +160,10 @@ pub(super) async fn message(
     }
 }
 
-/// POST /api/message/stream — SSE streaming completion (bypasses session history).
+/// POST /api/message/stream — SSE streaming completion routed through the agent pipeline.
+///
+/// The selected agent runs its full instruction + tool pipeline (buffered),
+/// then streams the final response pass as SSE events.
 ///
 /// Events emitted:
 /// - `event: thinking` / `data: {"delta": "..."}` — reasoning token delta
@@ -171,14 +174,25 @@ pub(super) async fn message_stream(
     Json(req): Json<MessageRequest>,
 ) -> Response {
     let channel_id = state.channel_id.to_string();
+    let session_id = req
+        .session_id
+        .as_deref()
+        .filter(|s| !s.is_empty() && *s != NO_SESSION_ID)
+        .map(ToString::to_string);
+
     let rx = match state
         .comms
-        .stream_direct(&channel_id, req.message, None)
+        .stream_via_agent(
+            &channel_id,
+            req.message,
+            session_id,
+            req.agent_id.clone(),
+        )
         .await
     {
         Ok(rx) => rx,
         Err(e) => {
-            warn!(%channel_id, "stream_direct failed: {e}");
+            warn!(%channel_id, "stream_via_agent failed: {e}");
             return (StatusCode::BAD_GATEWAY, json_error("internal", e)).into_response();
         }
     };

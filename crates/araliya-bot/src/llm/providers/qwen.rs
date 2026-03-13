@@ -21,6 +21,7 @@ impl QwenProvider {
         temperature: f32,
         timeout_seconds: u64,
         api_key: Option<String>,
+        max_tokens: usize,
     ) -> Result<Self, ProviderError> {
         let inner = OpenAiCompatibleProvider::new(
             api_base_url,
@@ -28,6 +29,7 @@ impl QwenProvider {
             temperature,
             timeout_seconds,
             api_key,
+            max_tokens,
         )?;
         Ok(Self { inner })
     }
@@ -36,8 +38,9 @@ impl QwenProvider {
         &self,
         content: &str,
         system: Option<&str>,
+        max_tokens_override: Option<usize>,
     ) -> Result<LlmResponse, ProviderError> {
-        self.inner.complete(content, system).await
+        self.inner.complete(content, system, max_tokens_override).await
     }
 
     pub async fn complete_stream(
@@ -45,8 +48,9 @@ impl QwenProvider {
         content: &str,
         system: Option<&str>,
         tx: mpsc::Sender<StreamChunk>,
+        max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
-        self.inner.complete_stream(content, system, tx).await
+        self.inner.complete_stream(content, system, tx, max_tokens_override).await
     }
 
     pub async fn ping(&self) -> Result<(), ProviderError> {
@@ -66,6 +70,7 @@ mod tests {
             0.2,
             5,
             None,
+            8192,
         );
         assert!(provider.is_ok());
     }

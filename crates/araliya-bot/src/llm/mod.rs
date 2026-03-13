@@ -97,11 +97,12 @@ impl LlmProvider {
         &self,
         content: &str,
         system: Option<&str>,
+        max_tokens_override: Option<usize>,
     ) -> Result<LlmResponse, ProviderError> {
         match self {
-            LlmProvider::Dummy(p) => p.complete(content, system).await,
-            LlmProvider::OpenAiCompatible(p) => p.complete(content, system).await,
-            LlmProvider::Qwen(p) => p.complete(content, system).await,
+            LlmProvider::Dummy(p) => p.complete(content, system, max_tokens_override).await,
+            LlmProvider::OpenAiCompatible(p) => p.complete(content, system, max_tokens_override).await,
+            LlmProvider::Qwen(p) => p.complete(content, system, max_tokens_override).await,
         }
     }
 
@@ -115,11 +116,12 @@ impl LlmProvider {
         content: &str,
         system: Option<&str>,
         tx: tokio::sync::mpsc::Sender<StreamChunk>,
+        max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
         match self {
-            LlmProvider::Dummy(p) => p.complete_stream(content, system, tx).await,
-            LlmProvider::OpenAiCompatible(p) => p.complete_stream(content, system, tx).await,
-            LlmProvider::Qwen(p) => p.complete_stream(content, system, tx).await,
+            LlmProvider::Dummy(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
+            LlmProvider::OpenAiCompatible(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
+            LlmProvider::Qwen(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
         }
     }
 

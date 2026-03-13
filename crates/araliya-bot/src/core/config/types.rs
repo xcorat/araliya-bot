@@ -111,6 +111,8 @@ pub struct OpenAiConfig {
     pub temperature: f32,
     /// Per-request HTTP timeout in seconds.
     pub timeout_seconds: u64,
+    /// Maximum output tokens (0 = no limit).
+    pub max_tokens: usize,
     /// Token pricing rates (USD per 1 million tokens).
     pub input_per_million_usd: f64,
     pub output_per_million_usd: f64,
@@ -265,8 +267,9 @@ pub struct AgentsConfig {
     pub agent_memory: HashMap<String, Vec<String>>,
     /// Optional default query args for the `news` agent.
     pub news_query: Option<NewsAgentQueryConfig>,
-    /// Optional configuration for the `docs` agent.
-    pub docs: Option<DocsAgentConfig>,
+    /// Per-agent docstore configuration: agent_id → docs config.
+    /// Any agent with `docsdir` set in its config section gets an entry here.
+    pub agent_docs: HashMap<String, DocsAgentConfig>,
     /// Optional configuration for the `agentic-chat` agent.
     pub agentic_chat: Option<AgenticChatConfig>,
     /// Optional configuration for the `runtime_cmd` agent.

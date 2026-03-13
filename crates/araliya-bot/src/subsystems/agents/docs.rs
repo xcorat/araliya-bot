@@ -35,13 +35,13 @@ const TOP_K: usize = 5;
 /// In-process RAG tool — performs BM25 or KG search against the docs docstore.
 ///
 /// Runs inside `tokio::task::spawn_blocking` (via [`AgenticLoop`]).
-struct DocsRagTool {
-    identity_dir: PathBuf,
-    index_name: String,
+pub(crate) struct DocsRagTool {
+    pub(crate) identity_dir: PathBuf,
+    pub(crate) index_name: String,
     #[cfg_attr(not(feature = "ikgdocstore"), allow(dead_code))]
-    use_kg: bool,
+    pub(crate) use_kg: bool,
     #[cfg_attr(not(feature = "ikgdocstore"), allow(dead_code))]
-    kg_cfg: DocsKgConfig,
+    pub(crate) kg_cfg: DocsKgConfig,
 }
 
 impl LocalTool for DocsRagTool {
@@ -122,6 +122,107 @@ impl LocalTool for DocsRagTool {
     }
 }
 
+// ── Shared setup ─────────────────────────────────────────────────────────────
+
+/// Validated setup for a docs agent request.  Returned by [`prepare_docs_loop`].
+struct DocsSetup {
+    query: String,
+    loop_: AgenticLoop,
+}
+
+/// Validate the request, resolve the docstore, and build the [`AgenticLoop`].
+///
+/// Returns `Err(BusResult)` on validation failures that should be sent back
+/// to the caller immediately.
+fn prepare_docs_loop(
+    action: &str,
+    content: String,
+    state: &AgentsState,
+) -> Result<DocsSetup, BusResult> {
+    // Action routing.
+    let query = if action == "ask" || action.is_empty() || action == "handle" {
+        content
+    } else {
+        return Err(Err(BusError::new(
+            ERR_METHOD_NOT_FOUND,
+            format!("unknown docs action: {action}"),
+        )));
+    };
+
+    if query.trim().is_empty() {
+        return Err(Err(BusError::new(
+            ERR_INTERNAL,
+            "empty query: please provide a question about the docs".to_string(),
+        )));
+    }
+
+    // Resolve agent identity directory for the docstore.
+    let identity_dir = match state.agent_identities.get("docs") {
+        Some(id) => id.identity_dir.clone(),
+        None => {
+            warn!("docs agent: identity not found");
+            return Err(Err(BusError::new(
+                ERR_INTERNAL,
+                "docs agent identity not found".to_string(),
+            )));
+        }
+    };
+
+    // Guard: reject queries when the docstore has no documents yet.
+    {
+        let store = match IDocStore::open(&identity_dir) {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(Err(BusError::new(
+                    ERR_INTERNAL,
+                    format!("docs docstore unavailable: {e}"),
+                )));
+            }
+        };
+        let empty = store.list_documents().map(|docs| docs.is_empty()).unwrap_or(true);
+        if empty {
+            return Err(Err(BusError::new(
+                ERR_INTERNAL,
+                "docs docstore is empty — import documents before querying".to_string(),
+            )));
+        }
+    }
+
+    let docs_cfg = state.agent_docs.get("docs");
+    let index_name = docs_cfg
+        .and_then(|d| d.index.clone())
+        .unwrap_or_else(|| "index.md".to_string());
+    let use_kg = docs_cfg.map(|d| d.use_kg).unwrap_or(false);
+    let kg_cfg = docs_cfg.map(|d| d.kg.clone()).unwrap_or_default();
+
+    let rag_tool: Arc<dyn LocalTool + Send + Sync> = Arc::new(DocsRagTool {
+        identity_dir,
+        index_name,
+        use_kg,
+        kg_cfg,
+    });
+
+    let allowed_tools = state
+        .agent_skills
+        .get("docs")
+        .cloned()
+        .unwrap_or_default();
+
+    let loop_ = AgenticLoop::new(
+        "docs",
+        false,
+        "docs_instruct.txt",
+        "docs_context.txt",
+        vec![],
+        vec![rag_tool],
+        allowed_tools,
+        "config/prompts",
+        state.debug_logging,
+    );
+
+    Ok(DocsSetup { query, loop_ })
+}
+
 // ── DocsAgentPlugin ───────────────────────────────────────────────────────────
 
 pub(crate) struct DocsAgentPlugin;
@@ -153,66 +254,43 @@ impl Agent for DocsAgentPlugin {
                 return;
             }
 
-            // Action routing.
-            let query = if action == "ask" || action.is_empty() || action == "handle" {
-                content
-            } else {
-                let _ = reply_tx.send(Err(BusError::new(
-                    ERR_METHOD_NOT_FOUND,
-                    format!("unknown docs action: {action}"),
-                )));
-                return;
-            };
-
-            if query.trim().is_empty() {
-                let _ = reply_tx.send(Err(BusError::new(
-                    ERR_INTERNAL,
-                    "empty query: please provide a question about the docs".to_string(),
-                )));
-                return;
-            }
-
-            // Resolve agent identity directory for the docstore.
-            let identity_dir = match state.agent_identities.get("docs") {
-                Some(id) => id.identity_dir.clone(),
-                None => {
-                    warn!("docs agent: identity not found");
-                    let _ = reply_tx.send(Err(BusError::new(
-                        ERR_INTERNAL,
-                        "docs agent identity not found".to_string(),
-                    )));
+            let setup = match prepare_docs_loop(&action, content, &state) {
+                Ok(s) => s,
+                Err(result) => {
+                    let _ = reply_tx.send(result);
                     return;
                 }
             };
 
-            let rag_tool: Arc<dyn LocalTool + Send + Sync> = Arc::new(DocsRagTool {
-                identity_dir,
-                index_name: state
-                    .docs_index_name
-                    .clone()
-                    .unwrap_or_else(|| "index.md".to_string()),
-                use_kg: state.docs_use_kg,
-                kg_cfg: state.docs_kg_config.clone(),
-            });
+            let result = setup
+                .loop_
+                .run(channel_id, setup.query, session_id, state)
+                .await;
+            let _ = reply_tx.send(result);
+        });
+    }
 
-            let allowed_tools = state
-                .agent_skills
-                .get("docs")
-                .cloned()
-                .unwrap_or_default();
+    fn handle_stream(
+        &self,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        reply_tx: oneshot::Sender<BusResult>,
+        state: Arc<AgentsState>,
+    ) {
+        tokio::spawn(async move {
+            let setup = match prepare_docs_loop("handle", content, &state) {
+                Ok(s) => s,
+                Err(result) => {
+                    let _ = reply_tx.send(result);
+                    return;
+                }
+            };
 
-            let loop_ = AgenticLoop::new(
-                "docs",
-                false,
-                "docs_instruct.txt",
-                "docs_context.txt",
-                vec![rag_tool],
-                allowed_tools,
-                "config/prompts",
-                state.debug_logging,
-            );
-
-            let result = loop_.run(channel_id, query, session_id, state).await;
+            let result = setup
+                .loop_
+                .run_stream(channel_id, setup.query, session_id, state)
+                .await;
             let _ = reply_tx.send(result);
         });
     }

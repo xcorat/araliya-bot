@@ -93,6 +93,42 @@ impl CommsState {
         }
     }
 
+    /// Stream a message through the agent pipeline.
+    ///
+    /// The selected agent runs its full instruction + tool pipeline (buffered)
+    /// and streams the final response pass.  Returns an `mpsc::Receiver`
+    /// that yields [`StreamChunk`] events for SSE delivery.
+    pub async fn stream_via_agent(
+        &self,
+        channel_id: &str,
+        content: String,
+        session_id: Option<String>,
+        agent_id: Option<String>,
+    ) -> Result<mpsc::Receiver<StreamChunk>, AppError> {
+        let method = match agent_id.as_deref() {
+            Some(agent) if !agent.trim().is_empty() => format!("agents/{agent}"),
+            _ => "agents".to_string(),
+        };
+        let payload = BusPayload::CommsStreamRequest {
+            channel_id: channel_id.to_string(),
+            content,
+            session_id,
+        };
+        match self.bus.request(method, payload).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agent stream error: {}",
+                e.message
+            ))),
+            Ok(Ok(BusPayload::LlmStreamResult {
+                rx: StreamReceiver(rx),
+            })) => Ok(rx),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected reply to agent stream request".to_string(),
+            )),
+        }
+    }
+
     /// Request a streaming LLM completion directly (bypasses agent session history).
     ///
     /// Returns a [`StreamReceiver`] whose inner `mpsc::Receiver<StreamChunk>` the

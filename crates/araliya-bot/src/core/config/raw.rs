@@ -139,6 +139,8 @@ pub(super) struct RawOpenAiConfig {
     #[serde(default = "default_openai_timeout_seconds")]
     pub timeout_seconds: u64,
     #[serde(default)]
+    pub max_tokens: usize,
+    #[serde(default)]
     pub input_per_million_usd: f64,
     #[serde(default)]
     pub output_per_million_usd: f64,
@@ -153,6 +155,7 @@ impl Default for RawOpenAiConfig {
             model: default_openai_model(),
             temperature: default_openai_temperature(),
             timeout_seconds: default_openai_timeout_seconds(),
+            max_tokens: 0,
             input_per_million_usd: 0.0,
             output_per_million_usd: 0.0,
             cached_input_per_million_usd: 0.0,

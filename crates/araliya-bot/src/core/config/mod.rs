@@ -47,7 +47,7 @@ impl Config {
                 agent_memory: std::collections::HashMap::new(),
                 agent_skills: std::collections::HashMap::new(),
                 news_query: None,
-                docs: None,
+                agent_docs: std::collections::HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,
                 debug_logging: false,
@@ -59,6 +59,7 @@ impl Config {
                     model: "test-model".into(),
                     temperature: 0.0,
                     timeout_seconds: 1,
+                    max_tokens: 0,
                     input_per_million_usd: 0.0,
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
@@ -150,7 +151,7 @@ index = "index.md"
 "#;
         let f = write_toml(toml);
         let cfg = load_from(f.path(), None, None).unwrap();
-        let docs = cfg.agents.docs.as_ref().unwrap();
+        let docs = cfg.agents.agent_docs.get("docs").unwrap();
         assert_eq!(docs.docsdir.as_deref(), Some("docs/"));
         assert_eq!(docs.index.as_deref(), Some("index.md"));
     }
@@ -174,7 +175,7 @@ index = "index.md"
         let f = write_toml(toml);
         let cfg = load_from(f.path(), None, None).unwrap();
         assert_eq!(cfg.agents.default_agent, "docs");
-        let docs = cfg.agents.docs.as_ref().unwrap();
+        let docs = cfg.agents.agent_docs.get("docs").unwrap();
         assert_eq!(docs.docsdir.as_deref(), Some("docs/guide/"));
         assert_eq!(docs.index.as_deref(), Some("index.md"));
     }

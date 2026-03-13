@@ -140,6 +140,16 @@ pub enum BusPayload {
     /// Reply to `cron/list`.
     CronListResult { entries: Vec<CronEntryInfo> },
 
+    /// A streaming message request routed through the agent pipeline.
+    ///
+    /// The agent runs its full instruction + tool pipeline and streams the
+    /// final response.  Returns `LlmStreamResult` on success.
+    CommsStreamRequest {
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+    },
+
     /// Reply to an `llm/stream` request: the caller reads chunks from `rx`.
     ///
     /// The receiver is in-process only and not serializable; see [`StreamReceiver`].

@@ -13,6 +13,7 @@ impl DummyProvider {
         &self,
         content: &str,
         _system: Option<&str>,
+        _max_tokens_override: Option<usize>,
     ) -> Result<LlmResponse, ProviderError> {
         Ok(LlmResponse {
             text: format!("[echo] {content}"),
@@ -26,6 +27,7 @@ impl DummyProvider {
         content: &str,
         _system: Option<&str>,
         tx: mpsc::Sender<StreamChunk>,
+        _max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
         let _ = tx.send(StreamChunk::Content(format!("[echo] {content}"))).await;
         let _ = tx.send(StreamChunk::Done(None)).await;
@@ -41,7 +43,7 @@ mod tests {
     async fn complete_prefixes_echo() {
         let p = DummyProvider;
         assert_eq!(
-            p.complete("hello", None).await.unwrap().text,
+            p.complete("hello", None, None).await.unwrap().text,
             "[echo] hello"
         );
     }
@@ -50,12 +52,12 @@ mod tests {
     async fn complete_empty_input() {
         let p = DummyProvider;
         // `_system` param is intentionally unused
-        assert_eq!(p.complete("", None).await.unwrap().text, "[echo] ");
+        assert_eq!(p.complete("", None, None).await.unwrap().text, "[echo] ");
     }
 
     #[tokio::test]
     async fn complete_usage_is_none() {
         let p = DummyProvider;
-        assert!(p.complete("test", None).await.unwrap().usage.is_none());
+        assert!(p.complete("test", None, None).await.unwrap().usage.is_none());
     }
 }

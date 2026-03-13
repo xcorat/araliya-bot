@@ -2,7 +2,8 @@
 //!
 //! [`AgenticLoop`] is the composable building block for multi-pass agent plugins.
 //! Plugins create an `AgenticLoop`, register any in-process [`LocalTool`]s, and call
-//! [`AgenticLoop::run`] from within `tokio::spawn`.
+//! [`AgenticLoop::run`] (buffered) or [`AgenticLoop::run_stream`] (SSE-streaming)
+//! from within `tokio::spawn`.
 //!
 //! ## Local tools vs bus tools
 //!
@@ -14,11 +15,13 @@
 use std::sync::Arc;
 
 use serde::Deserialize;
+use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::error::AppError;
+use crate::llm::StreamChunk;
 use crate::subsystems::memory::handle::SessionHandle;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult};
+use crate::supervisor::bus::{BusError, BusPayload, BusResult, StreamReceiver};
 
 use crate::subsystems::agents::AgentsState;
 use super::prompt::{preamble, PromptBuilder};
@@ -62,6 +65,41 @@ struct ToolCall {
     params: serde_json::Value,
 }
 
+/// Parsed result from the instruction pass.
+struct InstructionResponse {
+    tool_calls: Vec<ToolCall>,
+    /// Direct reply from the instruction pass — skip the response-pass LLM call
+    /// when this is `Some` and `tool_calls` is empty.
+    reply: Option<String>,
+}
+
+// ── PreparedTurn ──────────────────────────────────────────────────────────────
+
+/// Intermediate state after running steps 1–5 of the agentic loop
+/// (session, history, instruction pass, tool execution).
+///
+/// Both [`AgenticLoop::run`] and [`AgenticLoop::run_stream`] use this to
+/// avoid duplicating the instruction + tool pipeline.
+struct PreparedTurn {
+    handle: SessionHandle,
+    channel_id: String,
+    /// Assembled system preamble for the response pass.
+    system: String,
+    /// Fully-rendered response-pass prompt (context + history + user input).
+    response_prompt: String,
+    debug_n: usize,
+}
+
+/// Result of [`AgenticLoop::prepare_turn`].
+///
+/// `EarlyReply` means the instruction pass returned a direct answer with no
+/// tool calls — the caller can short-circuit instead of entering the response
+/// pass.
+enum TurnOutcome {
+    Ready(PreparedTurn),
+    EarlyReply(BusResult),
+}
+
 // ── AgenticLoop ───────────────────────────────────────────────────────────────
 
 /// Composable agentic loop shared by multiple agent plugins.
@@ -78,7 +116,13 @@ pub(crate) struct AgenticLoop {
     use_instruction_llm: bool,
     instruct_prompt_file: String,
     context_prompt_file: String,
+    /// Action tools: external capabilities (e.g. gmail, news).
+    /// Shown under `Available tools:` in the instruction-pass prompt.
     local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
+    /// Memory tools: agent knowledge stores (e.g. docs_search).
+    /// Shown under `Available memory:` in the instruction-pass prompt.
+    /// Dispatched via the same `LocalTool::call()` mechanism as `local_tools`.
+    memory_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
     /// Bus tools this agent is allowed to invoke (from config `skills`).
     /// Only these appear in the instruction-pass tool manifest.
     allowed_tools: Vec<String>,
@@ -95,6 +139,7 @@ impl AgenticLoop {
         instruct_prompt_file: impl Into<String>,
         context_prompt_file: impl Into<String>,
         local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
+        memory_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
         allowed_tools: Vec<String>,
         prompts_dir: impl Into<String>,
         debug_logging: bool,
@@ -105,13 +150,16 @@ impl AgenticLoop {
             instruct_prompt_file: instruct_prompt_file.into(),
             context_prompt_file: context_prompt_file.into(),
             local_tools,
+            memory_tools,
             allowed_tools,
             prompts_dir: prompts_dir.into(),
             debug_logging,
         }
     }
 
-    /// Run the full agentic loop for a single request.
+    // ── Public entry points ──────────────────────────────────────────────
+
+    /// Run the full agentic loop for a single request (buffered response).
     ///
     /// Call this from inside `tokio::spawn(async move { ... })` in the
     /// agent's `handle` method.
@@ -122,10 +170,144 @@ impl AgenticLoop {
         session_id: Option<String>,
         state: Arc<AgentsState>,
     ) -> BusResult {
+        let turn = match self
+            .prepare_turn(channel_id, content.clone(), session_id, &state)
+            .await
+        {
+            TurnOutcome::EarlyReply(result) => return result,
+            TurnOutcome::Ready(t) => t,
+        };
+
+        // ── Response pass (buffered) ────────────────────────────────
+        let result = state
+            .complete_via_llm_with_system(
+                &turn.channel_id,
+                &turn.response_prompt,
+                Some(&turn.system),
+            )
+            .await;
+
+        // ── Persist reply + spend ───────────────────────────────────
+        if let Ok(BusPayload::CommsMessage {
+            content: ref reply,
+            ref usage,
+            ..
+        }) = result
+        {
+            if let Err(e) = turn.handle.transcript_append("assistant", reply).await {
+                warn!("{}: transcript_append(assistant) failed: {e}", self.agent_id);
+            }
+            if let Some(u) = usage
+                && let Err(e) = turn.handle.accumulate_spend(u, &state.llm_rates).await
+            {
+                warn!("{}: accumulate_spend failed: {e}", self.agent_id);
+            }
+        }
+
+        // ── Attach session_id and return ────────────────────────────
+        match result {
+            Ok(BusPayload::CommsMessage {
+                channel_id,
+                content,
+                usage,
+                thinking,
+                ..
+            }) => Ok(BusPayload::CommsMessage {
+                channel_id,
+                content,
+                session_id: Some(turn.handle.session_id.clone()),
+                usage,
+                thinking,
+            }),
+            other => other,
+        }
+    }
+
+    /// Run the agentic loop with a **streaming** response pass.
+    ///
+    /// Steps 1–5 (session, instruction pass, tools) are buffered.  The
+    /// response pass streams via `llm/stream` and returns a
+    /// `BusPayload::LlmStreamResult` whose receiver the caller forwards
+    /// as SSE events.
+    ///
+    /// Transcript persistence and spend accounting happen asynchronously
+    /// in a background tee-task after the stream completes.
+    pub(crate) async fn run_stream(
+        &self,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        state: Arc<AgentsState>,
+    ) -> BusResult {
+        let turn = match self
+            .prepare_turn(channel_id, content.clone(), session_id, &state)
+            .await
+        {
+            TurnOutcome::EarlyReply(result) => {
+                // Wrap buffered early-reply into a synthetic stream so the
+                // caller always gets a uniform LlmStreamResult.
+                return Self::wrap_as_stream(result);
+            }
+            TurnOutcome::Ready(t) => t,
+        };
+
+        // ── Streaming response pass ─────────────────────────────────
+        let llm_rx = match state
+            .stream_via_llm_with_system(
+                &turn.channel_id,
+                &turn.response_prompt,
+                Some(&turn.system),
+            )
+            .await
+        {
+            Ok(rx) => rx,
+            Err(e) => return Err(e),
+        };
+
+        // ── Tee task: forward chunks + deferred persistence ─────────
+        let (fwd_tx, fwd_rx) = mpsc::channel::<StreamChunk>(64);
+
+        let agent_id = self.agent_id.clone();
+        let llm_rates = state.llm_rates.clone();
+        let debug_logging = self.debug_logging;
+        let debug_n = turn.debug_n;
+        let handle = turn.handle;
+
+        tokio::spawn(async move {
+            tee_and_persist(
+                llm_rx, fwd_tx, handle, agent_id, llm_rates, debug_logging, debug_n,
+            )
+            .await;
+        });
+
+        Ok(BusPayload::LlmStreamResult {
+            rx: StreamReceiver(fwd_rx),
+        })
+    }
+
+    // ── Shared preparation (steps 1–5) ──────────────────────────────────
+
+    /// Run steps 1–5: session, history, instruction pass, parse, tool execution.
+    ///
+    /// Returns [`TurnOutcome::Ready`] with the prepared context or
+    /// [`TurnOutcome::EarlyReply`] when the instruction pass short-circuits
+    /// with a direct reply.
+    async fn prepare_turn(
+        &self,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        state: &Arc<AgentsState>,
+    ) -> TurnOutcome {
         // ── 1. Session ────────────────────────────────────────────────
-        let handle = match self.load_or_create_session(&state, session_id.as_deref()) {
+        let handle = match self.load_or_create_session(state, session_id.as_deref()) {
             Ok(h) => h,
-            Err(e) => return Err(BusError::new(-32000, format!("session error: {e}"))),
+            Err(e) => {
+                return TurnOutcome::EarlyReply(Err(BusError::new(
+                    -32000,
+                    format!("session error: {e}"),
+                )));
+            }
         };
 
         if let Err(e) = handle.transcript_append("user", &content).await {
@@ -161,10 +343,12 @@ impl AgenticLoop {
 
         // ── 3. Instruction pass ───────────────────────────────────────
         let tool_manifest = self.build_tool_manifest(&self.allowed_tools);
+        let memory_manifest = self.build_memory_manifest();
 
         let instruct_prompt = PromptBuilder::new(&self.prompts_dir)
             .layer(&self.instruct_prompt_file)
             .var("tools", &tool_manifest)
+            .var("memory", &memory_manifest)
             .var("user_input", &content)
             .build();
 
@@ -220,14 +404,15 @@ impl AgenticLoop {
             }
         }
 
-        // ── 4. Parse tool calls ───────────────────────────────────────
-        let tool_calls = parse_tool_calls(&instruction_text);
+        // ── 4. Parse instruction response ─────────────────────────────
+        let InstructionResponse { tool_calls, reply: early_reply } =
+            parse_instruction_response(&instruction_text);
+
         if tool_calls.is_empty() {
             tracing::debug!("{}: no tool calls from instruction pass", self.agent_id);
         }
 
         if self.debug_logging {
-            // instruction_text is already the raw JSON string from the LLM
             if let Err(e) = handle
                 .kv_set(
                     &format!("debug:turn:{debug_n}:tool_calls_json"),
@@ -239,6 +424,26 @@ impl AgenticLoop {
             }
         }
 
+        // Early return: instruction pass provided a direct reply and no tools.
+        if let Some(reply_text) = early_reply {
+            if tool_calls.is_empty() {
+                tracing::debug!(
+                    "{}: instruction pass returned direct reply — skipping response pass",
+                    self.agent_id
+                );
+                if let Err(e) = handle.transcript_append("assistant", &reply_text).await {
+                    warn!("{}: transcript_append(assistant) failed: {e}", self.agent_id);
+                }
+                return TurnOutcome::EarlyReply(Ok(BusPayload::CommsMessage {
+                    channel_id,
+                    content: reply_text,
+                    session_id: Some(handle.session_id.clone()),
+                    usage: None,
+                    thinking: None,
+                }));
+            }
+        }
+
         // ── 5. Execute tools ──────────────────────────────────────────
         let mut context_parts: Vec<String> = Vec::new();
         let mut debug_tool_outputs: Vec<serde_json::Value> = Vec::new();
@@ -247,11 +452,14 @@ impl AgenticLoop {
             let tool_name = call.tool.clone();
             let action_name = call.action.clone();
 
-            // Local tools (in-process, blocking) — checked first.
-            if let Some(local) = self
-                .local_tools
+            // Memory tools and local tools (in-process, blocking) — checked first.
+            // Memory tools take priority; local tools are checked second.
+            let in_process = self
+                .memory_tools
                 .iter()
-                .find(|t| t.name() == tool_name.as_str())
+                .chain(self.local_tools.iter())
+                .find(|t| t.name() == tool_name.as_str());
+            if let Some(local) = in_process
             {
                 let tool = Arc::clone(local);
                 let params = call.params.clone();
@@ -365,7 +573,7 @@ impl AgenticLoop {
             }
         }
 
-        // ── 6. Response pass ──────────────────────────────────────────
+        // ── Build response-pass prompt ────────────────────────────────
         let system = preamble(&self.prompts_dir, &self.allowed_tools).build();
 
         let context_ref = if context.is_empty() {
@@ -393,47 +601,35 @@ impl AgenticLoop {
             }
         }
 
-        let result = state
-            .complete_via_llm_with_system(&channel_id, &response_prompt, Some(&system))
-            .await;
-
-        // ── 7. Persist reply + spend ──────────────────────────────────
-        if let Ok(BusPayload::CommsMessage {
-            content: ref reply,
-            ref usage,
-            ..
-        }) = result
-        {
-            if let Err(e) = handle.transcript_append("assistant", reply).await {
-                warn!("{}: transcript_append(assistant) failed: {e}", self.agent_id);
-            }
-            if let Some(u) = usage
-                && let Err(e) = handle.accumulate_spend(u, &state.llm_rates).await
-            {
-                warn!("{}: accumulate_spend failed: {e}", self.agent_id);
-            }
-        }
-
-        // ── 8. Attach session_id and return ──────────────────────────
-        match result {
-            Ok(BusPayload::CommsMessage {
-                channel_id,
-                content,
-                usage,
-                thinking,
-                ..
-            }) => Ok(BusPayload::CommsMessage {
-                channel_id,
-                content,
-                session_id: Some(handle.session_id.clone()),
-                usage,
-                thinking,
-            }),
-            other => other,
-        }
+        TurnOutcome::Ready(PreparedTurn {
+            handle,
+            channel_id,
+            system,
+            response_prompt,
+            debug_n,
+        })
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// Wrap a buffered `BusResult` into a synthetic `LlmStreamResult` so
+    /// streaming callers always get a uniform return type.
+    fn wrap_as_stream(result: BusResult) -> BusResult {
+        match result {
+            Ok(BusPayload::CommsMessage { content, .. }) => {
+                let (tx, rx) = mpsc::channel::<StreamChunk>(2);
+                tokio::spawn(async move {
+                    let _ = tx.send(StreamChunk::Content(content)).await;
+                    let _ = tx.send(StreamChunk::Done(None)).await;
+                });
+                Ok(BusPayload::LlmStreamResult {
+                    rx: StreamReceiver(rx),
+                })
+            }
+            Err(e) => Err(e),
+            other => other,
+        }
+    }
 
     fn load_or_create_session(
         &self,
@@ -486,6 +682,17 @@ impl AgenticLoop {
         }
     }
 
+    fn build_memory_manifest(&self) -> String {
+        if self.memory_tools.is_empty() {
+            return "No memory available.".to_string();
+        }
+        self.memory_tools
+            .iter()
+            .map(|t| format!("- tool: \"{}\", {}", t.name(), t.description()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn build_tool_manifest(&self, bus_tools: &[String]) -> String {
         let mut lines: Vec<String> = Vec::new();
 
@@ -521,6 +728,63 @@ impl AgenticLoop {
     }
 }
 
+// ── Tee task ─────────────────────────────────────────────────────────────────
+
+/// Forward chunks from the LLM stream to the browser while buffering the full
+/// response text.  On [`StreamChunk::Done`], persist the transcript and
+/// accumulate spend.
+///
+/// If the browser disconnects (`fwd_tx` send fails), the task continues
+/// draining the LLM stream to ensure the full response is still persisted.
+async fn tee_and_persist(
+    mut llm_rx: mpsc::Receiver<StreamChunk>,
+    fwd_tx: mpsc::Sender<StreamChunk>,
+    handle: SessionHandle,
+    agent_id: String,
+    llm_rates: crate::llm::ModelRates,
+    debug_logging: bool,
+    debug_n: usize,
+) {
+    let mut content_buf = String::new();
+    let mut browser_alive = true;
+
+    while let Some(chunk) = llm_rx.recv().await {
+        match &chunk {
+            StreamChunk::Content(delta) => content_buf.push_str(delta),
+            StreamChunk::Thinking(_) => { /* forward only */ }
+            StreamChunk::Done(usage) => {
+                // Persist transcript.
+                if !content_buf.is_empty() {
+                    if let Err(e) = handle.transcript_append("assistant", &content_buf).await {
+                        warn!("{agent_id}: transcript_append(assistant) failed: {e}");
+                    }
+                }
+                // Accumulate spend.
+                if let Some(u) = usage {
+                    if let Err(e) = handle.accumulate_spend(u, &llm_rates).await {
+                        warn!("{agent_id}: accumulate_spend failed: {e}");
+                    }
+                }
+                // Debug: record final response.
+                if debug_logging {
+                    if let Err(e) = handle
+                        .kv_set(&format!("debug:turn:{debug_n}:response"), &content_buf)
+                        .await
+                    {
+                        warn!("{agent_id}: debug kv_set response: {e}");
+                    }
+                }
+            }
+        }
+
+        // Forward chunk to the browser-bound channel.
+        if browser_alive && fwd_tx.send(chunk).await.is_err() {
+            // Browser disconnected — keep draining to persist the full response.
+            browser_alive = false;
+        }
+    }
+}
+
 // ── Shared helpers (pub(crate) for use in plugin tests) ──────────────────────
 
 /// Extract the text content from a `BusPayload::CommsMessage` result.
@@ -535,11 +799,18 @@ fn extract_text(result: BusResult) -> Result<String, BusError> {
     }
 }
 
-/// Parse a JSON array of tool calls from the instruction LLM response.
+/// Parse the instruction LLM response into tool calls and an optional direct reply.
 ///
-/// Strips markdown code fences if present.  Returns an empty vec on any parse
-/// failure so the response pass still runs (graceful degradation).
-fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
+/// Handles two formats (strips markdown code fences if present):
+///
+/// 1. **New object format** `{"tools": [...], "reply": "..."}` — the model can
+///    optionally include a direct reply when no tools are needed, eliminating
+///    the second LLM call for simple questions.
+/// 2. **Legacy array format** `[{"tool": "...", ...}]` — backward-compatible.
+///
+/// Returns an empty tool list and `None` reply on any parse failure so the
+/// response pass still runs (graceful degradation).
+fn parse_instruction_response(text: &str) -> InstructionResponse {
     let trimmed = text.trim();
 
     // Strip ```json ... ``` or ``` ... ``` fences.
@@ -552,16 +823,48 @@ fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
         trimmed
     };
 
-    // Find the outermost `[...]` array.
+    // Determine format by the first non-whitespace character.
+    let first_char = json_text.chars().find(|c| !c.is_whitespace());
+
+    if first_char == Some('{') {
+        // New object format `{"tools": [...], "reply": "..."}`.
+        if let Some(start) = json_text.find('{')
+            && let Some(end) = json_text.rfind('}')
+            && end >= start
+        {
+            let slice = &json_text[start..=end];
+            #[derive(Deserialize)]
+            struct InstructWrapper {
+                #[serde(default)]
+                tools: Vec<ToolCall>,
+                reply: Option<String>,
+            }
+            if let Ok(wrapper) = serde_json::from_str::<InstructWrapper>(slice) {
+                let reply = wrapper.reply.and_then(|r| {
+                    let r = r.trim().to_string();
+                    if r.is_empty() { None } else { Some(r) }
+                });
+                return InstructionResponse { tool_calls: wrapper.tools, reply };
+            }
+        }
+    }
+
+    // Legacy `[...]` array format (or fallback).
     if let Some(start) = json_text.find('[')
         && let Some(end) = json_text.rfind(']')
         && end >= start
     {
         let slice = &json_text[start..=end];
-        return serde_json::from_str(slice).unwrap_or_default();
+        if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(slice) {
+            return InstructionResponse { tool_calls: calls, reply: None };
+        }
     }
 
-    serde_json::from_str(json_text).unwrap_or_default()
+    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(json_text) {
+        return InstructionResponse { tool_calls: calls, reply: None };
+    }
+
+    InstructionResponse { tool_calls: Vec::new(), reply: None }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -570,30 +873,69 @@ fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
 mod tests {
     use super::*;
 
+    // ── parse_instruction_response: new object format ─────────────────
+
     #[test]
-    fn parse_tool_calls_empty_array() {
-        assert!(parse_tool_calls("[]").is_empty());
+    fn parse_instr_object_with_reply_no_tools() {
+        let json = r#"{"tools": [], "reply": "Hello!"}"#;
+        let r = parse_instruction_response(json);
+        assert!(r.tool_calls.is_empty());
+        assert_eq!(r.reply.as_deref(), Some("Hello!"));
     }
 
     #[test]
-    fn parse_tool_calls_valid() {
+    fn parse_instr_object_with_tools_null_reply() {
+        let json = r#"{"tools": [{"tool":"gmail","action":"read_latest","params":{"n":5}}], "reply": null}"#;
+        let r = parse_instruction_response(json);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].tool, "gmail");
+        assert!(r.reply.is_none());
+    }
+
+    #[test]
+    fn parse_instr_object_empty_reply_treated_as_none() {
+        let json = r#"{"tools": [], "reply": "   "}"#;
+        let r = parse_instruction_response(json);
+        assert!(r.reply.is_none());
+    }
+
+    #[test]
+    fn parse_instr_object_with_fence() {
+        let text = "```json\n{\"tools\": [], \"reply\": \"Hi\"}\n```";
+        let r = parse_instruction_response(text);
+        assert_eq!(r.reply.as_deref(), Some("Hi"));
+    }
+
+    // ── parse_instruction_response: legacy array format ───────────────
+
+    #[test]
+    fn parse_instr_legacy_empty_array() {
+        let r = parse_instruction_response("[]");
+        assert!(r.tool_calls.is_empty());
+        assert!(r.reply.is_none());
+    }
+
+    #[test]
+    fn parse_instr_legacy_valid() {
         let json = r#"[{"tool":"gmail","action":"read_latest","params":{"n":5}}]"#;
-        let calls = parse_tool_calls(json);
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].tool, "gmail");
-        assert_eq!(calls[0].action, "read_latest");
+        let r = parse_instruction_response(json);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].action, "read_latest");
+        assert!(r.reply.is_none());
     }
 
     #[test]
-    fn parse_tool_calls_with_fence() {
+    fn parse_instr_legacy_with_fence() {
         let text = "```json\n[{\"tool\":\"gmail\",\"action\":\"read_latest\"}]\n```";
-        let calls = parse_tool_calls(text);
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].tool, "gmail");
+        let r = parse_instruction_response(text);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].tool, "gmail");
     }
 
     #[test]
-    fn parse_tool_calls_invalid_graceful() {
-        assert!(parse_tool_calls("not json at all").is_empty());
+    fn parse_instr_invalid_graceful() {
+        let r = parse_instruction_response("not json at all");
+        assert!(r.tool_calls.is_empty());
+        assert!(r.reply.is_none());
     }
 }

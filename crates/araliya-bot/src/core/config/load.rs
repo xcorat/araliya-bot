@@ -121,7 +121,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agent_memory: HashMap::new(),
                 agent_skills: HashMap::new(),
                 news_query: None,
-                docs: None,
+                agent_docs: HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,
                 debug_logging: false,
@@ -133,6 +133,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                     model: "gpt-4o-mini".to_string(),
                     temperature: 0.2,
                     timeout_seconds: 60,
+                    max_tokens: 0,
                     input_per_million_usd: 0.0,
                     output_per_million_usd: 0.0,
                     cached_input_per_million_usd: 0.0,
@@ -212,30 +213,38 @@ pub fn load_from(
             q: q.q.clone(),
         });
 
-    let docs_cfg = parsed.agents.entries.get("docs").map(|entry| {
-        let defaults = DocsKgConfig::default();
-        let kg = DocsKgConfig {
-            min_entity_mentions: entry
-                .kg
-                .min_entity_mentions
-                .unwrap_or(defaults.min_entity_mentions),
-            bfs_max_depth: entry.kg.bfs_max_depth.unwrap_or(defaults.bfs_max_depth),
-            edge_weight_threshold: entry
-                .kg
-                .edge_weight_threshold
-                .unwrap_or(defaults.edge_weight_threshold),
-            max_chunks: entry.kg.max_chunks.unwrap_or(defaults.max_chunks),
-            fts_share: entry.kg.fts_share.unwrap_or(defaults.fts_share),
-            max_seeds: entry.kg.max_seeds.unwrap_or(defaults.max_seeds),
-        };
-        DocsAgentConfig {
-            docsdir: entry.docsdir.clone(),
-            index: entry.index.clone(),
-            use_kg: entry.use_kg,
-            kg,
-        }
-    });
-    let docs_cfg = docs_cfg.filter(|d| d.docsdir.is_some());
+    let agent_docs: HashMap<String, DocsAgentConfig> = parsed
+        .agents
+        .entries
+        .iter()
+        .filter(|(_, e)| e.docsdir.is_some())
+        .map(|(id, entry)| {
+            let defaults = DocsKgConfig::default();
+            let kg = DocsKgConfig {
+                min_entity_mentions: entry
+                    .kg
+                    .min_entity_mentions
+                    .unwrap_or(defaults.min_entity_mentions),
+                bfs_max_depth: entry.kg.bfs_max_depth.unwrap_or(defaults.bfs_max_depth),
+                edge_weight_threshold: entry
+                    .kg
+                    .edge_weight_threshold
+                    .unwrap_or(defaults.edge_weight_threshold),
+                max_chunks: entry.kg.max_chunks.unwrap_or(defaults.max_chunks),
+                fts_share: entry.kg.fts_share.unwrap_or(defaults.fts_share),
+                max_seeds: entry.kg.max_seeds.unwrap_or(defaults.max_seeds),
+            };
+            (
+                id.clone(),
+                DocsAgentConfig {
+                    docsdir: entry.docsdir.clone(),
+                    index: entry.index.clone(),
+                    use_kg: entry.use_kg,
+                    kg,
+                },
+            )
+        })
+        .collect();
 
     let agentic_chat_cfg =
         parsed
@@ -272,6 +281,7 @@ pub fn load_from(
                 model: ov.model,
                 temperature: ov.temperature,
                 timeout_seconds: ov.timeout_seconds,
+                max_tokens: ov.max_tokens,
                 input_per_million_usd: ov.input_per_million_usd,
                 output_per_million_usd: ov.output_per_million_usd,
                 cached_input_per_million_usd: ov.cached_input_per_million_usd,
@@ -281,6 +291,7 @@ pub fn load_from(
                 model: base_openai.model.clone(),
                 temperature: base_openai.temperature,
                 timeout_seconds: base_openai.timeout_seconds,
+                max_tokens: base_openai.max_tokens,
                 input_per_million_usd: base_openai.input_per_million_usd,
                 output_per_million_usd: base_openai.output_per_million_usd,
                 cached_input_per_million_usd: base_openai.cached_input_per_million_usd,
@@ -364,7 +375,7 @@ pub fn load_from(
                 .map(|(id, e)| (id.clone(), e.skills.clone()))
                 .collect(),
             news_query,
-            docs: docs_cfg,
+            agent_docs,
             agentic_chat: agentic_chat_cfg,
             runtime_cmd: runtime_cmd_cfg,
             debug_logging: parsed.agents.debug_logging,
@@ -376,6 +387,7 @@ pub fn load_from(
                 model: parsed.llm.openai.model,
                 temperature: parsed.llm.openai.temperature,
                 timeout_seconds: parsed.llm.openai.timeout_seconds,
+                max_tokens: parsed.llm.openai.max_tokens,
                 input_per_million_usd: parsed.llm.openai.input_per_million_usd,
                 output_per_million_usd: parsed.llm.openai.output_per_million_usd,
                 cached_input_per_million_usd: parsed.llm.openai.cached_input_per_million_usd,

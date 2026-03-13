@@ -20,8 +20,13 @@ use tokio::sync::oneshot;
 use crate::config::AgenticChatConfig;
 use crate::supervisor::bus::BusResult;
 
-use super::core::agentic::AgenticLoop;
+use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
+
+#[cfg(feature = "idocstore")]
+use super::docs::DocsRagTool;
+#[cfg(feature = "idocstore")]
+use crate::subsystems::memory::stores::docstore::IDocStore;
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,60 @@ impl AgenticChatPlugin {
         Self {
             use_instruction_llm: cfg.use_instruction_llm,
         }
+    }
+}
+
+impl AgenticChatPlugin {
+    fn build_loop(&self, state: &AgentsState) -> AgenticLoop {
+        let allowed_tools = state
+            .agent_skills
+            .get("agentic-chat")
+            .cloned()
+            .unwrap_or_default();
+
+        let memory_tools = Self::build_memory_tools(state);
+
+        AgenticLoop::new(
+            "agentic-chat",
+            self.use_instruction_llm,
+            "agentic_instruct.txt",
+            "agentic_context.txt",
+            vec![],
+            memory_tools,
+            allowed_tools,
+            "config/prompts",
+            state.debug_logging,
+        )
+    }
+
+    fn build_memory_tools(state: &AgentsState) -> Vec<Arc<dyn LocalTool + Send + Sync>> {
+        #[cfg(feature = "idocstore")]
+        {
+            if let Some(docs_cfg) = state.agent_docs.get("agentic-chat") {
+                if let Some(identity) = state.agent_identities.get("agentic-chat") {
+                    let dir = &identity.identity_dir;
+                    let populated = IDocStore::open(dir)
+                        .and_then(|s| s.list_documents())
+                        .map(|docs| !docs.is_empty())
+                        .unwrap_or(false);
+                    if populated {
+                        let tool: Arc<dyn LocalTool + Send + Sync> = Arc::new(DocsRagTool {
+                            identity_dir: dir.clone(),
+                            index_name: docs_cfg
+                                .index
+                                .clone()
+                                .unwrap_or_else(|| "index.md".to_string()),
+                            use_kg: docs_cfg.use_kg,
+                            kg_cfg: docs_cfg.kg.clone(),
+                        });
+                        return vec![tool];
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "idocstore"))]
+        let _ = state;
+        vec![]
     }
 }
 
@@ -51,24 +110,24 @@ impl Agent for AgenticChatPlugin {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
-        let allowed_tools = state
-            .agent_skills
-            .get("agentic-chat")
-            .cloned()
-            .unwrap_or_default();
-
-        let loop_ = AgenticLoop::new(
-            "agentic-chat",
-            self.use_instruction_llm,
-            "agentic_instruct.txt",
-            "agentic_context.txt",
-            vec![],
-            allowed_tools,
-            "config/prompts",
-            state.debug_logging,
-        );
+        let loop_ = self.build_loop(&state);
         tokio::spawn(async move {
             let result = loop_.run(channel_id, content, session_id, state).await;
+            let _ = reply_tx.send(result);
+        });
+    }
+
+    fn handle_stream(
+        &self,
+        channel_id: String,
+        content: String,
+        session_id: Option<String>,
+        reply_tx: oneshot::Sender<BusResult>,
+        state: Arc<AgentsState>,
+    ) {
+        let loop_ = self.build_loop(&state);
+        tokio::spawn(async move {
+            let result = loop_.run_stream(channel_id, content, session_id, state).await;
             let _ = reply_tx.send(result);
         });
     }

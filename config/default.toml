@@ -111,6 +111,12 @@ memory = ["basic_session"]
 # Set to true when [llm.instruction] is configured to route the instruction
 # pass through a separate smaller model.
 use_instruction_llm = false
+# Optional: give this agent docstore memory access.
+# Documents are indexed into this agent's own memory folder on startup.
+# Uncomment to enable — uses the same docs/ directory as the docs agent.
+# docsdir = "docs/"   # directory to index (relative to working dir)
+# index = "index.md"  # fallback document when no search results are found
+# use_kg = false      # set true to enable KG-RAG (requires ikgdocstore feature)
 
 ## ------------------------- Memory Subsystem ---------------------------------
 
