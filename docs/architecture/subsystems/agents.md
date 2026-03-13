@@ -215,11 +215,11 @@ The raw bus handle is private. Agents cannot address arbitrary bus targets. This
 
 **Phase 1 — Instruction pass**
 
-The agent renders an instruction prompt that includes the user message and a manifest of tools the agent is permitted to call. This prompt is sent to the instruction LLM (`llm/instruct` or `llm/complete` depending on configuration). The response is parsed as a JSON array of `{tool, action, params}` objects. If parsing fails, the phase degrades gracefully to an empty tool list.
+The agent renders an instruction prompt that includes the user message, a manifest of action tools the agent is permitted to call, and a list of available memory sources. The prompt is sent to the instruction LLM (`llm/instruct` or `llm/complete` depending on configuration). The response is parsed as a JSON array of `{tool, action, params}` objects. If parsing fails, the phase degrades gracefully to an empty tool list.
 
 **Phase 2 — Tool execution**
 
-Each parsed tool call is dispatched in sequence. Local tools (implemented in-process, such as `docs_search`) run via `tokio::task::spawn_blocking`. Bus tools run via `AgentsState::execute_tool`. Outputs are collected into a context string.
+Each parsed tool call is dispatched in sequence. Local tools (both action and memory tools, such as `docs_search`) run via `tokio::task::spawn_blocking`. Bus tools run via `AgentsState::execute_tool`. Outputs are collected into a context string.
 
 **Phase 3 — Response pass**
 
@@ -237,10 +237,21 @@ The context from tool execution, recent conversation history, and the original u
 - `use_instruction_llm` — when `true`, routes the instruction pass through `llm/instruct`; when `false`, both passes use `llm/complete`
 - `instruct_prompt_file` — prompt template for the instruction pass
 - `context_prompt_file` — prompt template for the response pass
-- `local_tools` — in-process tools implementing the `LocalTool` trait
+- `local_tools` — in-process action tools implementing the `LocalTool` trait
+- `memory_tools` — in-process memory tools (e.g., document retrieval) implementing the `LocalTool` trait
 - `allowed_tools` — bus tool allowlist from agent skills config
 - `prompts_dir` — directory from which prompt files are loaded
 - `debug_logging` — whether to write per-turn debug data to session KV
+
+**Instruction prompt structure**
+
+The instruction prompt is built using a template (`agentic_instruct.txt`) with three primary sections:
+
+- `Available tools:` — action tools the agent can invoke (displayed with names and descriptions)
+- `Available memory:` — memory sources the agent can consult (document stores, knowledge graphs, etc.)
+- `User message:` — the original user query
+
+This separation helps the LLM reason about data retrieval (memory) versus actions that modify state or interact with external systems.
 
 **Routing the instruction pass**
 
@@ -331,15 +342,21 @@ The `PromptBuilder` utility handles file loading, variable substitution, and too
 
 ---
 
-## Docs Agent — RAG and KG-RAG
+## Document-Backed Agents — RAG and KG-RAG
 
-The `docs` agent answers questions about documentation using retrieval-augmented generation. It supports two retrieval paths, selected at runtime by the `use_kg` configuration flag.
+Any agent can be configured with a document store for retrieval-augmented generation. When an agent has `docsdir` set in its config section, it gains access to a `docs_search` memory tool that can be invoked during the instruction pass.
 
-### Path 1 — Full-Text Search (default)
+The `docs` agent is the canonical example — it is built specifically for QA over documents. But `agentic-chat` and other agents can also be configured with document stores to add project-specific knowledge to their context.
 
-Requires the `idocstore` Cargo feature. The agent's document store is indexed using BM25 full-text search. At query time, the instruction pass formulates a search query, and the top-K matching document chunks are retrieved and injected into the response prompt.
+### Retrieval Paths
 
-### Path 2 — Knowledge Graph + Full-Text Search
+Two retrieval paths are supported, selected at runtime by the `use_kg` configuration flag:
+
+**Path 1 — Full-Text Search (default)**
+
+Requires the `idocstore` Cargo feature. The agent's document store is indexed using BM25 full-text search. At query time, a search query is formulated and the top-K matching document chunks are retrieved and injected as context.
+
+**Path 2 — Knowledge Graph + Full-Text Search**
 
 Requires the `ikgdocstore` Cargo feature and `use_kg = true` in config. At index time, an entity and relation graph is extracted from the documentation and stored as `kg/graph.json` in the agent's identity directory. At query time:
 
@@ -351,15 +368,17 @@ Requires the `ikgdocstore` Cargo feature and `use_kg = true` in config. At index
 6. A knowledge graph context summary is prepended, listing seed entities and their top neighbours.
 7. If the graph is absent or no seeds match, the agent falls back to pure FTS.
 
-### Docs Agent Configuration
+### Document Store Configuration
+
+Any agent can be configured with a document store by adding these fields to its config section:
 
 ```toml
-[agents.docs]
-docsdir = "docs/"           # source directory to import into the agent's document store
+[agents.{id}]
+docsdir = "docs/"           # source directory to import into the agent's document store on startup
 index   = "index.md"        # fallback document when no search result is returned
-use_kg  = true              # enable KG+FTS retrieval (default: false)
+use_kg  = false             # enable KG+FTS retrieval (default: false)
 
-[agents.docs.kg]
+[agents.{id}.kg]
 min_entity_mentions   = 2     # minimum occurrences for an entity to enter the graph
 bfs_max_depth         = 2     # hop limit from seed entities during graph traversal
 edge_weight_threshold = 0.15  # minimum relation weight to follow during BFS
@@ -368,7 +387,7 @@ fts_share             = 0.50  # fraction of max_chunks allocated to FTS results
 max_seeds             = 5     # maximum BFS seed entities per query
 ```
 
-See [Knowledge Graph Doc Store](kg_docstore.md) and [Intelligent Doc Store](intelligent_doc_store.md) for full parameter reference and indexing details.
+Each agent's document store is stored in its own identity directory, isolated from other agents. See [Knowledge Graph Doc Store](kg_docstore.md) and [Intelligent Doc Store](intelligent_doc_store.md) for full parameter reference and indexing details.
 
 ---
 
@@ -398,25 +417,28 @@ These fields appear under `[agents.{id}]` sections:
 | `agents.{id}.memory` | array\<string\> | `[]` | Memory store types this agent requires. Example: `["basic_session"]`. |
 | `agents.{id}.skills` | array\<string\> | `[]` | Bus tools this agent may invoke. Only listed tools appear in the instruction manifest. Agents without this field cannot call any bus tools. |
 
+### Document Store Settings
+
+These optional fields can be added to any agent's config section (`[agents.{id}]`) to enable retrieval-augmented generation:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.{id}.docsdir` | string | none | Source directory to import into the agent's document store on startup. When set, the agent gains access to the `docs_search` memory tool. |
+| `agents.{id}.index` | string | `"index.md"` | Fallback document path (relative to `docsdir`) when no search result is returned for a query. |
+| `agents.{id}.use_kg` | bool | `false` | Enable the KG+FTS retrieval path. Requires the `ikgdocstore` Cargo feature. |
+| `agents.{id}.kg.min_entity_mentions` | integer | `2` | Minimum mentions for an entity to be retained in the knowledge graph. |
+| `agents.{id}.kg.bfs_max_depth` | integer | `2` | BFS hop limit from seed entities during graph traversal. |
+| `agents.{id}.kg.edge_weight_threshold` | float | `0.15` | Minimum relation weight to follow during BFS. |
+| `agents.{id}.kg.max_chunks` | integer | `8` | Total chunk budget in the assembled retrieval context. |
+| `agents.{id}.kg.fts_share` | float | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
+| `agents.{id}.kg.max_seeds` | integer | `5` | Maximum seed entities used for BFS per query. |
+
 ### Agentic Chat Settings
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `agents.agentic-chat.use_instruction_llm` | bool | `false` | Route the instruction pass through `llm/instruct`. Requires `[llm.instruction]` for a separate provider; falls back to the main provider otherwise. |
-
-### Docs Agent Settings
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `agents.docs.docsdir` | string | none | Source directory to import into the agent's document store on startup. |
-| `agents.docs.index` | string | `"index.md"` | Fallback document path (relative to `docsdir`) when no search result is returned for a query. |
-| `agents.docs.use_kg` | bool | `false` | Enable the KG+FTS retrieval path. Requires the `ikgdocstore` Cargo feature. |
-| `agents.docs.kg.min_entity_mentions` | integer | `2` | Minimum mentions for an entity to be retained in the knowledge graph. |
-| `agents.docs.kg.bfs_max_depth` | integer | `2` | BFS hop limit from seed entities during graph traversal. |
-| `agents.docs.kg.edge_weight_threshold` | float | `0.15` | Minimum relation weight to follow during BFS. |
-| `agents.docs.kg.max_chunks` | integer | `8` | Total chunk budget in the assembled retrieval context. |
-| `agents.docs.kg.fts_share` | float | `0.5` | Fraction of `max_chunks` reserved for FTS results. |
-| `agents.docs.kg.max_seeds` | integer | `5` | Maximum seed entities used for BFS per query. |
+| `agents.agentic-chat.docsdir` | string | none | (Optional) Source directory for document-backed context. When set, the agent can invoke `docs_search` as a memory tool. |
 
 ### Runtime Command Agent Settings
 
@@ -439,7 +461,7 @@ These fields appear under `[agents.{id}]` sections:
 
 ```toml
 [agents]
-default       = "chat"
+default       = "agentic-chat"
 debug_logging = false
 
 [agents.routing]
@@ -453,6 +475,10 @@ skills = []   # no bus tools for plain chat
 memory              = ["basic_session"]
 skills              = ["gmail", "newsmail_aggregator"]
 use_instruction_llm = false
+# Optional: enable document-backed context for this agent
+docsdir = "docs/"
+index   = "index.md"
+use_kg  = false
 
 [agents.docs]
 memory  = ["basic_session"]
