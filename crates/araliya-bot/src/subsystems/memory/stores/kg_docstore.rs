@@ -1231,11 +1231,15 @@ fn detect_relation_label(text: &str, a_name: &str, b_name: &str) -> String {
     let b_lower = b_name.to_lowercase();
 
     if let (Some(pa), Some(pb)) = (text_lower.find(&a_lower), text_lower.find(&b_lower)) {
-        let between = if pa < pb {
-            &text_lower[pa + a_lower.len()..pb]
+        let (start, end) = if pa < pb {
+            (pa + a_lower.len(), pb)
         } else {
-            &text_lower[pb + b_lower.len()..pa]
+            (pb + b_lower.len(), pa)
         };
+        if start > end {
+            return "relates_to".to_string();
+        }
+        let between = &text_lower[start..end];
 
         for (keyword, label) in RELATION_KEYWORDS {
             if between.contains(keyword) {

@@ -35,6 +35,7 @@ const TOP_K: usize = 5;
 /// In-process RAG tool — performs BM25 or KG search against the docs docstore.
 ///
 /// Runs inside `tokio::task::spawn_blocking` (via [`AgenticLoop`]).
+// TODO: RAG tool should be a tool within the memory subsystem?
 pub(crate) struct DocsRagTool {
     pub(crate) identity_dir: PathBuf,
     pub(crate) index_name: String,
