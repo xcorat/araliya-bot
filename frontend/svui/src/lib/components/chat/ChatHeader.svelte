@@ -15,7 +15,8 @@
 		doCheckHealth,
 		resetSession
 	} from '$lib/state.svelte';
-	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen } from '@lucide/svelte';
+	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft } from '@lucide/svelte';
+	import { fireSidebarToggle } from '$lib/sidebar-bridge.svelte';
 
 	const health = $derived(getHealthStatus());
 	const sid = $derived(getSessionId());
@@ -75,6 +76,14 @@
 	class="relative flex items-center justify-between gap-3 border-b bg-background/80 px-4 py-2.5 backdrop-blur-sm"
 >
 	<div class="flex items-center gap-2.5">
+		<button
+			onclick={fireSidebarToggle}
+			class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+			aria-label="Toggle sidebar"
+		>
+			<PanelLeft class="size-4" />
+		</button>
+		<span class="block h-4 w-px bg-border md:hidden" aria-hidden="true"></span>
 		<Flower2 class="size-5 text-primary" />
 		<span class="text-sm font-semibold">Araliya</span>
 		<button

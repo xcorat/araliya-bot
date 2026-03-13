@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { goto } from '$app/navigation';
 	import * as Sidebar from '$lib/components/ui/sidebar';
+	import SidebarBridge from '$lib/components/SidebarBridge.svelte';
 	import { parseMarkdownDocument } from '$lib/utils/markdown';
 	import type { PageData } from './$types';
 
@@ -25,26 +25,16 @@
 		return routePath ? `${docsRouteBase}/${routePath}` : docsRouteBase;
 	}
 
-	function navigateToDoc(routePath: string | null) {
-		if (routePath === null) {
-			return;
-		}
-		void goto(toRouteHref(routePath));
-	}
-
-	function jumpToHeading(id: string) {
+	function jumpToHeading(e: MouseEvent, id: string) {
+		e.preventDefault();
 		const element = document.getElementById(id);
-		if (!element) {
-			return;
-		}
+		if (!element) return;
 		element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-		window.location.hash = id;
+		history.pushState(null, '', `#${id}`);
 	}
 
 	function isActive(routePath: string | null): boolean {
-		if (routePath === null) {
-			return false;
-		}
+		if (routePath === null) return false;
 		return routePath === activeRoutePath;
 	}
 </script>
@@ -53,7 +43,8 @@
 	<title>Araliya · Docs</title>
 </svelte:head>
 
-<Sidebar.SidebarProvider>
+<Sidebar.SidebarProvider class="h-full min-h-0">
+	<SidebarBridge />
 	<Sidebar.Sidebar class="border-r">
 		<Sidebar.SidebarHeader class="p-3">
 			<div class="flex items-center gap-2">
@@ -84,11 +75,14 @@
 									{:else}
 										<Sidebar.SidebarMenuButton
 											isActive={isActive(item.routePath)}
-											onclick={() => navigateToDoc(item.routePath)}
 											class="text-xs"
 											style={`padding-left: ${0.5 + item.depth * 0.75}rem`}
 										>
-											{item.title}
+											{#snippet child({ props })}
+												<a href={toRouteHref(item.routePath)} {...props}>
+													{item.title}
+												</a>
+											{/snippet}
 										</Sidebar.SidebarMenuButton>
 									{/if}
 								</Sidebar.SidebarMenuItem>
@@ -112,11 +106,14 @@
 							{#each rendered.headings as heading, idx (`${heading.level}:${heading.id}:${idx}`)}
 								<Sidebar.SidebarMenuItem>
 									<Sidebar.SidebarMenuButton
-										onclick={() => jumpToHeading(heading.id)}
 										class="text-xs"
 										style={`padding-left: ${0.5 + (heading.level - 1) * 0.75}rem`}
 									>
-										{heading.text}
+										{#snippet child({ props })}
+											<a href={`#${heading.id}`} onclick={(e) => jumpToHeading(e, heading.id)} {...props}>
+												{heading.text}
+											</a>
+										{/snippet}
 									</Sidebar.SidebarMenuButton>
 								</Sidebar.SidebarMenuItem>
 							{/each}
@@ -134,7 +131,7 @@
 			<main class="flex-1 overflow-y-auto">
 				<div class="mx-auto w-full max-w-4xl px-6 py-8">
 					<div class="mb-3">
-						<a href={base || '/'} class="text-sm text-muted-foreground underline">Back to app</a>
+						<a href={docsRouteBase} class="text-sm text-muted-foreground underline">← Docs home</a>
 					</div>
 					{#if data.notFound}
 						<p class="text-sm text-muted-foreground">Requested path: /docs/{data.requestPath}</p>

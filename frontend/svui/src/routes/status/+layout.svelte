@@ -6,6 +6,7 @@
 	import { writable } from 'svelte/store';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import StatusSidebar from '$lib/components/StatusSidebar.svelte';
+	import SidebarBridge from '$lib/components/SidebarBridge.svelte';
 	import { initBaseUrl, doCheckHealth, getBaseUrl } from '$lib/state.svelte';
 	import * as api from '$lib/api';
 	import type { HealthResponse, TreeNode } from '$lib/types';
@@ -137,7 +138,8 @@
 	}
 </script>
 
-<Sidebar.SidebarProvider>
+<Sidebar.SidebarProvider class="h-full min-h-0">
+	<SidebarBridge />
 	<StatusSidebar
 		serviceInfo={$serviceInfo}
 		error={$error}
@@ -148,7 +150,7 @@
 	/>
 
 	<Sidebar.SidebarInset>
-		<div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+		<div class="flex h-full min-h-0 flex-1 flex-col overflow-y-auto">
 			{@render children()}
 		</div>
 	</Sidebar.SidebarInset>

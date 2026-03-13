@@ -11,7 +11,17 @@ import * as api from './api';
 const NO_SESSION_ID = '00000000-0000-0000-0000-000000000000';
 
 function generateId(): string {
-	return crypto.randomUUID();
+	// crypto.randomUUID() requires a secure context (HTTPS/localhost).
+	// crypto.getRandomValues() works on HTTP too and is universally supported.
+	if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+		return crypto.randomUUID();
+	}
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+	bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant bits
+	const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function now(): string {
@@ -215,10 +225,15 @@ export async function doSendMessageStreaming(text: string) {
 	};
 
 	try {
+		const outgoingSessionId =
+			sessionId && sessionId !== NO_SESSION_ID ? sessionId : undefined;
 		const res = await fetch(`${baseUrl}/api/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message: text.trim() })
+			body: JSON.stringify({
+				message: text.trim(),
+				session_id: outgoingSessionId
+			})
 		});
 
 		if (!res.ok || !res.body) {

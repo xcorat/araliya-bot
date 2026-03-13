@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import * as Sidebar from '$lib/components/ui/sidebar';
-    import SessionSidebar from '$lib/components/SessionSidebar.svelte';
-    import { ChatMessages, ChatInput } from '$lib/components/chat';
+    import { onMount } from "svelte";
+    import * as Sidebar from "$lib/components/ui/sidebar";
+    import SessionSidebar from "$lib/components/SessionSidebar.svelte";
+    import SidebarBridge from "$lib/components/SidebarBridge.svelte";
+    import { ChatMessages, ChatInput } from "$lib/components/chat";
     import {
         initBaseUrl,
         doCheckHealth,
@@ -14,8 +15,8 @@
         refreshSessions,
         refreshAgents,
         loadSessionHistory,
-        resetSession
-    } from '$lib/state.svelte';
+        resetSession,
+    } from "$lib/state.svelte";
 
     onMount(() => {
         initBaseUrl();
@@ -43,7 +44,8 @@
     <title>Araliya — Chat</title>
 </svelte:head>
 
-<Sidebar.SidebarProvider>
+<Sidebar.SidebarProvider class="h-full min-h-0">
+    <SidebarBridge />
     <SessionSidebar
         {sessions}
         {agents}
@@ -54,7 +56,7 @@
     />
 
     <Sidebar.SidebarInset>
-        <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div class="flex h-full min-h-0 flex-1 flex-col">
             <ChatMessages {messages} />
             <ChatInput />
         </div>
