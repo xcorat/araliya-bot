@@ -74,6 +74,7 @@ See [identity.md](identity.md) for full details.
 
 ## Further Reading
 
+- [diagrams.md](diagrams.md) — **visual architecture diagrams** (system overview, bus protocol, startup sequence, chat workflow, comms channels, memory system, identity hierarchy, component runtime)
 - [identity.md](identity.md) — keypair lifecycle, file format, security
 - [subsystems/comms.md](subsystems/comms.md) — PTY, HTTP, channel plugins
 - [subsystems/agents.md](subsystems/agents.md) — agent routing, LLM wiring, method grammar
