@@ -37,10 +37,6 @@
 		if (u) {
 			const tok = u.total_tokens ?? (u.prompt_tokens + u.completion_tokens);
 			parts.push(`${tok} tok`);
-			if (u.estimated_cost_usd > 0) {
-				const c = u.estimated_cost_usd;
-				parts.push(c < 0.0001 ? '<$0.0001' : `$${c.toFixed(4)}`);
-			}
 		}
 		return parts.join(' · ');
 	})());

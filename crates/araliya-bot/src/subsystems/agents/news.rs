@@ -38,7 +38,6 @@ impl Agent for NewsAgentPlugin {
                     usage: None,
                     timing: None,
                     thinking: None,
-                    cost_usd: None,
                 }));
                 return;
             }
@@ -150,7 +149,6 @@ impl Agent for NewsAgentPlugin {
                     usage: None,
                     timing: None,
                     thinking: None,
-                    cost_usd: None,
                 }));
                 return;
             }
@@ -165,7 +163,6 @@ impl Agent for NewsAgentPlugin {
                     usage: None,
                     timing: None,
                     thinking: None,
-                    cost_usd: None,
                 }));
                 return;
             }
@@ -217,7 +214,6 @@ impl Agent for NewsAgentPlugin {
                 usage,
                 timing: None,
                 thinking,
-                cost_usd: None,
             }));
         });
     }

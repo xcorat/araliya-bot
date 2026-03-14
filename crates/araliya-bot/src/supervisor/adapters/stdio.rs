@@ -95,7 +95,6 @@ pub fn start(
                                         usage: None,
                                         timing: None,
                                         thinking: None,
-                                        cost_usd: None,
                                     },
                                 )
                                 .await
@@ -117,7 +116,6 @@ pub fn start(
                                         usage: None,
                                         timing: None,
                                         thinking: None,
-                                        cost_usd: None,
                                     },
                                 )
                                 .await

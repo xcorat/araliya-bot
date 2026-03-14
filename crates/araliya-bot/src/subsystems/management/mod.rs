@@ -60,7 +60,6 @@ fn tree_comms_message(content: String, channel_id: &str) -> BusPayload {
         usage: None,
         timing: None,
         thinking: None,
-        cost_usd: None,
     }
 }
 

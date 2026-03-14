@@ -5,7 +5,8 @@ import type {
 	SessionTranscriptMessage,
 	ToolStep,
 	UsageInfo,
-	LlmTiming
+	LlmTiming,
+	SessionSpend
 } from './types';
 import * as api from './api';
 
@@ -47,7 +48,7 @@ let isHistoryLoading = $state<boolean>(false);
  *  instead of the global session-by-id endpoint. Set by `initSharedSession`. */
 let sharedAgentId = $state<string | null>(null);
 let lastUsage = $state<UsageInfo | null>(null);
-let sessionUsageTotals = $state<UsageInfo | null>(null);
+let agentSpend = $state<SessionSpend | null>(null);
 let lastTiming = $state<LlmTiming | null>(null);
 /** Live elapsed ms while a streaming request is in-flight; null otherwise. */
 let streamElapsedMs = $state<number | null>(null);
@@ -113,8 +114,8 @@ export function getLastUsage(): UsageInfo | null {
 	return lastUsage;
 }
 
-export function getSessionUsageTotals(): UsageInfo | null {
-	return sessionUsageTotals;
+export function getAgentSpend(): SessionSpend | null {
+	return agentSpend;
 }
 
 export function getLastTiming(): LlmTiming | null {
@@ -199,9 +200,10 @@ export async function doSendMessage(text: string, agentId?: string) {
 
 		lastUsage = res.usage ?? null;
 		lastTiming = res.timing ?? null;
-		sessionUsageTotals = res.session_usage_totals ?? null;
 		workingMemoryUpdated = res.working_memory_updated ?? false;
 		void refreshSessions({ force: true });
+		if (agentId) void refreshAgentSpend(agentId);
+		else if (sharedAgentId) void refreshAgentSpend(sharedAgentId);
 	} catch (e: unknown) {
 		const errorMsg: ChatMessage = {
 			id: generateId(),
@@ -288,6 +290,7 @@ export async function doSendMessageStreaming(text: string, agentId?: string) {
 		let buf = '';
 		let thinkingBuf = '';
 		let contentBuf = '';
+		let streamDone = false;
 
 		while (true) {
 			const { done, value } = await reader.read();
@@ -346,15 +349,23 @@ export async function doSendMessageStreaming(text: string, agentId?: string) {
 							lastTiming = doneTiming;
 						}
 						updateAssistant({ usage: doneUsage, timing: doneTiming });
+						// Re-enable input immediately — don't wait for the server to close the
+						// TCP connection (which may be delayed by transcript persistence).
+						isLoading = false;
+						streamDone = true;
+						break;
 					}
 				} catch {
 					// Ignore malformed JSON chunks.
 				}
 			}
+			if (streamDone) break;
 		}
 
 		stopTimer();
 		void refreshSessions({ force: true });
+		if (agentId) void refreshAgentSpend(agentId);
+		else if (sharedAgentId) void refreshAgentSpend(sharedAgentId);
 	} catch (e: unknown) {
 		stopTimer();
 		updateAssistant({
@@ -403,6 +414,17 @@ export async function refreshAgents() {
 	}
 }
 
+/** Fetch accumulated spend for an agent's active session. */
+export async function refreshAgentSpend(agentId: string) {
+	if (!baseUrl || !agentId) return;
+	try {
+		const res = await api.getAgentSpend(baseUrl, agentId);
+		agentSpend = res.spend ?? null;
+	} catch {
+		// silently ignore — status bar degrades gracefully
+	}
+}
+
 export async function loadSessionHistory(targetSessionId: string) {
 	if (!baseUrl || !targetSessionId) return;
 
@@ -415,7 +437,7 @@ export async function loadSessionHistory(targetSessionId: string) {
 
 		lastUsage = null;
 		lastTiming = null;
-		sessionUsageTotals = null;
+		agentSpend = null;
 		workingMemoryUpdated = false;
 	} catch (e: unknown) {
 		const errorMsg: ChatMessage = {
@@ -435,7 +457,7 @@ export function resetSession() {
 	sessionId = '';
 	lastUsage = null;
 	lastTiming = null;
-	sessionUsageTotals = null;
+	agentSpend = null;
 	streamElapsedMs = null;
 	workingMemoryUpdated = false;
 	healthStatus = 'unknown';
@@ -465,6 +487,8 @@ export async function initSharedSession(agentId: string) {
 	} catch {
 		// No session yet — start with an empty chat, that's fine.
 	}
+	// Load spend for the status bar.
+	void refreshAgentSpend(agentId);
 }
 
 /**

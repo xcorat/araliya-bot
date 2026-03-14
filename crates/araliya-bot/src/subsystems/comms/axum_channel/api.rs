@@ -145,15 +145,11 @@ pub(super) async fn message(
                 "reply": reply.reply,
                 "thinking": reply.thinking,
                 "working_memory_updated": false,
-                "usage": reply.usage.map(|u| {
-                    let cost = reply.cost_usd.unwrap_or(0.0);
-                    json!({
-                        "prompt_tokens": u.input_tokens,
-                        "completion_tokens": u.output_tokens,
-                        "total_tokens": u.input_tokens + u.output_tokens,
-                        "estimated_cost_usd": cost,
-                    })
-                }),
+                "usage": reply.usage.map(|u| json!({
+                    "prompt_tokens": u.input_tokens,
+                    "completion_tokens": u.output_tokens,
+                    "total_tokens": u.input_tokens + u.output_tokens,
+                })),
                 "timing": reply.timing.map(|t| json!({
                     "ttft_ms": t.ttft_ms,
                     "total_ms": t.total_ms,
@@ -309,6 +305,35 @@ pub(super) async fn agent_session(
         Err(_) => (
             StatusCode::GATEWAY_TIMEOUT,
             json_error("timeout", "agent session request timed out"),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/agents/{agent_id}/spend — accumulated token/cost totals for an agent's active session.
+pub(super) async fn agent_spend(
+    State(state): State<AxumState>,
+    Path(agent_id): Path<String>,
+) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        state.comms.request_agent_spend(&agent_id),
+    )
+    .await
+    {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, %agent_id, "agent spend request failed: {e}");
+            (StatusCode::NOT_FOUND, json_error("not_found", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "agent spend request timed out"),
         )
             .into_response(),
     }

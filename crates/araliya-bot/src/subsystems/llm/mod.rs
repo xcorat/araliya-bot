@@ -242,7 +242,6 @@ impl BusHandler for LlmSubsystem {
                 .as_ref()
                 .unwrap_or(&self.provider)
                 .clone();
-            let rates = self.rates.clone();
             if let BusPayload::LlmRequest {
                 channel_id,
                 content,
@@ -255,13 +254,11 @@ impl BusHandler for LlmSubsystem {
                         .complete(&content, system.as_deref(), Some(1024))
                         .await
                         .map(|resp| {
-                            let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));
-                            if let (Some(u), Some(c)) = (&resp.usage, cost) {
+                            if let Some(u) = &resp.usage {
                                 tracing::debug!(
                                     input_tokens = u.input_tokens,
                                     output_tokens = u.output_tokens,
                                     cached_tokens = u.cached_input_tokens,
-                                    cost_usd = c,
                                     "llm instruct usage"
                                 );
                             }
@@ -272,7 +269,6 @@ impl BusHandler for LlmSubsystem {
                                 usage: resp.usage,
                                 timing: resp.timing,
                                 thinking: resp.thinking,
-                                cost_usd: cost,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));
@@ -327,20 +323,17 @@ impl BusHandler for LlmSubsystem {
                 system,
             } => {
                 let provider = self.provider.clone();
-                let rates = self.rates.clone();
                 debug!(%method, %channel_id, "dispatching to llm provider");
                 tokio::spawn(async move {
                     let result = provider
                         .complete(&content, system.as_deref(), None)
                         .await
                         .map(|resp| {
-                            let cost = resp.usage.as_ref().map(|u| u.cost_usd(&rates));
-                            if let (Some(u), Some(c)) = (&resp.usage, cost) {
+                            if let Some(u) = &resp.usage {
                                 tracing::debug!(
                                     input_tokens = u.input_tokens,
                                     output_tokens = u.output_tokens,
                                     cached_tokens = u.cached_input_tokens,
-                                    cost_usd = c,
                                     "llm usage"
                                 );
                             }
@@ -351,7 +344,6 @@ impl BusHandler for LlmSubsystem {
                                 usage: resp.usage,
                                 timing: resp.timing,
                                 thinking: resp.thinking,
-                                cost_usd: cost,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));

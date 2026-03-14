@@ -35,7 +35,6 @@ export interface UsageInfo {
 	prompt_tokens: number;
 	completion_tokens: number;
 	total_tokens: number;
-	estimated_cost_usd: number;
 }
 
 // ── API response types ──────────────────────────────────────
@@ -51,7 +50,6 @@ export interface MessageResponse {
 	intermediate_steps?: ToolStep[];
 	usage?: UsageInfo;
 	timing?: LlmTiming;
-	session_usage_totals?: UsageInfo;
 }
 
 export interface HealthResponse {
@@ -193,6 +191,20 @@ export interface KgGraph {
 export interface AgentKGResponse {
 	agent_id: string;
 	graph: KgGraph;
+}
+
+/** Accumulated spend (tokens + cost) for an agent's active session. */
+export interface SessionSpend {
+	total_input_tokens: number;
+	total_output_tokens: number;
+	total_cached_tokens: number;
+	total_cost_usd: number;
+	last_updated: string;
+}
+
+export interface AgentSpendResponse {
+	session_id: string | null;
+	spend: SessionSpend | null;
 }
 
 // ── Agent debug types ────────────────────────────────────────

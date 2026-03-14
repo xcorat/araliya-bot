@@ -7,6 +7,7 @@ import type {
 	SessionMemoryResponse,
 	SessionFilesResponse,
 	AgentKGResponse,
+	AgentSpendResponse,
 	SessionDebugResponse,
 	TreeNode,
 	ApiError,
@@ -126,6 +127,12 @@ export async function getAgentKG(baseUrl: string, agentId: string): Promise<Agen
 	const response = await fetch(`${baseUrl}/api/agents/${encodeURIComponent(agentId)}/kg`);
 	if (!response.ok) return handleError(response);
 	return readResponse<AgentKGResponse>(response);
+}
+
+export async function getAgentSpend(baseUrl: string, agentId: string): Promise<AgentSpendResponse> {
+	const response = await fetch(`${baseUrl}/api/agents/${encodeURIComponent(agentId)}/spend`);
+	if (!response.ok) return handleError(response);
+	return readResponse<AgentSpendResponse>(response);
 }
 
 export async function getSessionDebug(

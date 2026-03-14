@@ -215,7 +215,6 @@ impl AgenticLoop {
                 usage,
                 timing,
                 thinking,
-                cost_usd,
                 ..
             }) => Ok(BusPayload::CommsMessage {
                 channel_id,
@@ -224,7 +223,6 @@ impl AgenticLoop {
                 usage,
                 timing,
                 thinking,
-                cost_usd,
             }),
             other => other,
         }
@@ -449,7 +447,6 @@ impl AgenticLoop {
                     usage: None,
                     timing: None,
                     thinking: None,
-                    cost_usd: None,
                 }));
             }
         }

@@ -401,7 +401,6 @@ impl Agent for EchoAgent {
             usage: None,
             timing: None,
             thinking: None,
-            cost_usd: None,
         }));
     }
 }
@@ -896,6 +895,68 @@ impl AgentsSubsystem {
         });
     }
 
+    /// Handle `agents/spend` — return accumulated spend for an agent's active session.
+    ///
+    /// Reads `active_session_id` from the agent's KV store, loads the session,
+    /// and returns `spend.json` contents (token totals + cost).
+    fn handle_agent_spend(&self, agent_id: String, reply_tx: oneshot::Sender<BusResult>) {
+        let store = match self.state.open_agent_store(&agent_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        let session_id = match store.kv_get("active_session_id") {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                let body = serde_json::json!({ "session_id": null, "spend": null });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: body.to_string(),
+                }));
+                return;
+            }
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        let handle = match self.state.memory.load_session_in(
+            &store.agent_sessions_dir(),
+            &store.agent_sessions_index(),
+            &session_id,
+            Some(&agent_id),
+        ) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            let spend = match handle.read_spend().await {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        format!("spend read failed: {e}"),
+                    )));
+                    return;
+                }
+            };
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "spend": spend,
+            });
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
+    }
+
     /// Handle `agents/kg_graph` — return the knowledge graph JSON for an agent.
     fn handle_agent_kg_graph(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
         let agent_id = match payload {
@@ -1319,6 +1380,22 @@ impl BusHandler for AgentsSubsystem {
             self.handle_agent_session(agent_id, reply_tx);
             return;
         }
+        if method == "agents/spend" {
+            let agent_id = match payload {
+                BusPayload::SessionQuery {
+                    agent_id: Some(id), ..
+                } => id,
+                _ => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32600,
+                        "agents/spend requires agent_id in SessionQuery payload",
+                    )));
+                    return;
+                }
+            };
+            self.handle_agent_spend(agent_id, reply_tx);
+            return;
+        }
         if method == "agents/sessions" {
             self.handle_session_list(reply_tx);
             return;
@@ -1664,8 +1741,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1711,8 +1786,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1755,8 +1828,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1796,8 +1867,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1844,8 +1913,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1883,8 +1950,6 @@ mod tests {
                         timing: None,
 
                         thinking: None,
-
-                        cost_usd: None,
                     }));
                 }
             }
@@ -1918,8 +1983,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -1990,8 +2053,6 @@ mod tests {
                         timing: None,
 
                         thinking: None,
-
-                        cost_usd: None,
                     }));
                 }
             }
@@ -2025,8 +2086,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2093,8 +2152,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2141,8 +2198,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2198,7 +2253,6 @@ mod tests {
 
                         thinking: None,
 
-                        cost_usd: None,
                     }));
                 }
             }
@@ -2222,8 +2276,6 @@ mod tests {
                         timing: None,
 
                         thinking: None,
-
-                        cost_usd: None,
                     }));
                 }
             }
@@ -2267,8 +2319,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2315,8 +2365,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2458,8 +2506,6 @@ mod tests {
                         timing: None,
 
                         thinking: None,
-
-                        cost_usd: None,
                     }));
                 }
             }
@@ -2478,8 +2524,6 @@ mod tests {
                         timing: None,
 
                         thinking: None,
-
-                        cost_usd: None,
                     }));
                 }
             }
@@ -2515,8 +2559,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2568,8 +2610,6 @@ mod tests {
                             timing: None,
 
                             thinking: None,
-
-                            cost_usd: None,
                         }));
                     }
                 }
@@ -2607,8 +2647,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx1,
         );
@@ -2632,8 +2670,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx2,
         );
@@ -2680,8 +2716,6 @@ mod tests {
                             timing: None,
 
                             thinking: None,
-
-                            cost_usd: None,
                         }));
                     }
                 }
@@ -2718,8 +2752,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -2810,8 +2842,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );
@@ -3110,8 +3140,6 @@ mod tests {
                 timing: None,
 
                 thinking: None,
-
-                cost_usd: None,
             },
             tx,
         );

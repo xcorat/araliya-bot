@@ -151,6 +151,7 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/sessions", get(api::sessions))
         .route("/api/agents", get(api::agents))
         .route("/api/agents/{agent_id}/session", get(api::agent_session))
+        .route("/api/agents/{agent_id}/spend", get(api::agent_spend))
         .route("/api/agents/{agent_id}/kg", get(api::agent_kg))
         .route(
             "/api/sessions/{session_id}/memory",

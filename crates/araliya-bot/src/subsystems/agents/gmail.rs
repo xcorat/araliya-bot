@@ -69,7 +69,6 @@ impl Agent for GmailAgentPlugin {
                         usage: None,
                         timing: None,
                         thinking: None,
-                        cost_usd: None,
                     }));
                 }
                 Ok(BusPayload::ToolResponse {
