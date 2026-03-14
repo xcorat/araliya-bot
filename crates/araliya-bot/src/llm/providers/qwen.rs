@@ -40,7 +40,9 @@ impl QwenProvider {
         system: Option<&str>,
         max_tokens_override: Option<usize>,
     ) -> Result<LlmResponse, ProviderError> {
-        self.inner.complete(content, system, max_tokens_override).await
+        self.inner
+            .complete(content, system, max_tokens_override)
+            .await
     }
 
     pub async fn complete_stream(
@@ -50,7 +52,9 @@ impl QwenProvider {
         tx: mpsc::Sender<StreamChunk>,
         max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
-        self.inner.complete_stream(content, system, tx, max_tokens_override).await
+        self.inner
+            .complete_stream(content, system, tx, max_tokens_override)
+            .await
     }
 
     pub async fn ping(&self) -> Result<(), ProviderError> {

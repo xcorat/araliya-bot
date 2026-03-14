@@ -78,6 +78,10 @@ pub enum BusPayload {
         /// or when the provider does not report usage (e.g. dummy).
         #[serde(default)]
         usage: Option<crate::llm::LlmUsage>,
+        /// Wall-clock latency for this turn's LLM call.
+        /// `None` when the message did not come from an LLM call.
+        #[serde(default)]
+        timing: Option<crate::llm::LlmTiming>,
         /// Internal chain-of-thought produced by reasoning models (Qwen3, QwQ,
         /// DeepSeek-R1, …). `None` for standard models.
         #[serde(default)]

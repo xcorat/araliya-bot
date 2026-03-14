@@ -24,6 +24,10 @@ pub struct CommsReply {
     /// Internal chain-of-thought from reasoning models (Qwen3, DeepSeek-R1, …).
     /// `None` for standard models or turns where no thinking was produced.
     pub thinking: Option<String>,
+    /// Per-turn token usage from the LLM provider.
+    pub usage: Option<crate::llm::LlmUsage>,
+    /// Per-turn wall-clock latency from the LLM provider.
+    pub timing: Option<crate::llm::LlmTiming>,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -74,6 +78,7 @@ impl CommsState {
             content,
             session_id,
             usage: None,
+            timing: None,
             thinking: None,
         };
 
@@ -87,8 +92,16 @@ impl CommsState {
                 content: reply,
                 session_id,
                 thinking,
+                usage,
+                timing,
                 ..
-            })) => Ok(CommsReply { reply, session_id, thinking }),
+            })) => Ok(CommsReply {
+                reply,
+                session_id,
+                thinking,
+                usage,
+                timing,
+            }),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
         }
     }
@@ -155,8 +168,12 @@ impl CommsState {
         match result {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!("llm stream error: {}", e.message))),
-            Ok(Ok(BusPayload::LlmStreamResult { rx: StreamReceiver(rx) })) => Ok(rx),
-            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply to llm/stream".to_string())),
+            Ok(Ok(BusPayload::LlmStreamResult {
+                rx: StreamReceiver(rx),
+            })) => Ok(rx),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected reply to llm/stream".to_string(),
+            )),
         }
     }
 

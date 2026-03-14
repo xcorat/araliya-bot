@@ -4,6 +4,6 @@
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		goto(`${base}/chat`, { replaceState: true });
+		goto(`${base}/ui`, { replaceState: true });
 	});
 </script>

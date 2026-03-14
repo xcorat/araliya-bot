@@ -50,11 +50,13 @@ export async function sendMessage(
 	baseUrl: string,
 	message: string,
 	sessionId?: string,
-	mode?: SessionMode
+	mode?: SessionMode,
+	agentId?: string
 ): Promise<MessageResponse> {
 	const payload: Record<string, string> = { message };
 	if (sessionId) payload.session_id = sessionId;
 	if (mode) payload.mode = mode;
+	if (agentId) payload.agent_id = agentId;
 
 	const response = await fetch(`${baseUrl}/api/message`, {
 		method: 'POST',

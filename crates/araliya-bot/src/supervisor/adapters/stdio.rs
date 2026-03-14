@@ -93,6 +93,7 @@ pub fn start(
                                         content,
                                         session_id: None,
                                         usage: None,
+                                        timing: None,
                                         thinking: None,
                                     },
                                 )
@@ -113,6 +114,7 @@ pub fn start(
                                         content: "health".to_string(),
                                         session_id: None,
                                         usage: None,
+                                        timing: None,
                                         thinking: None,
                                     },
                                 )

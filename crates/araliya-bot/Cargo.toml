@@ -51,6 +51,8 @@ default = [
     "plugin-chat",
     "plugin-agentic-chat",
     "plugin-docs",
+    "plugin-uniweb",
+    "plugin-docs-agent",
     "plugin-runtime-cmd",
     "subsystem-runtimes",
     "channel-pty",
@@ -97,6 +99,8 @@ plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
+plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
+plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
 
 # Comms Channels

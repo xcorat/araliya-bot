@@ -4,7 +4,8 @@ import type {
 	AgentInfo,
 	SessionTranscriptMessage,
 	ToolStep,
-	UsageInfo
+	UsageInfo,
+	LlmTiming
 } from './types';
 import * as api from './api';
 
@@ -41,6 +42,9 @@ let isLoading = $state<boolean>(false);
 let isLoadingSessions = $state<boolean>(false);
 let lastUsage = $state<UsageInfo | null>(null);
 let sessionUsageTotals = $state<UsageInfo | null>(null);
+let lastTiming = $state<LlmTiming | null>(null);
+/** Live elapsed ms while a streaming request is in-flight; null otherwise. */
+let streamElapsedMs = $state<number | null>(null);
 let workingMemoryUpdated = $state<boolean>(false);
 let debugExpanded = $state<boolean>(false);
 
@@ -103,6 +107,14 @@ export function getSessionUsageTotals(): UsageInfo | null {
 	return sessionUsageTotals;
 }
 
+export function getLastTiming(): LlmTiming | null {
+	return lastTiming;
+}
+
+export function getStreamElapsedMs(): number | null {
+	return streamElapsedMs;
+}
+
 export function getWorkingMemoryUpdated(): boolean {
 	return workingMemoryUpdated;
 }
@@ -141,7 +153,7 @@ export async function doCheckHealth() {
 	}
 }
 
-export async function doSendMessage(text: string) {
+export async function doSendMessage(text: string, agentId?: string) {
 	if (!text.trim() || !baseUrl || isLoading) return;
 
 	const userMsg: ChatMessage = {
@@ -155,7 +167,7 @@ export async function doSendMessage(text: string) {
 
 	try {
 		const outgoingSessionId = sessionId && sessionId !== NO_SESSION_ID ? sessionId : undefined;
-		const res = await api.sendMessage(baseUrl, text.trim(), outgoingSessionId);
+		const res = await api.sendMessage(baseUrl, text.trim(), outgoingSessionId, undefined, agentId);
 
 		if (res.session_id && res.session_id !== NO_SESSION_ID) {
 			sessionId = res.session_id;
@@ -169,11 +181,14 @@ export async function doSendMessage(text: string) {
 			content: res.reply || '(no reply)',
 			timestamp: now(),
 			intermediateSteps: res.intermediate_steps,
-			thinking: res.thinking ?? undefined
+			thinking: res.thinking ?? undefined,
+			usage: res.usage ?? undefined,
+			timing: res.timing ?? undefined
 		};
 		messages = [...messages, assistantMsg];
 
 		lastUsage = res.usage ?? null;
+		lastTiming = res.timing ?? null;
 		sessionUsageTotals = res.session_usage_totals ?? null;
 		workingMemoryUpdated = res.working_memory_updated ?? false;
 		void refreshSessions({ force: true });
@@ -195,7 +210,7 @@ export async function doSendMessage(text: string) {
 /// Appends an assistant message immediately (empty content) then fills it
 /// in token-by-token as `content` and `thinking` chunks arrive.
 /// Falls back to the buffered path on any fetch error.
-export async function doSendMessageStreaming(text: string) {
+export async function doSendMessageStreaming(text: string, agentId?: string) {
 	if (!text.trim() || !baseUrl || isLoading) return;
 
 	const userMsg: ChatMessage = {
@@ -224,16 +239,34 @@ export async function doSendMessageStreaming(text: string) {
 		);
 	};
 
+	// Start a live elapsed-time counter so the status bar shows ⏱ Xs while streaming.
+	const sendTime = Date.now();
+	streamElapsedMs = 0;
+	let elapsedTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+		streamElapsedMs = Date.now() - sendTime;
+	}, 100);
+
+	const stopTimer = () => {
+		if (elapsedTimer !== null) {
+			clearInterval(elapsedTimer);
+			elapsedTimer = null;
+			streamElapsedMs = null;
+		}
+	};
+
 	try {
 		const outgoingSessionId =
 			sessionId && sessionId !== NO_SESSION_ID ? sessionId : undefined;
+		const streamPayload: Record<string, string | undefined> = {
+			message: text.trim(),
+			session_id: outgoingSessionId
+		};
+		if (agentId) streamPayload.agent_id = agentId;
+
 		const res = await fetch(`${baseUrl}/api/message/stream`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				message: text.trim(),
-				session_id: outgoingSessionId
-			})
+			body: JSON.stringify(streamPayload)
 		});
 
 		if (!res.ok || !res.body) {
@@ -291,7 +324,18 @@ export async function doSendMessageStreaming(text: string) {
 						contentBuf += payload.delta;
 						updateAssistant({ content: contentBuf || '…' });
 					} else if (eventName === 'done') {
+						stopTimer();
 						if (!contentBuf) updateAssistant({ content: '(no reply)' });
+						// Parse and attach usage + timing from the done event.
+						const doneUsage = payload.usage as UsageInfo | undefined;
+						const doneTiming = payload.timing as LlmTiming | undefined;
+						if (doneUsage) {
+							lastUsage = doneUsage;
+						}
+						if (doneTiming) {
+							lastTiming = doneTiming;
+						}
+						updateAssistant({ usage: doneUsage, timing: doneTiming });
 					}
 				} catch {
 					// Ignore malformed JSON chunks.
@@ -299,8 +343,10 @@ export async function doSendMessageStreaming(text: string) {
 			}
 		}
 
+		stopTimer();
 		void refreshSessions({ force: true });
 	} catch (e: unknown) {
+		stopTimer();
 		updateAssistant({
 			role: 'error',
 			content: e instanceof Error ? e.message : 'Stream failed'
@@ -358,6 +404,7 @@ export async function loadSessionHistory(targetSessionId: string) {
 		messages = mapTranscriptToChatMessages(res.session_id, res.transcript);
 
 		lastUsage = null;
+		lastTiming = null;
 		sessionUsageTotals = null;
 		workingMemoryUpdated = false;
 	} catch (e: unknown) {
@@ -377,7 +424,9 @@ export function resetSession() {
 	messages = [];
 	sessionId = '';
 	lastUsage = null;
+	lastTiming = null;
 	sessionUsageTotals = null;
+	streamElapsedMs = null;
 	workingMemoryUpdated = false;
 	healthStatus = 'unknown';
 	healthMessage = '';

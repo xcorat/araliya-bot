@@ -89,6 +89,25 @@ docsdir = "docs/"
 index = "index.md"
 memory = ["basic_session"]
 
+[agents.docs_agent]
+# Public-facing docs agent — same RAG pipeline as `docs`, exposed under a
+# separate agent ID for the `/ui/docs` frontend route.
+# Shares the `docs` agent's identity and docstore.
+enabled = false
+
+[agents.uniweb]
+# Shared-session "front-porch" agentic chat agent — all visitors see the same
+# conversation.  Requests are serialised (one LLM call at a time); concurrent
+# callers wait in a FIFO queue.
+# The global session ID is auto-derived if omitted.
+enabled = false
+memory = ["basic_session"]
+# session_id = ""            # explicit UUID to use as the global session
+# use_instruction_llm = true # enable agentic instruction pass (needs [llm.instruction])
+# docsdir = "docs/"          # enable docs_search RAG tool
+# index = "index.md"         # docstore index file
+# use_kg = false             # enable knowledge-graph RAG
+
 [agents.dummy]
 # Disabled — placeholder to show the section shape.
 enabled = false

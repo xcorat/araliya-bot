@@ -180,7 +180,10 @@ fn prepare_docs_loop(
                 )));
             }
         };
-        let empty = store.list_documents().map(|docs| docs.is_empty()).unwrap_or(true);
+        let empty = store
+            .list_documents()
+            .map(|docs| docs.is_empty())
+            .unwrap_or(true);
         if empty {
             return Err(Err(BusError::new(
                 ERR_INTERNAL,
@@ -203,11 +206,7 @@ fn prepare_docs_loop(
         kg_cfg,
     });
 
-    let allowed_tools = state
-        .agent_skills
-        .get("docs")
-        .cloned()
-        .unwrap_or_default();
+    let allowed_tools = state.agent_skills.get("docs").cloned().unwrap_or_default();
 
     let loop_ = AgenticLoop::new(
         "docs",
@@ -250,6 +249,7 @@ impl Agent for DocsAgentPlugin {
                     content: "docs component: active".to_string(),
                     session_id,
                     usage: None,
+                    timing: None,
                     thinking: None,
                 }));
                 return;

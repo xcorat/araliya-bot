@@ -8,10 +8,11 @@
 use futures_util::StreamExt as _;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use crate::llm::{LlmResponse, LlmUsage, ProviderError};
+use crate::llm::{LlmResponse, LlmTiming, LlmUsage, ProviderError};
 
 // ── Stream chunk ──────────────────────────────────────────────────────────────
 
@@ -26,8 +27,11 @@ pub enum StreamChunk {
     Thinking(String),
     /// A delta from the model's visible output (`content`).
     Content(String),
-    /// End of stream; carries token usage if the provider reported it.
-    Done(Option<LlmUsage>),
+    /// End of stream; carries token usage and wall-clock timing if available.
+    Done {
+        usage: Option<LlmUsage>,
+        timing: Option<LlmTiming>,
+    },
 }
 
 // ── Public provider ───────────────────────────────────────────────────────────
@@ -181,6 +185,7 @@ impl OpenAiCompatibleProvider {
         }
         // #endregion
 
+        let req_start = Instant::now();
         let response = req.send().await.map_err(|e| {
             // #region agent log
             if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
@@ -242,7 +247,15 @@ impl OpenAiCompatibleProvider {
                 .unwrap_or(0),
         });
 
-        Ok(LlmResponse { text, thinking, usage })
+        Ok(LlmResponse {
+            text,
+            thinking,
+            usage,
+            timing: Some(crate::llm::LlmTiming {
+                ttft_ms: None,
+                total_ms: req_start.elapsed().as_millis() as u64,
+            }),
+        })
     }
 
     /// Stream a completion via Server-Sent Events (`stream: true`).
@@ -290,7 +303,9 @@ impl OpenAiCompatibleProvider {
             messages,
             temperature,
             stream: true,
-            stream_options: Some(StreamOptions { include_usage: true }),
+            stream_options: Some(StreamOptions {
+                include_usage: true,
+            }),
             max_tokens: effective_max_tokens.map(|m| m as u32),
         };
 
@@ -301,6 +316,7 @@ impl OpenAiCompatibleProvider {
             req = req.bearer_auth(key);
         }
 
+        let req_start = Instant::now();
         let response = req.send().await.map_err(|e| {
             error!(url = %self.api_base_url, error = %e, "streaming LLM HTTP request failed");
             ProviderError::Request(e.to_string())
@@ -311,9 +327,11 @@ impl OpenAiCompatibleProvider {
         // Parse the SSE stream line by line.
         let mut stream = response.bytes_stream();
         let mut buf = String::new();
+        let mut ttft_ms: Option<u64> = None;
 
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| ProviderError::Request(format!("stream read error: {e}")))?;
+            let bytes =
+                chunk.map_err(|e| ProviderError::Request(format!("stream read error: {e}")))?;
             buf.push_str(&String::from_utf8_lossy(&bytes));
 
             // Process all complete `data: ...` lines in the buffer.
@@ -345,11 +363,20 @@ impl OpenAiCompatibleProvider {
                         cached_input_tokens: usage_val["prompt_tokens_details"]["cached_tokens"]
                             .as_u64()
                             .unwrap_or(0),
-                        reasoning_tokens: usage_val["completion_tokens_details"]["reasoning_tokens"]
-                            .as_u64()
-                            .unwrap_or(0),
+                        reasoning_tokens:
+                            usage_val["completion_tokens_details"]["reasoning_tokens"]
+                                .as_u64()
+                                .unwrap_or(0),
                     };
-                    let _ = tx.send(StreamChunk::Done(Some(usage))).await;
+                    let _ = tx
+                        .send(StreamChunk::Done {
+                            usage: Some(usage),
+                            timing: Some(crate::llm::LlmTiming {
+                                ttft_ms,
+                                total_ms: req_start.elapsed().as_millis() as u64,
+                            }),
+                        })
+                        .await;
                     return Ok(());
                 }
 
@@ -358,17 +385,34 @@ impl OpenAiCompatibleProvider {
                     continue;
                 }
 
-                if let Some(rc) = delta["reasoning_content"].as_str().filter(|s| !s.is_empty()) {
+                if let Some(rc) = delta["reasoning_content"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                {
+                    if ttft_ms.is_none() {
+                        ttft_ms = Some(req_start.elapsed().as_millis() as u64);
+                    }
                     let _ = tx.send(StreamChunk::Thinking(rc.to_string())).await;
                 }
                 if let Some(ct) = delta["content"].as_str().filter(|s| !s.is_empty()) {
+                    if ttft_ms.is_none() {
+                        ttft_ms = Some(req_start.elapsed().as_millis() as u64);
+                    }
                     let _ = tx.send(StreamChunk::Content(ct.to_string())).await;
                 }
             }
         }
 
         // Stream ended without an explicit usage chunk — send Done without usage.
-        let _ = tx.send(StreamChunk::Done(None)).await;
+        let _ = tx
+            .send(StreamChunk::Done {
+                usage: None,
+                timing: Some(crate::llm::LlmTiming {
+                    ttft_ms,
+                    total_ms: req_start.elapsed().as_millis() as u64,
+                }),
+            })
+            .await;
         Ok(())
     }
 }

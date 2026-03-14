@@ -284,6 +284,12 @@ pub struct AgentsConfig {
     /// (`instruct_prompt`, `instruction_response`, `tool_calls_json`, etc.)
     /// under `debug:turn:{n}:*` KV keys.  Off by default.
     pub debug_logging: bool,
+    /// Optional explicit session ID for the `uniweb` shared-session agent.
+    /// If `None` or empty, a deterministic ID is derived automatically.
+    pub uniweb_session_id: Option<String>,
+    /// Whether the `uniweb` agent routes its instruction pass through
+    /// `llm/instruct`.  Defaults to `false`.
+    pub uniweb_use_instruction_llm: bool,
     // TODO(PR2): static_agents: Vec<StaticAgentConfig>,
 }
 

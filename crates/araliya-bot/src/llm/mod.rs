@@ -24,6 +24,19 @@ pub enum ProviderError {
     Request(String),
 }
 
+// ── Timing ────────────────────────────────────────────────────────────────────
+
+/// Wall-clock latency for a single LLM completion.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmTiming {
+    /// Milliseconds from the start of the HTTP request until the first content
+    /// token was received (streaming only; `None` for non-streaming completions).
+    pub ttft_ms: Option<u64>,
+    /// Total milliseconds from the start of the HTTP request until the last
+    /// byte was received (or the response was fully parsed for non-streaming).
+    pub total_ms: u64,
+}
+
 // ── Usage / cost ──────────────────────────────────────────────────────────────
 
 /// Token counts returned by the provider for a single completion.
@@ -69,6 +82,9 @@ pub struct LlmResponse {
     pub thinking: Option<String>,
     /// `None` for providers that do not report token counts (e.g. `DummyProvider`).
     pub usage: Option<LlmUsage>,
+    /// Wall-clock latency for this completion.
+    /// `None` for providers that do not measure timing (e.g. `DummyProvider`).
+    pub timing: Option<LlmTiming>,
 }
 
 // ── Provider enum ─────────────────────────────────────────────────────────────
@@ -101,7 +117,9 @@ impl LlmProvider {
     ) -> Result<LlmResponse, ProviderError> {
         match self {
             LlmProvider::Dummy(p) => p.complete(content, system, max_tokens_override).await,
-            LlmProvider::OpenAiCompatible(p) => p.complete(content, system, max_tokens_override).await,
+            LlmProvider::OpenAiCompatible(p) => {
+                p.complete(content, system, max_tokens_override).await
+            }
             LlmProvider::Qwen(p) => p.complete(content, system, max_tokens_override).await,
         }
     }
@@ -119,9 +137,18 @@ impl LlmProvider {
         max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
         match self {
-            LlmProvider::Dummy(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
-            LlmProvider::OpenAiCompatible(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
-            LlmProvider::Qwen(p) => p.complete_stream(content, system, tx, max_tokens_override).await,
+            LlmProvider::Dummy(p) => {
+                p.complete_stream(content, system, tx, max_tokens_override)
+                    .await
+            }
+            LlmProvider::OpenAiCompatible(p) => {
+                p.complete_stream(content, system, tx, max_tokens_override)
+                    .await
+            }
+            LlmProvider::Qwen(p) => {
+                p.complete_stream(content, system, tx, max_tokens_override)
+                    .await
+            }
         }
     }
 

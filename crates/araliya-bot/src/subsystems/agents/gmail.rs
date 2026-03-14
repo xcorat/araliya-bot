@@ -67,6 +67,7 @@ impl Agent for GmailAgentPlugin {
                         content,
                         session_id,
                         usage: None,
+                        timing: None,
                         thinking: None,
                     }));
                 }

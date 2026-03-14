@@ -110,11 +110,8 @@ impl RuntimesSubsystem {
             cmd.env(k, v);
         }
 
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            cmd.output(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output()).await;
 
         match result {
             Ok(Ok(output)) => {
@@ -189,11 +186,8 @@ impl RuntimesSubsystem {
             cmd.env(k, v);
         }
 
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            cmd.output(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output()).await;
 
         // Clean up temp file regardless of outcome.
         if let Some(ref temp) = temp_file {

@@ -420,6 +420,81 @@ impl MemorySystem {
         ))
     }
 
+    /// Create a session rooted at `sessions_root` using an explicit session ID.
+    pub fn create_session_with_id_in(
+        &self,
+        sessions_root: &Path,
+        index_path: &Path,
+        session_id: &str,
+        store_types: &[&str],
+        agent_id: Option<&str>,
+    ) -> Result<SessionHandle, AppError> {
+        let mut session_stores = Vec::new();
+        for &st in store_types {
+            let store = self
+                .stores
+                .get(st)
+                .ok_or_else(|| AppError::Memory(format!("unknown store type: {st}")))?;
+            session_stores.push(store.clone());
+        }
+
+        let existing = Self::read_index_at(index_path)?;
+        if existing.sessions.contains_key(session_id) {
+            return Err(AppError::Memory(format!(
+                "session already exists: {session_id}"
+            )));
+        }
+
+        let session_dir = sessions_root.join(session_id);
+        let all_tmp = store_types.iter().all(|&s| s == "tmp");
+        if !all_tmp {
+            if session_dir.exists() {
+                return Err(AppError::Memory(format!(
+                    "session dir already exists for {session_id}"
+                )));
+            }
+
+            fs::create_dir_all(&session_dir).map_err(|e| {
+                AppError::Memory(format!(
+                    "cannot create session dir {}: {e}",
+                    session_dir.display()
+                ))
+            })?;
+        }
+
+        for store in &session_stores {
+            store.init(&session_dir)?;
+        }
+
+        let now = now_iso8601();
+        let info = SessionInfo {
+            session_id: session_id.to_string(),
+            created_at: now,
+            store_types: store_types.iter().map(|s| s.to_string()).collect(),
+            last_agent: agent_id.map(|s| s.to_string()),
+            spend: None,
+        };
+        Self::update_index_at(index_path, |idx| {
+            idx.sessions.insert(session_id.to_string(), info);
+        })?;
+
+        let tmp_store = store_types.contains(&"tmp").then(|| self.tmp_store.clone());
+
+        info!(
+            session_id = %session_id,
+            stores = ?store_types,
+            agent = ?agent_id,
+            "agent-scoped session created with explicit id"
+        );
+
+        Ok(SessionHandle::new(
+            session_id.to_string(),
+            session_dir,
+            session_stores,
+            tmp_store,
+        ))
+    }
+
     /// Load an existing session from `sessions_root`, indexed at `index_path`.
     pub fn load_session_in(
         &self,

@@ -41,6 +41,8 @@ mod agentic_chat;
 mod chat;
 #[cfg(feature = "plugin-docs")]
 mod docs;
+#[cfg(feature = "plugin-docs-agent")]
+mod docs_agent;
 #[cfg(feature = "plugin-docs")]
 mod docs_import;
 #[cfg(feature = "plugin-gmail-agent")]
@@ -49,6 +51,8 @@ mod gmail;
 mod news;
 #[cfg(feature = "plugin-runtime-cmd")]
 mod runtime_cmd;
+#[cfg(feature = "plugin-uniweb")]
+mod uniweb;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -395,6 +399,7 @@ impl Agent for EchoAgent {
             content,
             session_id,
             usage: None,
+            timing: None,
             thinking: None,
         }));
     }
@@ -577,6 +582,30 @@ impl AgentsSubsystem {
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-uniweb")]
+        {
+            // Uniweb — shared-session "front-porch" agentic chat agent.
+            // All visitors share a single global session; requests are serialised.
+            let configured_sid = config.uniweb_session_id.as_deref().unwrap_or("");
+            let agent: Box<dyn Agent> = Box::new(uniweb::UniwebAgent::new(
+                configured_sid,
+                config.uniweb_use_instruction_llm,
+            ));
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-docs-agent")]
+        {
+            let agent: Box<dyn Agent> = Box::new(docs_agent::DocsAgentWrapper::new());
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
             );
         }
 
@@ -1528,6 +1557,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1568,6 +1599,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1605,6 +1638,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1639,6 +1674,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1680,6 +1717,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1725,7 +1764,7 @@ mod tests {
                         content: format!("[fake] {content}"),
                         session_id: None,
                         usage: None,
-                    thinking: None,
+                        thinking: None,
                     }));
                 }
             }
@@ -1742,6 +1781,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1820,7 +1861,7 @@ mod tests {
                         content: "Summary: Test Headline from news@example.com.".to_string(),
                         session_id: None,
                         usage: None,
-                    thinking: None,
+                        thinking: None,
                     }));
                 }
             }
@@ -1837,6 +1878,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1898,6 +1941,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1939,6 +1984,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -1994,11 +2041,7 @@ mod tests {
             }) = rx.recv().await
             {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest {
-                    channel_id,
-                    ..
-                } = payload
-                {
+                if let BusPayload::LlmRequest { channel_id, .. } = payload {
                     // Return a tool call that invokes docs_search.
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
@@ -2019,11 +2062,7 @@ mod tests {
             }) = rx.recv().await
             {
                 assert_eq!(method, "llm/complete");
-                if let BusPayload::LlmRequest {
-                    channel_id,
-                    ..
-                } = payload
-                {
+                if let BusPayload::LlmRequest { channel_id, .. } = payload {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                         channel_id,
                         content: "brown".to_string(),
@@ -2054,6 +2093,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Populate the docs docstore before handling any queries.
@@ -2096,6 +2137,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Do NOT call init_docs — docstore stays empty.
@@ -2130,6 +2173,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2163,6 +2208,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2186,6 +2233,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2230,8 +2279,9 @@ mod tests {
 
         tokio::spawn(async move {
             // Request 1: llm/instruct → empty JSON array (no tools)
-            if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
-                bus_rx.recv().await
+            if let Some(crate::supervisor::bus::BusMessage::Request {
+                payload, reply_tx, ..
+            }) = bus_rx.recv().await
             {
                 if let BusPayload::LlmRequest { channel_id, .. } = payload {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
@@ -2239,13 +2289,14 @@ mod tests {
                         content: "[]".to_string(),
                         session_id: None,
                         usage: None,
-                    thinking: None,
+                        thinking: None,
                     }));
                 }
             }
             // Request 2: llm/complete → response
-            if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
-                bus_rx.recv().await
+            if let Some(crate::supervisor::bus::BusMessage::Request {
+                payload, reply_tx, ..
+            }) = bus_rx.recv().await
             {
                 if let BusPayload::LlmRequest { channel_id, .. } = payload {
                     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
@@ -2253,7 +2304,7 @@ mod tests {
                         content: "[fake] hello".to_string(),
                         session_id: None,
                         usage: None,
-                    thinking: None,
+                        thinking: None,
                     }));
                 }
             }
@@ -2272,6 +2323,8 @@ mod tests {
             }),
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2289,9 +2342,16 @@ mod tests {
         );
 
         match rx_reply.await.unwrap() {
-            Ok(BusPayload::CommsMessage { content, session_id, .. }) => {
+            Ok(BusPayload::CommsMessage {
+                content,
+                session_id,
+                ..
+            }) => {
                 assert_eq!(content, "[fake] hello");
-                assert!(session_id.is_some(), "agentic loop must return a session_id");
+                assert!(
+                    session_id.is_some(),
+                    "agentic loop must return a session_id"
+                );
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -2309,8 +2369,9 @@ mod tests {
         // Handle 4 sequential LLM requests (2 per turn: instruct + complete).
         tokio::spawn(async move {
             for i in 0..4u32 {
-                if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
-                    bus_rx.recv().await
+                if let Some(crate::supervisor::bus::BusMessage::Request {
+                    payload, reply_tx, ..
+                }) = bus_rx.recv().await
                 {
                     if let BusPayload::LlmRequest { channel_id, .. } = payload {
                         let content = if i % 2 == 0 {
@@ -2343,6 +2404,8 @@ mod tests {
             }),
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2380,8 +2443,14 @@ mod tests {
             tx2,
         );
         match rx2.await.unwrap() {
-            Ok(BusPayload::CommsMessage { session_id: sid2, .. }) => {
-                assert_eq!(sid2, Some(session_id), "session_id must be reused across turns");
+            Ok(BusPayload::CommsMessage {
+                session_id: sid2, ..
+            }) => {
+                assert_eq!(
+                    sid2,
+                    Some(session_id),
+                    "session_id must be reused across turns"
+                );
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -2402,8 +2471,9 @@ mod tests {
 
         tokio::spawn(async move {
             for _ in 0..2u32 {
-                if let Some(crate::supervisor::bus::BusMessage::Request { payload, reply_tx, .. }) =
-                    bus_rx.recv().await
+                if let Some(crate::supervisor::bus::BusMessage::Request {
+                    payload, reply_tx, ..
+                }) = bus_rx.recv().await
                 {
                     if let BusPayload::LlmRequest { channel_id, .. } = payload {
                         let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
@@ -2431,6 +2501,8 @@ mod tests {
             }),
             runtime_cmd: None,
             debug_logging: true,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2449,7 +2521,10 @@ mod tests {
 
         match rx_reply.await.unwrap() {
             Ok(BusPayload::CommsMessage { session_id, .. }) => {
-                assert!(session_id.is_some(), "debug_logging=true must not break session creation");
+                assert!(
+                    session_id.is_some(),
+                    "debug_logging=true must not break session creation"
+                );
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -2513,6 +2588,8 @@ mod tests {
                 setup_script: None,
             }),
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2562,9 +2639,14 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
-        let reg = subsystem.agents.get("echo").expect("echo must be registered");
+        let reg = subsystem
+            .agents
+            .get("echo")
+            .expect("echo must be registered");
         assert_eq!(reg.runtime_class, AgentRuntimeClass::RequestResponse);
         assert_eq!(reg.agent.id(), "echo");
     }
@@ -2585,6 +2667,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -2611,6 +2695,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -2637,6 +2723,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -2663,6 +2751,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -2689,6 +2779,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -2716,6 +2808,8 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2789,6 +2883,8 @@ mod tests {
                 setup_script: None,
             }),
             debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

@@ -3,8 +3,8 @@
 //! All user messages are sent as source code to `runtimes/exec`.  No LLM
 //! is involved — this is a pure command passthrough agent.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
@@ -73,6 +73,7 @@ impl Agent for RuntimeCmdPlugin {
                             content: format!("Runtime init failed: {e:?}"),
                             session_id,
                             usage: None,
+                            timing: None,
                             thinking: None,
                         }));
                         return;
@@ -96,6 +97,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: reply,
                         session_id,
                         usage: None,
+                        timing: None,
                         thinking: None,
                     }));
                 }
@@ -105,6 +107,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: format!("Unexpected response: {other:?}"),
                         session_id,
                         usage: None,
+                        timing: None,
                         thinking: None,
                     }));
                 }
@@ -114,6 +117,7 @@ impl Agent for RuntimeCmdPlugin {
                         content: format!("Execution error: {e:?}"),
                         session_id,
                         usage: None,
+                        timing: None,
                         thinking: None,
                     }));
                 }

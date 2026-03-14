@@ -132,14 +132,9 @@ async fn handle_with_memory(
     };
 
     // Build system preamble (identity layers) and user message separately.
-    let chat_skills = state
-        .agent_skills
-        .get("chat")
-        .cloned()
-        .unwrap_or_default();
+    let chat_skills = state.agent_skills.get("chat").cloned().unwrap_or_default();
     let system =
-        crate::subsystems::agents::core::prompt::preamble("config/prompts", &chat_skills)
-            .build();
+        crate::subsystems::agents::core::prompt::preamble("config/prompts", &chat_skills).build();
 
     let body = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
         "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
@@ -177,6 +172,7 @@ async fn handle_with_memory(
             channel_id,
             content,
             usage,
+            timing,
             thinking,
             ..
         }) => Ok(BusPayload::CommsMessage {
@@ -184,6 +180,7 @@ async fn handle_with_memory(
             content,
             session_id: Some(handle.session_id.clone()),
             usage,
+            timing,
             thinking,
         }),
         other => other,

@@ -127,7 +127,9 @@ impl Agent for AgenticChatPlugin {
     ) {
         let loop_ = self.build_loop(&state);
         tokio::spawn(async move {
-            let result = loop_.run_stream(channel_id, content, session_id, state).await;
+            let result = loop_
+                .run_stream(channel_id, content, session_id, state)
+                .await;
             let _ = reply_tx.send(result);
         });
     }

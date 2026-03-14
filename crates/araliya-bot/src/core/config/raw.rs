@@ -246,6 +246,9 @@ pub(super) struct RawAgentEntry {
     /// Optional setup script run on first interaction.
     #[serde(default)]
     pub setup_script: Option<String>,
+    /// Optional explicit global session ID for the `uniweb` agent.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

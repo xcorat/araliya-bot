@@ -51,6 +51,8 @@ impl Config {
                 agentic_chat: None,
                 runtime_cmd: None,
                 debug_logging: false,
+                uniweb_session_id: None,
+                uniweb_use_instruction_llm: false,
             },
             llm: LlmConfig {
                 provider: "dummy".into(),

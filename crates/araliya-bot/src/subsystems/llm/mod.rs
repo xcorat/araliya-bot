@@ -15,7 +15,9 @@ use crate::llm::providers;
 use crate::llm::{LlmProvider, ModelRates, ProviderError};
 use tokio::sync::mpsc;
 
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, StreamReceiver, ERR_METHOD_NOT_FOUND};
+use crate::supervisor::bus::{
+    BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND, StreamReceiver,
+};
 use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
 use crate::supervisor::dispatch::BusHandler;
 use crate::supervisor::health::HealthReporter;
@@ -268,6 +270,7 @@ impl BusHandler for LlmSubsystem {
                                 content: resp.text,
                                 session_id: None,
                                 usage: resp.usage,
+                                timing: resp.timing,
                                 thinking: resp.thinking,
                             }
                         })
@@ -285,7 +288,12 @@ impl BusHandler for LlmSubsystem {
 
         // ── llm/stream: start a streaming completion ─────────────────────────
         if method == "llm/stream" {
-            if let BusPayload::LlmRequest { channel_id, content, system } = payload {
+            if let BusPayload::LlmRequest {
+                channel_id,
+                content,
+                system,
+            } = payload
+            {
                 let provider = self.provider.clone();
                 debug!(%method, %channel_id, "dispatching streaming to llm provider");
                 tokio::spawn(async move {
@@ -295,7 +303,10 @@ impl BusHandler for LlmSubsystem {
                     }));
                     // Provider writes chunks to tx; when complete_stream() returns,
                     // tx is dropped and the receiver sees None.
-                    if let Err(e) = provider.complete_stream(&content, system.as_deref(), tx, None).await {
+                    if let Err(e) = provider
+                        .complete_stream(&content, system.as_deref(), tx, None)
+                        .await
+                    {
                         warn!(error = %e, "streaming LLM provider error");
                     }
                 });
@@ -337,6 +348,7 @@ impl BusHandler for LlmSubsystem {
                                 content: resp.text,
                                 session_id: None,
                                 usage: resp.usage,
+                                timing: resp.timing,
                                 thinking: resp.thinking,
                             }
                         })

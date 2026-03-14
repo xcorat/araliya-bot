@@ -125,6 +125,8 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agentic_chat: None,
                 runtime_cmd: None,
                 debug_logging: false,
+                uniweb_session_id: None,
+                uniweb_use_instruction_llm: false,
             },
             llm: LlmConfig {
                 provider: "dummy".to_string(),
@@ -379,6 +381,17 @@ pub fn load_from(
             agentic_chat: agentic_chat_cfg,
             runtime_cmd: runtime_cmd_cfg,
             debug_logging: parsed.agents.debug_logging,
+            uniweb_session_id: parsed
+                .agents
+                .entries
+                .get("uniweb")
+                .and_then(|e| e.session_id.clone()),
+            uniweb_use_instruction_llm: parsed
+                .agents
+                .entries
+                .get("uniweb")
+                .map(|e| e.use_instruction_llm)
+                .unwrap_or(false),
         },
         llm: LlmConfig {
             provider: parsed.llm.provider,

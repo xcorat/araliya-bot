@@ -1,5 +1,13 @@
 // ── Chat types ──────────────────────────────────────────────
 
+/** Wall-clock latency reported by the backend for a single LLM turn. */
+export interface LlmTiming {
+	/** Time-to-first-token in ms (streaming only; absent for non-streaming). */
+	ttft_ms?: number;
+	/** Total request duration in ms. */
+	total_ms: number;
+}
+
 export interface ChatMessage {
 	id: string;
 	role: 'user' | 'assistant' | 'system' | 'error';
@@ -8,6 +16,10 @@ export interface ChatMessage {
 	intermediateSteps?: ToolStep[];
 	/** Internal chain-of-thought from reasoning models (Qwen3, DeepSeek-R1, …). */
 	thinking?: string;
+	/** Per-turn token usage from the backend. */
+	usage?: UsageInfo;
+	/** Per-turn wall-clock timing from the backend. */
+	timing?: LlmTiming;
 }
 
 export interface ToolStep {
@@ -38,6 +50,7 @@ export interface MessageResponse {
 	working_memory_updated: boolean;
 	intermediate_steps?: ToolStep[];
 	usage?: UsageInfo;
+	timing?: LlmTiming;
 	session_usage_totals?: UsageInfo;
 }
 

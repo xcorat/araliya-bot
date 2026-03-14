@@ -23,8 +23,8 @@ use crate::llm::StreamChunk;
 use crate::subsystems::memory::handle::SessionHandle;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, StreamReceiver};
 
+use super::prompt::{PromptBuilder, preamble};
 use crate::subsystems::agents::AgentsState;
-use super::prompt::{preamble, PromptBuilder};
 
 /// How many recent transcript entries to inject as conversation context.
 const CONTEXT_WINDOW: usize = 20;
@@ -195,7 +195,10 @@ impl AgenticLoop {
         }) = result
         {
             if let Err(e) = turn.handle.transcript_append("assistant", reply).await {
-                warn!("{}: transcript_append(assistant) failed: {e}", self.agent_id);
+                warn!(
+                    "{}: transcript_append(assistant) failed: {e}",
+                    self.agent_id
+                );
             }
             if let Some(u) = usage
                 && let Err(e) = turn.handle.accumulate_spend(u, &state.llm_rates).await
@@ -210,6 +213,7 @@ impl AgenticLoop {
                 channel_id,
                 content,
                 usage,
+                timing,
                 thinking,
                 ..
             }) => Ok(BusPayload::CommsMessage {
@@ -217,6 +221,7 @@ impl AgenticLoop {
                 content,
                 session_id: Some(turn.handle.session_id.clone()),
                 usage,
+                timing,
                 thinking,
             }),
             other => other,
@@ -253,11 +258,7 @@ impl AgenticLoop {
 
         // ── Streaming response pass ─────────────────────────────────
         let llm_rx = match state
-            .stream_via_llm_with_system(
-                &turn.channel_id,
-                &turn.response_prompt,
-                Some(&turn.system),
-            )
+            .stream_via_llm_with_system(&turn.channel_id, &turn.response_prompt, Some(&turn.system))
             .await
         {
             Ok(rx) => rx,
@@ -275,7 +276,13 @@ impl AgenticLoop {
 
         tokio::spawn(async move {
             tee_and_persist(
-                llm_rx, fwd_tx, handle, agent_id, llm_rates, debug_logging, debug_n,
+                llm_rx,
+                fwd_tx,
+                handle,
+                agent_id,
+                llm_rates,
+                debug_logging,
+                debug_n,
             )
             .await;
         });
@@ -381,10 +388,7 @@ impl AgenticLoop {
         let instruction_text = match instruction_text {
             Ok(t) => t,
             Err(e) => {
-                warn!(
-                    "{}: instruction pass failed: {}",
-                    self.agent_id, e.message
-                );
+                warn!("{}: instruction pass failed: {}", self.agent_id, e.message);
                 String::new()
             }
         };
@@ -397,16 +401,15 @@ impl AgenticLoop {
                 )
                 .await
             {
-                warn!(
-                    "{}: debug kv_set instruction_response: {e}",
-                    self.agent_id
-                );
+                warn!("{}: debug kv_set instruction_response: {e}", self.agent_id);
             }
         }
 
         // ── 4. Parse instruction response ─────────────────────────────
-        let InstructionResponse { tool_calls, reply: early_reply } =
-            parse_instruction_response(&instruction_text);
+        let InstructionResponse {
+            tool_calls,
+            reply: early_reply,
+        } = parse_instruction_response(&instruction_text);
 
         if tool_calls.is_empty() {
             tracing::debug!("{}: no tool calls from instruction pass", self.agent_id);
@@ -432,13 +435,17 @@ impl AgenticLoop {
                     self.agent_id
                 );
                 if let Err(e) = handle.transcript_append("assistant", &reply_text).await {
-                    warn!("{}: transcript_append(assistant) failed: {e}", self.agent_id);
+                    warn!(
+                        "{}: transcript_append(assistant) failed: {e}",
+                        self.agent_id
+                    );
                 }
                 return TurnOutcome::EarlyReply(Ok(BusPayload::CommsMessage {
                     channel_id,
                     content: reply_text,
                     session_id: Some(handle.session_id.clone()),
                     usage: None,
+                    timing: None,
                     thinking: None,
                 }));
             }
@@ -459,8 +466,7 @@ impl AgenticLoop {
                 .iter()
                 .chain(self.local_tools.iter())
                 .find(|t| t.name() == tool_name.as_str());
-            if let Some(local) = in_process
-            {
+            if let Some(local) = in_process {
                 let tool = Arc::clone(local);
                 let params = call.params.clone();
                 match tokio::task::spawn_blocking(move || tool.call(&params)).await {
@@ -543,10 +549,7 @@ impl AgenticLoop {
                             "ok": false, "output": format!("bus error: {}", e.message),
                         }));
                     }
-                    warn!(
-                        "{}: bus tool dispatch failed: {}",
-                        self.agent_id, e.message
-                    )
+                    warn!("{}: bus tool dispatch failed: {}", self.agent_id, e.message)
                 }
                 _ => {}
             }
@@ -554,8 +557,7 @@ impl AgenticLoop {
         let context = context_parts.join("\n\n---\n\n");
 
         if self.debug_logging {
-            let outputs_json =
-                serde_json::to_string(&debug_tool_outputs).unwrap_or_default();
+            let outputs_json = serde_json::to_string(&debug_tool_outputs).unwrap_or_default();
             if let Err(e) = handle
                 .kv_set(
                     &format!("debug:turn:{debug_n}:tool_outputs_json"),
@@ -620,7 +622,7 @@ impl AgenticLoop {
                 let (tx, rx) = mpsc::channel::<StreamChunk>(2);
                 tokio::spawn(async move {
                     let _ = tx.send(StreamChunk::Content(content)).await;
-                    let _ = tx.send(StreamChunk::Done(None)).await;
+                    let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
                 });
                 Ok(BusPayload::LlmStreamResult {
                     rx: StreamReceiver(rx),
@@ -698,7 +700,11 @@ impl AgenticLoop {
 
         // Local tools first.
         for tool in &self.local_tools {
-            lines.push(format!("- tool: \"{}\", {}", tool.name(), tool.description()));
+            lines.push(format!(
+                "- tool: \"{}\", {}",
+                tool.name(),
+                tool.description()
+            ));
         }
 
         // Bus-dispatched tools.
@@ -752,7 +758,7 @@ async fn tee_and_persist(
         match &chunk {
             StreamChunk::Content(delta) => content_buf.push_str(delta),
             StreamChunk::Thinking(_) => { /* forward only */ }
-            StreamChunk::Done(usage) => {
+            StreamChunk::Done { usage, .. } => {
                 // Persist transcript.
                 if !content_buf.is_empty() {
                     if let Err(e) = handle.transcript_append("assistant", &content_buf).await {
@@ -844,7 +850,10 @@ fn parse_instruction_response(text: &str) -> InstructionResponse {
                     let r = r.trim().to_string();
                     if r.is_empty() { None } else { Some(r) }
                 });
-                return InstructionResponse { tool_calls: wrapper.tools, reply };
+                return InstructionResponse {
+                    tool_calls: wrapper.tools,
+                    reply,
+                };
             }
         }
     }
@@ -856,15 +865,24 @@ fn parse_instruction_response(text: &str) -> InstructionResponse {
     {
         let slice = &json_text[start..=end];
         if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(slice) {
-            return InstructionResponse { tool_calls: calls, reply: None };
+            return InstructionResponse {
+                tool_calls: calls,
+                reply: None,
+            };
         }
     }
 
     if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(json_text) {
-        return InstructionResponse { tool_calls: calls, reply: None };
+        return InstructionResponse {
+            tool_calls: calls,
+            reply: None,
+        };
     }
 
-    InstructionResponse { tool_calls: Vec::new(), reply: None }
+    InstructionResponse {
+        tool_calls: Vec::new(),
+        reply: None,
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

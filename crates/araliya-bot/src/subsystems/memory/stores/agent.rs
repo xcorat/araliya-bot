@@ -339,6 +339,38 @@ impl AgentStore {
         Ok(handle)
     }
 
+    /// Load a specific agent-scoped session, creating it on first use.
+    pub fn get_or_create_session_with_id(
+        &self,
+        memory: &MemorySystem,
+        agent_id: &str,
+        session_id: &str,
+        store_types: &[&str],
+    ) -> Result<SessionHandle, AppError> {
+        let sessions_root = self.agent_sessions_dir();
+        let index_path = self.agent_sessions_index();
+
+        fs::create_dir_all(&sessions_root)
+            .map_err(|e| AppError::Memory(format!("agent: cannot create sessions dir: {e}")))?;
+
+        let handle =
+            match memory.load_session_in(&sessions_root, &index_path, session_id, Some(agent_id)) {
+                Ok(handle) => handle,
+                Err(AppError::Memory(msg)) if msg.starts_with("session not found: ") => memory
+                    .create_session_with_id_in(
+                        &sessions_root,
+                        &index_path,
+                        session_id,
+                        store_types,
+                        Some(agent_id),
+                    )?,
+                Err(e) => return Err(e),
+            };
+
+        self.kv_set("active_session_id", &handle.session_id)?;
+        Ok(handle)
+    }
+
     /// List all sessions stored under this agent's identity directory.
     pub fn list_agent_sessions(&self) -> Result<Vec<SessionInfo>, AppError> {
         MemorySystem::list_sessions_in(&self.agent_sessions_index())
@@ -491,5 +523,64 @@ mod tests {
 
         let scoped = store.list_agent_sessions().unwrap();
         assert_eq!(scoped.len(), 1);
+    }
+
+    #[test]
+    fn get_or_create_session_with_id_bootstraps_fixed_session() {
+        let identity_root = TempDir::new().unwrap();
+        let memory = MemorySystem::new(identity_root.path(), MemoryConfig::default()).unwrap();
+
+        let agent_identity = identity_root.path().join("agent-uniweb");
+        let store = AgentStore::open(&agent_identity).unwrap();
+
+        let handle = store
+            .get_or_create_session_with_id(
+                &memory,
+                "uniweb",
+                "00000000-0000-4000-8000-000000000000",
+                &["basic_session"],
+            )
+            .unwrap();
+
+        assert_eq!(handle.session_id, "00000000-0000-4000-8000-000000000000");
+        assert_eq!(
+            store.kv_get("active_session_id").unwrap(),
+            Some(handle.session_id.clone())
+        );
+        assert!(
+            agent_identity
+                .join("sessions")
+                .join(&handle.session_id)
+                .exists()
+        );
+    }
+
+    #[test]
+    fn get_or_create_session_with_id_reuses_existing_session() {
+        let identity_root = TempDir::new().unwrap();
+        let memory = MemorySystem::new(identity_root.path(), MemoryConfig::default()).unwrap();
+
+        let agent_identity = identity_root.path().join("agent-uniweb");
+        let store = AgentStore::open(&agent_identity).unwrap();
+
+        let first = store
+            .get_or_create_session_with_id(
+                &memory,
+                "uniweb",
+                "11111111-1111-4111-8111-111111111111",
+                &["basic_session"],
+            )
+            .unwrap();
+        let second = store
+            .get_or_create_session_with_id(
+                &memory,
+                "uniweb",
+                "11111111-1111-4111-8111-111111111111",
+                &["basic_session"],
+            )
+            .unwrap();
+
+        assert_eq!(first.session_id, second.session_id);
+        assert_eq!(store.list_agent_sessions().unwrap().len(), 1);
     }
 }

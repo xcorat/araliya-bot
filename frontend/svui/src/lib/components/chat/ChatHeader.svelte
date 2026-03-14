@@ -9,6 +9,8 @@
 		getHealthStatus,
 		getSessionId,
 		getLastUsage,
+		getLastTiming,
+		getStreamElapsedMs,
 		getSessionUsageTotals,
 		getWorkingMemoryUpdated,
 		getIsLoading,
@@ -21,8 +23,29 @@
 	const health = $derived(getHealthStatus());
 	const sid = $derived(getSessionId());
 	const totals = $derived(getSessionUsageTotals());
+	const lastUsage = $derived(getLastUsage());
+	const lastTiming = $derived(getLastTiming());
+	const streamElapsedMs = $derived(getStreamElapsedMs());
 	const wmUpdated = $derived(getWorkingMemoryUpdated());
 	const loading = $derived(getIsLoading());
+
+	/** True while a streaming request is in-flight. */
+	const isStreaming = $derived(streamElapsedMs !== null);
+
+	/** Formatted live elapsed time during streaming. */
+	const liveElapsed = $derived(
+		streamElapsedMs !== null ? `${(streamElapsedMs / 1000).toFixed(1)}s` : null
+	);
+
+	/** Last-turn stats badge text: "1.4s · 312 tok · $0.0004" */
+	const lastTurnLabel = $derived((() => {
+		if (!lastTiming || !lastUsage) return null;
+		const secs = (lastTiming.total_ms / 1000).toFixed(1);
+		const tok = lastUsage.total_tokens ?? (lastUsage.prompt_tokens + lastUsage.completion_tokens);
+		const cost = lastUsage.estimated_cost_usd;
+		const costStr = cost === 0 ? '' : ` · ${cost < 0.0001 ? '<$0.0001' : `$${cost.toFixed(4)}`}`;
+		return `${secs}s · ${tok} tok${costStr}`;
+	})());
 
 	const basePath = $derived(base || '');
 	const chatPath = $derived(basePath ? `${basePath}/` : '/');
@@ -141,7 +164,16 @@
 		{#if wmUpdated}
 			<Badge variant="outline" class="text-[10px]">WM updated</Badge>
 		{/if}
-		{#if totals}
+		<!-- Live streaming timer → last-turn stats → session totals (priority order) -->
+		{#if isStreaming && liveElapsed}
+			<Badge variant="outline" class="hidden animate-pulse text-[10px] tabular-nums text-yellow-600 dark:text-yellow-400 lg:inline-flex">
+				⏱ {liveElapsed}
+			</Badge>
+		{:else if lastTurnLabel}
+			<Badge variant="outline" class="hidden text-[10px] tabular-nums lg:inline-flex" title="Last turn: time · tokens · cost">
+				{lastTurnLabel}
+			</Badge>
+		{:else if totals}
 			<Badge variant="outline" class="hidden text-[10px] lg:inline-flex">
 				{totals.total_tokens} tok &middot; {formatCost(totals.estimated_cost_usd)}
 			</Badge>

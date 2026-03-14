@@ -19,6 +19,7 @@ impl DummyProvider {
             text: format!("[echo] {content}"),
             thinking: None,
             usage: None,
+            timing: None,
         })
     }
 
@@ -29,8 +30,10 @@ impl DummyProvider {
         tx: mpsc::Sender<StreamChunk>,
         _max_tokens_override: Option<usize>,
     ) -> Result<(), ProviderError> {
-        let _ = tx.send(StreamChunk::Content(format!("[echo] {content}"))).await;
-        let _ = tx.send(StreamChunk::Done(None)).await;
+        let _ = tx
+            .send(StreamChunk::Content(format!("[echo] {content}")))
+            .await;
+        let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
         Ok(())
     }
 }
@@ -58,6 +61,12 @@ mod tests {
     #[tokio::test]
     async fn complete_usage_is_none() {
         let p = DummyProvider;
-        assert!(p.complete("test", None, None).await.unwrap().usage.is_none());
+        assert!(
+            p.complete("test", None, None)
+                .await
+                .unwrap()
+                .usage
+                .is_none()
+        );
     }
 }

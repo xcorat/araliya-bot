@@ -148,7 +148,10 @@ mod tests {
 
     #[test]
     fn runtime_class_labels_are_stable() {
-        assert_eq!(AgentRuntimeClass::RequestResponse.label(), "request_response");
+        assert_eq!(
+            AgentRuntimeClass::RequestResponse.label(),
+            "request_response"
+        );
         assert_eq!(AgentRuntimeClass::Session.label(), "session");
         assert_eq!(AgentRuntimeClass::Agentic.label(), "agentic");
         assert_eq!(AgentRuntimeClass::Workflow.label(), "workflow");
@@ -167,7 +170,11 @@ mod tests {
             AgentRuntimeClass::Specialized,
         ];
         for class in cases {
-            assert_eq!(format!("{class}"), class.label(), "Display mismatch for {class:?}");
+            assert_eq!(
+                format!("{class}"),
+                class.label(),
+                "Display mismatch for {class:?}"
+            );
         }
     }
 

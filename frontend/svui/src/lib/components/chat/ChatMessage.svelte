@@ -25,6 +25,25 @@
 			return '';
 		}
 	});
+
+	/** One-line metadata footer text for assistant messages, e.g. "1.4s · 312 tok" */
+	const metaLine = $derived((() => {
+		if (isUser || isError || isSystem) return null;
+		const t = message.timing;
+		const u = message.usage;
+		if (!t && !u) return null;
+		const parts: string[] = [];
+		if (t) parts.push(`${(t.total_ms / 1000).toFixed(1)}s`);
+		if (u) {
+			const tok = u.total_tokens ?? (u.prompt_tokens + u.completion_tokens);
+			parts.push(`${tok} tok`);
+			if (u.estimated_cost_usd > 0) {
+				const c = u.estimated_cost_usd;
+				parts.push(c < 0.0001 ? '<$0.0001' : `$${c.toFixed(4)}`);
+			}
+		}
+		return parts.join(' · ');
+	})());
 </script>
 
 <div class={cn('flex w-full gap-3 message-enter', isUser ? 'justify-end' : 'justify-start')}>
@@ -78,6 +97,9 @@
 			)}
 		>
 			<span>{time()}</span>
+			{#if metaLine}
+				<span class="tabular-nums opacity-70">{metaLine}</span>
+			{/if}
 			{#if isError}
 				<Badge variant="destructive" class="h-4 px-1 text-[9px]">error</Badge>
 			{/if}

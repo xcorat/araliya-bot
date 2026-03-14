@@ -1,0 +1,96 @@
+# Uniweb — shared-session "front-porch" agentic chat with docstore RAG.
+#
+# All visitors see the same conversation.  Requests are serialised so only one
+# LLM call runs at a time; concurrent callers wait in a FIFO queue.
+#
+# Usage:
+#   cargo run -- -c config/uniweb.toml
+#   cargo run -- -c config/uniweb.toml -i   # interactive mode
+
+[meta]
+base = "default.toml"
+
+[supervisor]
+bot_name = "uniweb"
+work_dir = "~/araliya"
+log_level = "debug"
+
+[comms.pty]
+enabled = true
+
+[comms.http]
+enabled = false
+
+[comms.axum_channel]
+enabled = true
+bind = "0.0.0.0:8080"
+
+[comms.telegram]
+enabled = false
+
+[agents]
+default = "uniweb"
+debug_logging = true
+
+[agents.echo]
+enabled = false
+
+[agents.basic_chat]
+enabled = false
+
+[agents.chat]
+enabled = false
+
+[agents.agentic-chat]
+enabled = false
+
+[agents.docs]
+enabled = false
+
+[agents.uniweb]
+enabled = true
+memory = ["basic_session"]
+use_instruction_llm = true
+
+# Point at the docs directory to enable the docs_search RAG tool.
+# The directory is indexed into the agent's identity-scoped docstore on first
+# run; subsequent runs reuse the index.
+docsdir = "docs/"
+index = "index.md"
+use_kg = true
+
+# Uncomment to set an explicit global session ID.  When omitted, a
+# deterministic ID is derived from the "uniweb" seed.
+# session_id = "00000000-0000-4000-8000-000000000000"
+
+[llm]
+default = "openai"
+
+# Instruction LLM — used for the agentic instruction pass (tool-call routing).
+# A smaller, faster model is ideal here since it only emits JSON tool calls.
+[llm.instruction]
+provider = "qwen"
+
+[llm.qwen]
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 1800
+max_tokens = 8192
+input_per_million_usd = 0.0
+output_per_million_usd = 0.0
+cached_input_per_million_usd = 0.0
+
+# Response LLM — used for the final response pass.
+[llm.openai]
+api_base_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-5-nano"
+temperature = 0.2
+timeout_seconds = 60
+input_per_million_usd = 0.05
+output_per_million_usd = 0.40
+cached_input_per_million_usd = 0.005
+
+[ui.svui]
+enabled = true
+static_dir = "frontend/build"

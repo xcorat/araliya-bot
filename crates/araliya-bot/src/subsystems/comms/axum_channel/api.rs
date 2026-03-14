@@ -145,6 +145,16 @@ pub(super) async fn message(
                 "reply": reply.reply,
                 "thinking": reply.thinking,
                 "working_memory_updated": false,
+                "usage": reply.usage.map(|u| json!({
+                    "prompt_tokens": u.input_tokens,
+                    "completion_tokens": u.output_tokens,
+                    "total_tokens": u.input_tokens + u.output_tokens,
+                    "estimated_cost_usd": 0.0_f64,
+                })),
+                "timing": reply.timing.map(|t| json!({
+                    "ttft_ms": t.ttft_ms,
+                    "total_ms": t.total_ms,
+                })),
             });
             (StatusCode::OK, Json(body)).into_response()
         }
@@ -182,12 +192,7 @@ pub(super) async fn message_stream(
 
     let rx = match state
         .comms
-        .stream_via_agent(
-            &channel_id,
-            req.message,
-            session_id,
-            req.agent_id.clone(),
-        )
+        .stream_via_agent(&channel_id, req.message, session_id, req.agent_id.clone())
         .await
     {
         Ok(rx) => rx,
@@ -209,13 +214,17 @@ pub(super) async fn message_stream(
                 let data = json!({"delta": delta}).to_string();
                 Event::default().event("content").data(data)
             }
-            StreamChunk::Done(usage) => {
+            StreamChunk::Done { usage, timing } => {
                 let data = json!({
                     "usage": usage.map(|u| json!({
                         "prompt_tokens": u.input_tokens,
                         "completion_tokens": u.output_tokens,
                         "reasoning_tokens": u.reasoning_tokens,
                         "cached_input_tokens": u.cached_input_tokens,
+                    })),
+                    "timing": timing.map(|t| json!({
+                        "ttft_ms": t.ttft_ms,
+                        "total_ms": t.total_ms,
                     }))
                 })
                 .to_string();
