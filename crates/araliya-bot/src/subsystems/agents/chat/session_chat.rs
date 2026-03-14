@@ -174,6 +174,7 @@ async fn handle_with_memory(
             usage,
             timing,
             thinking,
+            cost_usd,
             ..
         }) => Ok(BusPayload::CommsMessage {
             channel_id,
@@ -182,6 +183,7 @@ async fn handle_with_memory(
             usage,
             timing,
             thinking,
+            cost_usd,
         }),
         other => other,
     }

@@ -33,7 +33,12 @@ impl DummyProvider {
         let _ = tx
             .send(StreamChunk::Content(format!("[echo] {content}")))
             .await;
-        let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+        let _ = tx
+            .send(StreamChunk::Done {
+                usage: None,
+                timing: None,
+            })
+            .await;
         Ok(())
     }
 }

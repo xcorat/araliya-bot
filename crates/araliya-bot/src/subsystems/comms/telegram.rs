@@ -74,18 +74,18 @@ async fn run_telegram(
             async move {
                 if let Some(text) = msg.text() {
                     debug!(%channel_id, from = ?msg.from.as_ref().and_then(|u| u.username.as_ref()), "telegram received message");
-                    
+
                     match state.send_message(&channel_id, text.to_string(), None, None).await {
                         Ok(reply) => {
                             let mut text = reply.reply;
                             if text.is_empty() {
                                 text = "(empty response)".to_string();
                             }
-                            
+
                             // Telegram has a 4096 character limit per message.
                             // We chunk at MAX_MESSAGE_LENGTH to be safe.
                             let chars: Vec<char> = text.chars().collect();
-                            
+
                             for chunk in chars.chunks(MAX_MESSAGE_LENGTH) {
                                 let chunk_str: String = chunk.iter().collect();
                                 if let Err(e) = bot.send_message(msg.chat.id, chunk_str).await {

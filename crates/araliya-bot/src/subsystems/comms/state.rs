@@ -28,6 +28,8 @@ pub struct CommsReply {
     pub usage: Option<crate::llm::LlmUsage>,
     /// Per-turn wall-clock latency from the LLM provider.
     pub timing: Option<crate::llm::LlmTiming>,
+    /// Pre-computed per-turn cost in USD.  `None` for local / unconfigured models.
+    pub cost_usd: Option<f64>,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ impl CommsState {
             usage: None,
             timing: None,
             thinking: None,
+            cost_usd: None,
         };
 
         match self.bus.request(method, payload).await {
@@ -94,6 +97,7 @@ impl CommsState {
                 thinking,
                 usage,
                 timing,
+                cost_usd,
                 ..
             })) => Ok(CommsReply {
                 reply,
@@ -101,6 +105,7 @@ impl CommsState {
                 thinking,
                 usage,
                 timing,
+                cost_usd,
             }),
             Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
         }
@@ -255,6 +260,32 @@ impl CommsState {
     /// Request a list of all sessions from the agents subsystem.
     pub async fn request_sessions(&self) -> Result<String, AppError> {
         match self.bus.request("agents/sessions", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "agents error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    /// Request the primary session transcript for an agent.
+    ///
+    /// Sends `agents/session` with the agent_id.  Returns JSON in
+    /// `SessionDetailResponse` shape: `{session_id, transcript}`.
+    pub async fn request_agent_session(&self, agent_id: &str) -> Result<String, AppError> {
+        match self
+            .bus
+            .request(
+                "agents/session",
+                BusPayload::SessionQuery {
+                    session_id: String::new(),
+                    agent_id: Some(agent_id.to_string()),
+                },
+            )
+            .await
+        {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!(
                 "agents error {}: {}",

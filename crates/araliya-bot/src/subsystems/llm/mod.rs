@@ -272,6 +272,7 @@ impl BusHandler for LlmSubsystem {
                                 usage: resp.usage,
                                 timing: resp.timing,
                                 thinking: resp.thinking,
+                                cost_usd: cost,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));
@@ -350,6 +351,7 @@ impl BusHandler for LlmSubsystem {
                                 usage: resp.usage,
                                 timing: resp.timing,
                                 thinking: resp.thinking,
+                                cost_usd: cost,
                             }
                         })
                         .map_err(|e| BusError::new(-32000, e.to_string()));

@@ -251,6 +251,7 @@ impl Agent for DocsAgentPlugin {
                     usage: None,
                     timing: None,
                     thinking: None,
+                    cost_usd: None,
                 }));
                 return;
             }

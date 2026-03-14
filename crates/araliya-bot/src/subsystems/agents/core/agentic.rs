@@ -215,6 +215,7 @@ impl AgenticLoop {
                 usage,
                 timing,
                 thinking,
+                cost_usd,
                 ..
             }) => Ok(BusPayload::CommsMessage {
                 channel_id,
@@ -223,6 +224,7 @@ impl AgenticLoop {
                 usage,
                 timing,
                 thinking,
+                cost_usd,
             }),
             other => other,
         }
@@ -447,6 +449,7 @@ impl AgenticLoop {
                     usage: None,
                     timing: None,
                     thinking: None,
+                    cost_usd: None,
                 }));
             }
         }
@@ -622,7 +625,12 @@ impl AgenticLoop {
                 let (tx, rx) = mpsc::channel::<StreamChunk>(2);
                 tokio::spawn(async move {
                     let _ = tx.send(StreamChunk::Content(content)).await;
-                    let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+                    let _ = tx
+                        .send(StreamChunk::Done {
+                            usage: None,
+                            timing: None,
+                        })
+                        .await;
                 });
                 Ok(BusPayload::LlmStreamResult {
                     rx: StreamReceiver(rx),

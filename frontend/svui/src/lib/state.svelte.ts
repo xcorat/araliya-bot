@@ -40,6 +40,12 @@ let healthStatus = $state<'unknown' | 'checking' | 'ok' | 'error'>('unknown');
 let healthMessage = $state<string>('');
 let isLoading = $state<boolean>(false);
 let isLoadingSessions = $state<boolean>(false);
+/** True while a session transcript is being fetched (history load / poll refresh).
+ *  Separate from `isLoading` so history fetches don't trigger the Thinking… animation. */
+let isHistoryLoading = $state<boolean>(false);
+/** When set, `refreshSharedMessages` re-fetches via the agent session endpoint
+ *  instead of the global session-by-id endpoint. Set by `initSharedSession`. */
+let sharedAgentId = $state<string | null>(null);
 let lastUsage = $state<UsageInfo | null>(null);
 let sessionUsageTotals = $state<UsageInfo | null>(null);
 let lastTiming = $state<LlmTiming | null>(null);
@@ -93,6 +99,10 @@ export function getHealthMessage(): string {
 
 export function getIsLoading(): boolean {
 	return isLoading;
+}
+
+export function getIsHistoryLoading(): boolean {
+	return isHistoryLoading;
 }
 
 export function getIsLoadingSessions(): boolean {
@@ -396,7 +406,7 @@ export async function refreshAgents() {
 export async function loadSessionHistory(targetSessionId: string) {
 	if (!baseUrl || !targetSessionId) return;
 
-	isLoading = true;
+	isHistoryLoading = true;
 	try {
 		const res = await api.getSessionById(baseUrl, targetSessionId);
 
@@ -416,7 +426,7 @@ export async function loadSessionHistory(targetSessionId: string) {
 		};
 		messages = [...messages, errorMsg];
 	} finally {
-		isLoading = false;
+		isHistoryLoading = false;
 	}
 }
 
@@ -430,6 +440,62 @@ export function resetSession() {
 	workingMemoryUpdated = false;
 	healthStatus = 'unknown';
 	healthMessage = '';
+}
+
+/**
+ * Bootstrap the shared session for a given agent.
+ *
+ * Fetches the sessions list, finds the most recent session whose
+ * `last_agent` matches `agentId`, and loads its full transcript so
+ * all visitors immediately see the shared conversation.
+ *
+ * If no matching session exists yet (first-ever run) the function
+ * is a no-op — the chat starts empty and a session will be created
+ * on the first message.
+ */
+export async function initSharedSession(agentId: string) {
+	if (!baseUrl) return;
+	sharedAgentId = agentId;
+	try {
+		const res = await api.getAgentSession(baseUrl, agentId);
+		if (res.session_id) {
+			sessionId = res.session_id;
+			messages = mapTranscriptToChatMessages(res.session_id, res.transcript);
+		}
+	} catch {
+		// No session yet — start with an empty chat, that's fine.
+	}
+}
+
+/**
+ * Re-fetch the current shared session transcript from the server.
+ *
+ * Used by the Refresh button and the background polling loop to pull
+ * in messages posted by other visitors while the current tab is open.
+ * Safe to call while `isLoading` is true — skips silently so it never
+ * interrupts an in-flight LLM request.
+ */
+export async function refreshSharedMessages() {
+	if (!baseUrl || isLoading || isHistoryLoading) return;
+	if (sharedAgentId) {
+		// Agent-scoped session: re-fetch directly from the agent endpoint.
+		isHistoryLoading = true;
+		try {
+			const res = await api.getAgentSession(baseUrl, sharedAgentId);
+			if (res.session_id) {
+				sessionId = res.session_id;
+				messages = mapTranscriptToChatMessages(res.session_id, res.transcript);
+			}
+		} catch {
+			// Silently ignore — polling failures should not disrupt the UI.
+		} finally {
+			isHistoryLoading = false;
+		}
+		return;
+	}
+	// Global session fallback (non-agent pages).
+	if (!sessionId || sessionId === NO_SESSION_ID) return;
+	await loadSessionHistory(sessionId);
 }
 
 // ── Helpers ─────────────────────────────────────────────────

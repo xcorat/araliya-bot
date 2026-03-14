@@ -80,6 +80,17 @@ export async function listAgents(baseUrl: string): Promise<AgentsResponse> {
 	return readResponse<AgentsResponse>(response);
 }
 
+export async function getAgentSession(
+	baseUrl: string,
+	agentId: string
+): Promise<SessionDetailResponse> {
+	const response = await fetch(
+		`${baseUrl}/api/agents/${encodeURIComponent(agentId)}/session`
+	);
+	if (!response.ok) return handleError(response);
+	return readResponse<SessionDetailResponse>(response);
+}
+
 export async function getSessionById(
 	baseUrl: string,
 	sessionId: string

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { RefreshCw } from '@lucide/svelte';
 	import { ChatMessages } from '$lib/components/chat';
 	import UniwebInput from './UniwebInput.svelte';
 	import {
@@ -8,21 +9,50 @@
 		getMessages,
 		getSessionId,
 		getIsLoading,
-		loadSessionHistory,
-		resetSession
+		getIsHistoryLoading,
+		initSharedSession,
+		refreshSharedMessages
 	} from '$lib/state.svelte';
 
-	onMount(() => {
+	const POLL_INTERVAL_MS = 30_000;
+	let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+	function startPolling() {
+		stopPolling();
+		pollTimer = setInterval(async () => {
+			if (document.visibilityState === 'visible') {
+				await refreshSharedMessages();
+			}
+		}, POLL_INTERVAL_MS);
+	}
+
+	function stopPolling() {
+		if (pollTimer !== null) {
+			clearInterval(pollTimer);
+			pollTimer = null;
+		}
+	}
+
+	onMount(async () => {
 		initBaseUrl();
 		doCheckHealth();
-		// The uniweb agent always returns its global session ID.
-		// On first load, attempt to resume the shared transcript.
-		resetSession();
+		// Load the shared transcript so all visitors see the same conversation.
+		await initSharedSession('uniweb');
+		startPolling();
 	});
+
+	onDestroy(() => {
+		stopPolling();
+	});
+
+	async function handleRefresh() {
+		await refreshSharedMessages();
+	}
 
 	const messages = $derived(getMessages());
 	const sessionId = $derived(getSessionId());
 	const isLoading = $derived(getIsLoading());
+	const isHistoryLoading = $derived(getIsHistoryLoading());
 </script>
 
 <svelte:head>
@@ -35,9 +65,19 @@
 			<h1 class="text-lg font-semibold">Front Porch</h1>
 			<span class="text-xs text-muted-foreground">shared session — everyone sees the same conversation</span>
 		</div>
-		{#if isLoading}
-			<span class="text-xs text-muted-foreground animate-pulse">processing…</span>
-		{/if}
+		<div class="flex items-center gap-2">
+			{#if isLoading}
+				<span class="text-xs text-muted-foreground animate-pulse">processing…</span>
+			{/if}
+			<button
+				onclick={handleRefresh}
+				disabled={isHistoryLoading || isLoading}
+				title="Refresh messages"
+				class="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+			>
+				<RefreshCw class="h-4 w-4 {isHistoryLoading ? 'animate-spin' : ''}" />
+			</button>
+		</div>
 	</header>
 
 	<ChatMessages {messages} />

@@ -75,6 +75,7 @@ impl Agent for RuntimeCmdPlugin {
                             usage: None,
                             timing: None,
                             thinking: None,
+                            cost_usd: None,
                         }));
                         return;
                     }
@@ -99,6 +100,7 @@ impl Agent for RuntimeCmdPlugin {
                         usage: None,
                         timing: None,
                         thinking: None,
+                        cost_usd: None,
                     }));
                 }
                 Ok(other) => {
@@ -109,6 +111,7 @@ impl Agent for RuntimeCmdPlugin {
                         usage: None,
                         timing: None,
                         thinking: None,
+                        cost_usd: None,
                     }));
                 }
                 Err(e) => {
@@ -119,6 +122,7 @@ impl Agent for RuntimeCmdPlugin {
                         usage: None,
                         timing: None,
                         thinking: None,
+                        cost_usd: None,
                     }));
                 }
             }

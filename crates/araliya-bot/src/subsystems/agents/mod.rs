@@ -401,6 +401,7 @@ impl Agent for EchoAgent {
             usage: None,
             timing: None,
             thinking: None,
+            cost_usd: None,
         }));
     }
 }
@@ -790,7 +791,7 @@ impl AgentsSubsystem {
         self.state.memory.load_session(session_id, None)
     }
 
-    /// Handle `agents/sessions` — return a JSON list of all sessions.
+    /// Handle `agents/sessions` — return a JSON list of all global sessions.
     fn handle_session_list(&self, reply_tx: oneshot::Sender<BusResult>) {
         let memory = self.state.memory.clone();
 
@@ -820,6 +821,79 @@ impl AgentsSubsystem {
         let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
             data: body.to_string(),
         }));
+    }
+
+    /// Handle `agents/session` — return the primary session transcript for an agent.
+    ///
+    /// Reads `active_session_id` from the agent's KV store and returns
+    /// `{session_id, transcript}` in `SessionDetailResponse` shape.
+    /// Returns `{session_id: null, transcript: []}` when no session exists yet.
+    fn handle_agent_session(&self, agent_id: String, reply_tx: oneshot::Sender<BusResult>) {
+        let store = match self.state.open_agent_store(&agent_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        let session_id = match store.kv_get("active_session_id") {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                // Agent has never been used — return an empty transcript.
+                let body = serde_json::json!({ "session_id": null, "transcript": [] });
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                    data: body.to_string(),
+                }));
+                return;
+            }
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        let handle = match self.state.memory.load_session_in(
+            &store.agent_sessions_dir(),
+            &store.agent_sessions_index(),
+            &session_id,
+            Some(&agent_id),
+        ) {
+            Ok(h) => h,
+            Err(e) => {
+                let _ = reply_tx.send(Err(BusError::new(-32000, format!("{e}"))));
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            let transcript = match handle.transcript_read_last(1000).await {
+                Ok(entries) => entries
+                    .into_iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "role": e.role,
+                            "timestamp": e.timestamp,
+                            "content": e.content,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32000,
+                        format!("transcript read failed: {e}"),
+                    )));
+                    return;
+                }
+            };
+            let body = serde_json::json!({
+                "session_id": session_id,
+                "transcript": transcript,
+            });
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
+                data: body.to_string(),
+            }));
+        });
     }
 
     /// Handle `agents/kg_graph` — return the knowledge graph JSON for an agent.
@@ -1229,6 +1303,22 @@ impl BusHandler for AgentsSubsystem {
         }
 
         // ── Session queries (intercepted before agent routing) ──────
+        if method == "agents/session" {
+            let agent_id = match payload {
+                BusPayload::SessionQuery {
+                    agent_id: Some(id), ..
+                } => id,
+                _ => {
+                    let _ = reply_tx.send(Err(BusError::new(
+                        -32600,
+                        "agents/session requires agent_id in SessionQuery payload",
+                    )));
+                    return;
+                }
+            };
+            self.handle_agent_session(agent_id, reply_tx);
+            return;
+        }
         if method == "agents/sessions" {
             self.handle_session_list(reply_tx);
             return;
@@ -1570,7 +1660,12 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1612,7 +1707,12 @@ mod tests {
                 content: "mapped".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1651,7 +1751,12 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1687,7 +1792,12 @@ mod tests {
                 content: "fallback".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1730,7 +1840,12 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1764,7 +1879,12 @@ mod tests {
                         content: format!("[fake] {content}"),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -1794,7 +1914,12 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1861,7 +1986,12 @@ mod tests {
                         content: "Summary: Test Headline from news@example.com.".to_string(),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -1891,7 +2021,12 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1954,7 +2089,12 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -1997,7 +2137,12 @@ mod tests {
                 content: "".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2048,7 +2193,12 @@ mod tests {
                         content: r#"[{"tool":"docs_search","action":"search","params":{"query":"what color"}}]"#.to_string(),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -2068,7 +2218,12 @@ mod tests {
                         content: "brown".to_string(),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -2108,7 +2263,12 @@ mod tests {
                 content: "what color".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2151,7 +2311,12 @@ mod tests {
                 content: "hi".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2289,7 +2454,12 @@ mod tests {
                         content: "[]".to_string(),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -2304,7 +2474,12 @@ mod tests {
                         content: "[fake] hello".to_string(),
                         session_id: None,
                         usage: None,
+
+                        timing: None,
+
                         thinking: None,
+
+                        cost_usd: None,
                     }));
                 }
             }
@@ -2336,7 +2511,12 @@ mod tests {
                 content: "hello".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2384,7 +2564,12 @@ mod tests {
                             content,
                             session_id: None,
                             usage: None,
+
+                            timing: None,
+
                             thinking: None,
+
+                            cost_usd: None,
                         }));
                     }
                 }
@@ -2418,7 +2603,12 @@ mod tests {
                 content: "first message".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx1,
         );
@@ -2438,7 +2628,12 @@ mod tests {
                 content: "second message".to_string(),
                 session_id: Some(session_id.clone()),
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx2,
         );
@@ -2481,7 +2676,12 @@ mod tests {
                             content: "[]".to_string(),
                             session_id: None,
                             usage: None,
+
+                            timing: None,
+
                             thinking: None,
+
+                            cost_usd: None,
                         }));
                     }
                 }
@@ -2514,7 +2714,12 @@ mod tests {
                 content: "test debug".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2601,7 +2806,12 @@ mod tests {
                 content: "console.log(1+1)".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );
@@ -2896,7 +3106,12 @@ mod tests {
                 content: "console.log(1+1".to_string(),
                 session_id: None,
                 usage: None,
+
+                timing: None,
+
                 thinking: None,
+
+                cost_usd: None,
             },
             tx,
         );

@@ -86,6 +86,11 @@ pub enum BusPayload {
         /// DeepSeek-R1, …). `None` for standard models.
         #[serde(default)]
         thinking: Option<String>,
+        /// Pre-computed per-turn cost in USD, calculated from the token usage
+        /// and the model's configured pricing rates.  `None` when usage is
+        /// unavailable or rates are zero (local / unconfigured models).
+        #[serde(default)]
+        cost_usd: Option<f64>,
     },
     /// A completion request to the LLM subsystem.
     /// `channel_id` is threaded through so the LLM subsystem can attach it to
