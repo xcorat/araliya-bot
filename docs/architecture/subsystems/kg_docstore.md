@@ -4,7 +4,8 @@
 
 **Cargo Feature:** `ikgdocstore`
 
-> **See also:** [intelligent_doc_store.md](intelligent_doc_store.md) — `IDocStore`, the BM25-only sibling store and `docstore_core` shared types.
+> **See also:** [intelligent_doc_store.md](intelligent_doc_store.md) — `IDocStore`, the BM25-only sibling store.
+> [sqlite_store.md](sqlite_store.md) — `SqliteStore` and the `sqlite_core` shared helpers that all three stores rely on.
 
 ---
 
@@ -298,7 +299,8 @@ All fields are optional and fall back to the defaults above.
 
 | Feature | Enables |
 |---------|---------|
-| `ikgdocstore` | `IKGDocStore`, `KgGraph`, `KgConfig`, `KgSearchResult`, `docstore_core` |
+| `isqlite` | `SqliteStore`, `sqlite_core` shared helpers |
+| `ikgdocstore` | `IKGDocStore`, `KgGraph`, `KgConfig`, `KgSearchResult` (implies `isqlite`) |
 | `plugin-docs-kg` | `subsystem-agents` + `ikgdocstore` — full docs agent with KG path |
 
 ```bash
@@ -339,6 +341,7 @@ Key test cases:
 
 ## Related Documentation
 
-- [intelligent_doc_store.md](intelligent_doc_store.md) — `IDocStore` and shared `docstore_core` types
+- [intelligent_doc_store.md](intelligent_doc_store.md) — `IDocStore` and its FTS5 API
+- [sqlite_store.md](sqlite_store.md) — `SqliteStore` and shared `sqlite_core` helpers
 - [memory.md](memory.md) — Memory subsystem and agent identity directories
 - [agents.md](agents.md) — Docs agent `use_kg` configuration

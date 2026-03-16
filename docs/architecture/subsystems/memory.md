@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval** · **optional `IKGDocStore` (`ikgdocstore` Cargo feature) for KG-augmented RAG retrieval**.
+**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `SqliteStore` (`isqlite` Cargo feature) for general-purpose agent-scoped SQLite databases** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval** · **optional `IKGDocStore` (`ikgdocstore` Cargo feature) for KG-augmented RAG retrieval**.
 
 ---
 
@@ -146,6 +146,19 @@ Session IDs are UUIDv7 (time-ordered).  The `sessions.json` index tracks all ses
             └── spend.json         aggregate token and cost totals (created on first LLM turn)
 ```
 
+## Data Layout (agent-scoped SQLite databases, optional)
+
+When built with feature `isqlite`, agents can host one or more named SQLite databases under their identity root:
+
+```
+{agent_identity_dir}/
+└── sqlite/
+    ├── {db_name}.db             one file per named database
+    └── …
+```
+
+Each database is schema-free from the platform's perspective — the agent owns the DDL entirely. Setup helpers (`execute_ddl`, `migrate`) and a typed query pipeline (`execute`, `query_rows`, `query_one`) are provided by `SqliteStore`. Three `LocalTool` wrappers (`sqlite_query`, `sqlite_execute`, `sqlite_schema`) expose it to LLM agents via the `AgenticLoop`.
+
 ## Data Layout (agent-scoped docstore, optional)
 
 When built with feature `idocstore`, agents can host an indexed document store under their identity root:
@@ -270,12 +283,13 @@ memory = ["basic_session"]  # store types this agent uses
 | `memory.basic_session.transcript_cap` | usize | 500 | Maximum transcript entries before FIFO eviction. |
 | `agents.{id}.memory` | array\<string\> | `[]` | Store types (`"basic_session"` or `"tmp"`). |
 
-Core memory is always compiled. `IDocStore` is behind the Cargo feature gate `idocstore`; `IKGDocStore` is behind `ikgdocstore`.
+Core memory is always compiled. `SqliteStore` is behind the `isqlite` Cargo feature; `IDocStore` behind `idocstore` (implies `isqlite`); `IKGDocStore` behind `ikgdocstore` (implies `isqlite`).
 
 ---
 
 ## Related Documentation
 
+- [sqlite_store.md](sqlite_store.md) — SqliteStore API, migration helpers, LocalTool wrappers
 - [intelligent_doc_store.md](intelligent_doc_store.md) — IDocStore API, schema, integration patterns
 - [kg_docstore.md](kg_docstore.md) — IKGDocStore API, KG build/query pipeline, configuration
 - [../../identity.md](../../identity.md) — agent identity provisioning and directory layout

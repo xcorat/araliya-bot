@@ -201,6 +201,7 @@ Agents receive `Arc<AgentsState>`, not a raw bus handle. The capability surface 
 | `stream_via_llm_with_system(channel_id, content, system, reply_tx)` | Forward to `llm/stream` for streaming responses |
 | `execute_tool(tool, action, params_json, channel_id, session_id)` | Dispatch a tool call through `tools/execute` |
 | `open_agent_store(agent_id)` | Open the agent's `AgentStore` (sessions index, KV store, text files) |
+| `open_sqlite_store(agent_id, db_name)` | Open (or create) a named SQLite database for `agent_id` at `{identity_dir}/sqlite/{db_name}.db`. Requires `isqlite` feature. Synchronous — wrap in `spawn_blocking` in async context. |
 | `get_or_create_subagent(agent_id, subagent_name)` | Provision a subagent identity under the given agent |
 | `runtime_init(…)` | Initialize an external runtime environment via `runtimes/init` |
 | `runtime_exec(…)` | Execute source code in an external runtime via `runtimes/exec` |

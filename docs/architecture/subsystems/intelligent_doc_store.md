@@ -4,7 +4,8 @@
 
 **Cargo Feature:** `idocstore`
 
-> **See also:** [kg_docstore.md](kg_docstore.md) — `IKGDocStore`, the knowledge-graph augmented sibling store that shares `docstore_core` types.
+> **See also:** [kg_docstore.md](kg_docstore.md) — `IKGDocStore`, the knowledge-graph augmented sibling store that shares `sqlite_core` types.
+> [sqlite_store.md](sqlite_store.md) — `SqliteStore`, the general-purpose SQLite backend that also shares `sqlite_core`.
 
 ---
 
@@ -276,7 +277,8 @@ Logging is via standard `tracing` macros in the memory subsystem.
 ```toml
 # Cargo.toml
 [features]
-idocstore = ["dep:rusqlite", "dep:text-splitter"]
+isqlite   = ["dep:rusqlite"]
+idocstore = ["isqlite", "dep:text-splitter"]
 ```
 
 Enable in builds:
@@ -348,13 +350,13 @@ This is non-blocking — work is queued and executed in the background task.
 
 ---
 
-## Shared Core (`docstore_core`)
+## Shared Core (`sqlite_core`)
 
-`IDocStore` and `IKGDocStore` share common types and internal helpers via the crate-private `docstore_core` module (`src/subsystems/memory/stores/docstore_core.rs`).  This module is compiled when **either** `idocstore` or `ikgdocstore` is enabled.
+`IDocStore`, `IKGDocStore`, and `SqliteStore` share common SQLite helpers via the crate-private `sqlite_core` module (`src/subsystems/memory/stores/sqlite_core.rs`).  This module is compiled when **any** of `isqlite`, `idocstore`, or `ikgdocstore` is enabled (the latter two depend on `isqlite`).
 
 | Item | Description |
 |------|-------------|
-| `Document`, `DocMetadata`, `Chunk`, `SearchResult` | Public types re-exported from both stores. |
+| `Document`, `DocMetadata`, `Chunk`, `SearchResult` | Public types re-exported from both docstores. |
 | `DB_FILENAME`, `SCHEMA_VERSION` | Schema constants. |
 | `init_schema(conn)` | Creates the `doc_metadata` and `chunks` FTS5 tables. |
 | `open_conn(path)` | Opens SQLite with WAL + busy-timeout pragmas. |
@@ -362,7 +364,7 @@ This is non-blocking — work is queued and executed in the background task.
 | `now_iso8601()` | Current UTC time as RFC 3339 string. |
 | `escape_fts5_query(query)` | Token-level quoting to prevent FTS5 syntax errors. |
 
-`IDocStore`'s public API is **unchanged** by the introduction of `docstore_core` — the refactoring is purely internal.
+`IDocStore`'s public API is **unchanged** by the introduction of `sqlite_core` — the refactoring is purely internal.
 
 ---
 
@@ -370,6 +372,7 @@ This is non-blocking — work is queued and executed in the background task.
 
 - [Memory Subsystem](memory.md) — parent system providing agent identity and persistence paths
 - [kg_docstore.md](kg_docstore.md) — IKGDocStore, the KG-augmented sibling store
+- [sqlite_store.md](sqlite_store.md) — SqliteStore and shared `sqlite_core` helpers
 - [Agent Identity](../identity.md) — how agent directories are initialized
 - [IDocStore Design Proposal](../../../notes/implementation/idocstore-design.md) — detailed design rationale
 
