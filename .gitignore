@@ -6,6 +6,8 @@
 /.env.*
 !/.env.example
 
+/config/secrets
+
 # Frontend build artifacts
 frontend/build/
 frontend/svui/node_modules/

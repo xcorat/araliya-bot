@@ -1,0 +1,15 @@
+# config/test-gdelt.toml
+[meta]
+base = "default.toml"
+
+[supervisor]
+enabled_agents = [
+  "echo",
+  "basic-chat",
+  "gdelt_news",
+]
+
+[agents.gdelt_news]
+# No special config needed — uses BigQuery service account auth
+# from config/secrets/araliya-1012f47de255.json
+# Queries past 24h, limit 50 events, ordered by article count

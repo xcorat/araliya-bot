@@ -63,6 +63,29 @@ skills = ["gmail", "newsmail_aggregator"]  # can invoke both
 # skills = []  # default — only local docs_search tool
 ```
 
+## GDELT BigQuery Tool
+
+- Module: `src/subsystems/tools/gdelt_bigquery.rs`
+- Feature flag: `plugin-gdelt-tool` (enables `dep:jsonwebtoken` + `subsystem-tools`)
+- Actions: `fetch`, `healthcheck`
+- Auth: service-account JSON at `config/secrets/araliya-1012f47de255.json` → RS256 JWT (`jsonwebtoken` crate) → OAuth2 token exchange → BigQuery REST `runQuery`
+- Dataset: `gdelt-bq.gdeltv2.events` (public GDELT v2 BigQuery dataset)
+- Query scope: `https://www.googleapis.com/auth/bigquery.readonly`
+
+Query arguments (`GdeltQueryArgs`):
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `days_back` | `u32` | `1` | How many days back to include |
+| `limit` | `u32` | `50` | Maximum rows to return |
+| `min_articles` | `u32` | none | Only include events with at least this many articles |
+
+`fetch` returns a JSON array of `GdeltEvent` objects with fields: `date`, `actor1`, `actor2`, `event_code`, `goldstein`, `num_articles`, `avg_tone`, `source_url`.
+
+`healthcheck` runs a minimal 1-row query to verify BigQuery connectivity.
+
+---
+
 ## Agent Integration
 
 - Gmail agent plugin: `src/subsystems/agents/gmail.rs`
@@ -71,3 +94,6 @@ skills = ["gmail", "newsmail_aggregator"]  # can invoke both
 - News agent plugin: `src/subsystems/agents/news.rs`
 - Agent bus methods: `agents/news` (default handle), `agents/news/read`
 - Flow: `agents/news` → `tools/execute` (`newsmail_aggregator/get`) → agent returns raw tool payload
+- GDELT News agent plugin: `src/subsystems/agents/gdelt_news.rs`
+- Agent bus methods: `agents/gdelt_news` (default handle), `agents/gdelt_news/read`
+- Flow: `agents/gdelt_news/read` → `tools/execute` (`gdelt_bigquery/fetch`) → content hash → KV cache check → LLM summarization → cached reply

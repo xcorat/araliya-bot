@@ -69,6 +69,7 @@ Built-in agents classified as `Specialized`:
 
 - **`news`** — fetches email via the newsmail aggregator tool and summarizes with the LLM
 - **`gmail`** — delegates to the Gmail tool and formats the result as a comms reply
+- **`gdelt_news`** — fetches recent global events from the GDELT v2 BigQuery dataset and summarizes them via the LLM; uses content-hash-keyed KV caching so identical event sets are summarized only once
 - **`runtime_cmd`** — passes user messages directly to an external language runtime (Node.js, Python, Bash) via the runtimes subsystem; no LLM is involved
 
 ### Planned: Workflow and Background
@@ -100,6 +101,7 @@ The current built-in agents, their runtime classes, and their roles:
 | `docs` | `Agentic` | RAG or KG-RAG document QA |
 | `news` | `Specialized` | News email fetch and LLM summarization |
 | `gmail` | `Specialized` | Gmail read via tool delegation |
+| `gdelt_news` | `Specialized` | GDELT BigQuery news fetch and LLM summarization |
 | `runtime_cmd` | `Specialized` | Direct passthrough to an external language runtime |
 | `webbuilder` | `Agentic` | Iterative Svelte page builder with Node.js runtime access |
 
@@ -336,6 +338,7 @@ config/
     ├── agentic_instruct.txt    — instruction pass prompt for AgenticLoop
     ├── agentic_context.txt     — response pass prompt for AgenticLoop
     ├── news_summary.txt        — news agent summarization prompt
+    ├── gdelt_news_summary.txt  — GDELT news agent summarization prompt
     ├── docs_qa.txt             — docs agent QA prompt
     └── chat_context.txt        — session chat context prompt
 ```
@@ -494,6 +497,20 @@ Non-prefixed chunks are plain LLM text shown in chat as normal.
 | `agents.news.query.n_last` | integer | none | Maximum number of recent emails to fetch. |
 | `agents.news.query.t_interval` | string | none | Recency window as a duration string (e.g. `1d`, `1mon`). |
 | `agents.news.query.tsec_last` | integer | none | Recency window in seconds (legacy fallback). |
+
+### GDELT News Agent Settings
+
+The `gdelt_news` agent has no required config fields. It reads from the GDELT v2 BigQuery dataset using the service-account key at `config/secrets/araliya-1012f47de255.json`. Query parameters are fixed at compile-time defaults (`days_back=1`, `limit=50`).
+
+Requires the `plugin-gdelt-news-agent` Cargo feature (includes `plugin-gdelt-tool`). The agent prompt template is loaded from `config/prompts/gdelt_news_summary.txt`.
+
+```toml
+[agents]
+enabled = ["gdelt_news"]
+
+[agents.gdelt_news]
+memory = ["basic_session"]
+```
 
 ### Example Configuration
 

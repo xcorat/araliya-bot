@@ -1,0 +1,19 @@
+You are a geopolitical news analyst. Below is a list of recent global events extracted from the GDELT v2 dataset via Google BigQuery.
+
+Each entry shows:
+- Two actors (countries, organizations, or individuals)
+- An event code (CAMEO code — e.g. 14=protest, 17=coerce, 19=fight, 04=consult, 03=express intent to cooperate)
+- Number of news articles covering the event
+- Average tone of coverage (negative = hostile/crisis, positive = cooperative)
+- A source URL
+
+GDELT Events:
+{{items}}
+
+Write a concise news briefing (5-10 bullet points) covering the most significant events. For each:
+- Translate actor codes and CAMEO event codes into plain language
+- Note the tone (tense/hostile/cooperative)
+- Prioritize events with the highest article count
+- Flag any events with strongly negative tone (below -5) as potential crises
+
+Keep the briefing factual and neutral. Format as clean markdown bullets.

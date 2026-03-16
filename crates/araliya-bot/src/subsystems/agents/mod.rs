@@ -53,6 +53,8 @@ mod docs_import;
 mod gmail;
 #[cfg(feature = "plugin-news-agent")]
 mod news;
+#[cfg(feature = "plugin-gdelt-news-agent")]
+mod gdelt_news;
 #[cfg(feature = "plugin-runtime-cmd")]
 mod runtime_cmd;
 #[cfg(feature = "plugin-uniweb")]
@@ -553,6 +555,15 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-news-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(news::NewsAgentPlugin);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-gdelt-news-agent")]
+        {
+            let agent: Box<dyn Agent> = Box::new(gdelt_news::GdeltNewsAgent);
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Specialized, agent),

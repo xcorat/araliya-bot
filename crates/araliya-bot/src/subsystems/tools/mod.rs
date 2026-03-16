@@ -10,6 +10,8 @@ use crate::supervisor::health::HealthReporter;
 mod gmail;
 #[cfg(feature = "plugin-gmail-tool")]
 mod newsmail_aggregator;
+#[cfg(feature = "plugin-gdelt-tool")]
+mod gdelt_bigquery;
 
 pub struct ToolsSubsystem {
     newsmail_defaults: NewsmailAggregatorConfig,
@@ -98,6 +100,10 @@ impl BusHandler for ToolsSubsystem {
             {
                 available_tools.push("gmail");
                 available_tools.push("newsmail_aggregator");
+            }
+            #[cfg(feature = "plugin-gdelt-tool")]
+            {
+                available_tools.push("gdelt_bigquery");
             }
             let available_tools: Vec<String> =
                 available_tools.iter().map(|s| s.to_string()).collect();
@@ -236,6 +242,64 @@ impl BusHandler for ToolsSubsystem {
                     return;
                 }
 
+                #[cfg(feature = "plugin-gdelt-tool")]
+                if tool == "gdelt_bigquery" && action == "fetch" {
+                    tokio::spawn(async move {
+                        let args: gdelt_bigquery::GdeltQueryArgs =
+                            serde_json::from_str(&args_json).unwrap_or_default();
+                        match gdelt_bigquery::fetch_events(&args).await {
+                            Ok(events) => {
+                                let data_json = serde_json::to_string(&events)
+                                    .unwrap_or_else(|_| "[]".to_string());
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "gdelt_bigquery".to_string(),
+                                    action: "fetch".to_string(),
+                                    ok: true,
+                                    data_json: Some(data_json),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "gdelt_bigquery".to_string(),
+                                    action: "fetch".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                #[cfg(feature = "plugin-gdelt-tool")]
+                if tool == "gdelt_bigquery" && action == "healthcheck" {
+                    tokio::spawn(async move {
+                        match gdelt_bigquery::healthcheck().await {
+                            Ok(msg) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "gdelt_bigquery".to_string(),
+                                    action: "healthcheck".to_string(),
+                                    ok: true,
+                                    data_json: Some(serde_json::json!({"status": msg}).to_string()),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "gdelt_bigquery".to_string(),
+                                    action: "healthcheck".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
                 let _ = reply_tx.send(Err(BusError::new(
                     ERR_METHOD_NOT_FOUND,
                     format!("tool/action not found: {tool}/{action}"),
@@ -256,6 +320,10 @@ impl BusHandler for ToolsSubsystem {
                 "newsmail_aggregator",
                 "Newsmail Aggregator",
             ));
+        }
+        #[cfg(feature = "plugin-gdelt-tool")]
+        {
+            children.push(ComponentInfo::leaf("gdelt_bigquery", "GDELT BigQuery"));
         }
         children.sort_by(|a, b| a.id.cmp(&b.id));
         ComponentInfo::running("tools", "Tools", children)

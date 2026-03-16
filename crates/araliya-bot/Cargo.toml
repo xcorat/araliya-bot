@@ -36,6 +36,7 @@ pollster = { version = "0.3", optional = true }
 chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
+jsonwebtoken = { version = "9", optional = true }
 
 [features]
 default = [
@@ -65,6 +66,8 @@ full    = [
     "plugin-gmail-tool",
     "plugin-gmail-agent",
     "plugin-news-agent",
+    "plugin-gdelt-tool",
+    "plugin-gdelt-news-agent",
     "channel-telegram",
     "cli",
     "gmail-app",
@@ -100,6 +103,8 @@ plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-gmail-tool = ["subsystem-tools"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
+plugin-gdelt-tool = ["dep:jsonwebtoken", "subsystem-tools"]
+plugin-gdelt-news-agent = ["plugin-gdelt-tool", "subsystem-agents"]
 plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
