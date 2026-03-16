@@ -54,6 +54,7 @@ default = [
     "plugin-uniweb",
     "plugin-docs-agent",
     "plugin-runtime-cmd",
+    "plugin-webbuilder",
     "subsystem-runtimes",
     "channel-pty",
     "channel-axum",
@@ -102,6 +103,7 @@ plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
+plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm"]
 
 # Comms Channels
 channel-pty = ["subsystem-comms"]

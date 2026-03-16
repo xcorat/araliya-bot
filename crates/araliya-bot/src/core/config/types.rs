@@ -213,6 +213,25 @@ pub struct AgenticChatConfig {
     pub use_instruction_llm: bool,
 }
 
+/// Configuration for the `webbuilder` agent plugin.
+#[derive(Debug, Clone)]
+pub struct WebBuilderAgentConfig {
+    /// Maximum LLM-tool iteration cycles before the agent gives up (default: 10).
+    pub max_iterations: usize,
+    /// Scaffold type used for the initial workspace setup.
+    /// Currently only `"vite-svelte"` is supported.
+    pub scaffold: String,
+}
+
+impl Default for WebBuilderAgentConfig {
+    fn default() -> Self {
+        Self {
+            max_iterations: 10,
+            scaffold: "vite-svelte".to_string(),
+        }
+    }
+}
+
 /// Configuration for the `runtime_cmd` agent plugin.
 #[derive(Debug, Clone)]
 pub struct RuntimeCmdAgentConfig {
@@ -274,6 +293,8 @@ pub struct AgentsConfig {
     pub agentic_chat: Option<AgenticChatConfig>,
     /// Optional configuration for the `runtime_cmd` agent.
     pub runtime_cmd: Option<RuntimeCmdAgentConfig>,
+    /// Optional configuration for the `webbuilder` agent.
+    pub webbuilder: Option<WebBuilderAgentConfig>,
     /// Per-agent bus-tool allowlists: agent_id → list of tool names the agent
     /// may invoke.  Populated from `skills = [...]` in each `[agents.<id>]`
     /// config section.  Agents without an entry default to no bus tools.

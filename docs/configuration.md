@@ -133,6 +133,7 @@ Araliya Bot is built with **compile-time modularity**. If a subsystem or plugin 
 | `plugin-gmail-tool` | `--features plugin-gmail-tool` | No, Gmail tool implementation |
 | `plugin-gmail-agent` | `--features plugin-gmail-agent` | No, `agents/gmail/read` agent |
 | `plugin-news-agent` | `--features plugin-news-agent` | No, `agents/news/(handle\|read)` via `newsmail_aggregator/get` |
+| `plugin-webbuilder` | `--features plugin-webbuilder` | No, iterative Svelte page builder with Node.js runtime |
 | `ui-gpui` | `--features ui-gpui` | No, enables the `araliya-gpui` desktop binary |
 
 If you disable a subsystem but leave its configuration in `default.toml`, the bot will proceed normally but will not initialize the corresponding handler.
@@ -163,6 +164,7 @@ If you disable a subsystem but leave its configuration in `default.toml`, the bo
 | `GET /api/health` | JSON health status from management bus. |
 | `GET /api/tree` | Component tree JSON (no private data); see [Bus Protocol](architecture/standards/bus-protocol.md#management-routes-manage). |
 | `/ui/*` | Delegated to the UI backend when `ui.svui.enabled = true`. |
+| `GET /preview/{session_id}/{*path}` | Serves webbuilder workspace `dist/` files (requires `plugin-webbuilder`). |
 
 ## UI Configuration
 
@@ -249,6 +251,17 @@ Runtime class: `specialized`. Passes every user message directly to an external 
 | `agents.runtime_cmd.runtime` | string | `"bash"` | Runtime environment name, used as the working directory under the agent's identity area. |
 | `agents.runtime_cmd.command` | string | `"bash"` | Interpreter binary passed to `runtimes/exec`. |
 | `agents.runtime_cmd.setup_script` | string | none | Optional shell script run once to initialize the runtime environment on first use. |
+
+### Web Builder Agent (`webbuilder`)
+
+Runtime class: `agentic`. Iterative Svelte page builder — the LLM writes files and runs Node.js commands in a loop until the page builds. Progress events stream via SSE as `>>STEP<<{...}` prefixed content chunks. Built pages are served at `GET /preview/{session_id}/`.
+
+Requires: `plugin-webbuilder` Cargo feature + `subsystem-runtimes`.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.webbuilder.max_iterations` | integer | `10` | Maximum LLM → tool → feedback cycles per request. |
+| `agents.webbuilder.scaffold` | string | `"vite-svelte"` | Scaffold template for new workspaces. |
 
 ### News Agent (`news`)
 

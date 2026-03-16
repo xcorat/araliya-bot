@@ -50,6 +50,7 @@ impl Config {
                 agent_docs: std::collections::HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,
+                webbuilder: None,
                 debug_logging: false,
                 uniweb_session_id: None,
                 uniweb_use_instruction_llm: false,

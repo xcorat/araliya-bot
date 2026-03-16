@@ -59,6 +59,7 @@ Built-in agents classified as `Agentic`:
 
 - **`agentic-chat`** — dual-model instruction loop: a fast model selects tools, the main model generates the response
 - **`docs`** — retrieval-augmented QA: the agent formulates a search query, retrieves documentation chunks, and answers with the retrieved context
+- **`webbuilder`** — iterative Svelte page builder: the LLM writes files and runs Node.js commands in a loop until the page builds, emitting streaming progress events
 
 ### Specialized
 
@@ -100,6 +101,7 @@ The current built-in agents, their runtime classes, and their roles:
 | `news` | `Specialized` | News email fetch and LLM summarization |
 | `gmail` | `Specialized` | Gmail read via tool delegation |
 | `runtime_cmd` | `Specialized` | Direct passthrough to an external language runtime |
+| `webbuilder` | `Agentic` | Iterative Svelte page builder with Node.js runtime access |
 
 ### Static Agents (Upcoming)
 
@@ -448,6 +450,42 @@ These optional fields can be added to any agent's config section (`[agents.{id}]
 | `agents.runtime_cmd.command` | string | `"bash"` | Interpreter binary passed to `runtimes/exec`. |
 | `agents.runtime_cmd.setup_script` | string | none | Optional shell script run once to initialize the runtime environment. |
 
+### Web Builder Agent (`webbuilder`)
+
+Runtime class: `agentic`. Iterative Svelte page builder — the LLM writes files and runs Node.js commands in a bounded loop until the page builds successfully.
+
+The agent scaffolds a Vite + Svelte 5 workspace on first use, then enters an LLM-driven loop: the LLM emits structured JSON commands (`WriteFile`, `RunCmd`, `Finish`) which the agent executes. Progress events are streamed to the caller as `>>STEP<<{...}` prefixed `StreamChunk::Content` messages, allowing the frontend to show real-time build status.
+
+Built pages are served at `GET /preview/{session_id}/{*path}` from the workspace's `dist/` directory.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.webbuilder.max_iterations` | integer | `10` | Maximum LLM → tool → feedback cycles per request before the loop terminates. |
+| `agents.webbuilder.scaffold` | string | `"vite-svelte"` | Scaffold template used when creating a new workspace. Currently only `vite-svelte` is supported. |
+
+Requires: `plugin-webbuilder` Cargo feature + `subsystem-runtimes`.
+
+#### Streaming Event Protocol
+
+Events are emitted as `StreamChunk::Content` with a `>>STEP<<` sentinel prefix:
+
+```
+>>STEP<<{"type":"init","message":"Scaffolding Svelte workspace..."}
+>>STEP<<{"type":"tool","tool":"node_exec","cmd":"npm install"}
+>>STEP<<{"type":"cmd_result","ok":true,"stdout":"added 42 packages"}
+>>STEP<<{"type":"file_write","path":"src/App.svelte"}
+>>STEP<<{"type":"done","preview_url":"/preview/abc123/"}
+```
+
+Non-prefixed chunks are plain LLM text shown in chat as normal.
+
+#### Preview Serving
+
+- Route: `GET /preview/{session_id}/{*path}`
+- Serves from: `{identity_dir}/runtimes/webbuilder-{session_id}/dist/{path}`
+- SPA fallback: if the requested path does not exist, serves `index.html`
+- Path traversal protection: resolved paths must stay within the workspace `dist/` directory
+
 ### News Agent Settings
 
 | Field | Type | Default | Description |
@@ -490,6 +528,10 @@ use_kg  = false
 runtime      = "node"
 command      = "node"
 setup_script = "npm init -y"
+
+[agents.webbuilder]
+max_iterations = 12
+scaffold       = "vite-svelte"
 
 [agents.news.query]
 label  = "n/News"

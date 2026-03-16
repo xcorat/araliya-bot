@@ -23,6 +23,8 @@
 //! ```
 
 mod api;
+#[cfg(feature = "plugin-webbuilder")]
+mod preview;
 mod ui;
 
 use std::sync::Arc;
@@ -63,6 +65,10 @@ pub(crate) struct AxumState {
     pub comms: Arc<CommsState>,
     /// Optional UI backend for static-file / SPA serving.
     pub ui: OptionalUiHandle,
+    /// Root directory for webbuilder preview serving (`{identity_dir}/runtimes/`).
+    /// When `Some`, `GET /preview/{session_id}/{*path}` is active.
+    #[cfg(feature = "plugin-webbuilder")]
+    pub preview_root: Option<std::path::PathBuf>,
 }
 
 // ── AxumChannel ───────────────────────────────────────────────────────────────
@@ -72,6 +78,8 @@ pub struct AxumChannel {
     bind_addr: String,
     state: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
+    #[cfg(feature = "plugin-webbuilder")]
+    preview_root: Option<std::path::PathBuf>,
 }
 
 impl AxumChannel {
@@ -80,12 +88,16 @@ impl AxumChannel {
         bind_addr: impl Into<String>,
         state: Arc<CommsState>,
         ui_handle: OptionalUiHandle,
+        #[cfg(feature = "plugin-webbuilder")]
+        preview_root: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
             bind_addr: bind_addr.into(),
             state,
             ui_handle,
+            #[cfg(feature = "plugin-webbuilder")]
+            preview_root,
         }
     }
 }
@@ -101,6 +113,8 @@ impl Component for AxumChannel {
             self.bind_addr,
             self.state,
             self.ui_handle,
+            #[cfg(feature = "plugin-webbuilder")]
+            self.preview_root,
             shutdown,
         ))
     }
@@ -113,12 +127,16 @@ async fn run_axum(
     bind_addr: String,
     comms: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
+    #[cfg(feature = "plugin-webbuilder")]
+    preview_root: Option<std::path::PathBuf>,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let axum_state = AxumState {
         channel_id: Arc::from(channel_id.as_str()),
         comms,
         ui: ui_handle,
+        #[cfg(feature = "plugin-webbuilder")]
+        preview_root,
     };
 
     let router = build_router(axum_state);
@@ -141,7 +159,7 @@ async fn run_axum(
 // ── Router ────────────────────────────────────────────────────────────────────
 
 fn build_router(state: AxumState) -> Router {
-    Router::new()
+    let router = Router::new()
         // API routes
         .route("/api/health", get(api::health))
         .route("/api/health/refresh", post(api::health_refresh))
@@ -163,6 +181,16 @@ fn build_router(state: AxumState) -> Router {
         // UI routes
         .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }))
         .route("/", get(ui::root))
-        .route("/{*path}", get(ui::serve_path))
-        .with_state(state)
+        .route("/{*path}", get(ui::serve_path));
+
+    // Preview routes (webbuilder dist serving) — compiled in only with the feature.
+    #[cfg(feature = "plugin-webbuilder")]
+    let router = router
+        .route("/preview/{session_id}", get(preview::preview_index_handler))
+        .route(
+            "/preview/{session_id}/{*path}",
+            get(preview::preview_handler),
+        );
+
+    router.with_state(state)
 }

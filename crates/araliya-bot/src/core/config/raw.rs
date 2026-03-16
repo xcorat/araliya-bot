@@ -249,6 +249,12 @@ pub(super) struct RawAgentEntry {
     /// Optional explicit global session ID for the `uniweb` agent.
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Maximum LLM-tool iteration cycles for the `webbuilder` agent.
+    #[serde(default)]
+    pub max_iterations: Option<usize>,
+    /// Scaffold type for the `webbuilder` agent (e.g. `"vite-svelte"`).
+    #[serde(default)]
+    pub scaffold: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

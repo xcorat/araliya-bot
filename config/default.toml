@@ -137,6 +137,14 @@ use_instruction_llm = false
 # index = "index.md"  # fallback document when no search results are found
 # use_kg = false      # set true to enable KG-RAG (requires ikgdocstore feature)
 
+[agents.webbuilder]
+# Iterative Svelte page builder — LLM writes files, runs Node commands, loops
+# until the page builds, then serves the result at /preview/{session_id}/.
+# Requires: plugin-webbuilder feature + subsystem-runtimes.
+enabled = false
+max_iterations = 12
+scaffold = "vite-svelte"
+
 ## ------------------------- Memory Subsystem ---------------------------------
 
 [memory]

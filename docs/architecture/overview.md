@@ -89,6 +89,7 @@ Built-in agent classifications:
 | `news` | `Specialized` |
 | `gmail` | `Specialized` |
 | `runtime_cmd` | `Specialized` |
+| `webbuilder` | `Agentic` |
 
 See [Agents Subsystem](subsystems/agents.md) for the full architecture, orchestration model, and configuration reference.
 

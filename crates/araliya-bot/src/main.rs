@@ -263,6 +263,8 @@ async fn run() -> Result<(), error::AppError> {
             shutdown.clone(),
             #[cfg(feature = "subsystem-ui")]
             ui_handle,
+            #[cfg(feature = "plugin-webbuilder")]
+            Some(identity.identity_dir.join("runtimes")),
             comms_info,
         );
         comms.join().await?;

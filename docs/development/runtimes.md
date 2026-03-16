@@ -208,6 +208,14 @@ JavaScript directly. Both share the same working directory.
 The agent reads `stdout` (`"200"`) from step 2 to confirm the server is up,
 then responds to the user with `http://localhost:4000`.
 
+## Webbuilder Agent Integration
+
+The `webbuilder` agent (`plugin-webbuilder` feature) uses the runtimes subsystem to scaffold and build Svelte pages. Each webbuilder session creates a runtime named `webbuilder-{session_id_prefix}` containing a Vite + Svelte 5 project.
+
+The agent calls `runtimes/init` with a scaffold script on the first interaction (creates `package.json`, `vite.config.js`, `src/App.svelte`, runs `npm install`), then iteratively uses `runtimes/exec` to run build commands (`npm run build`, etc.) in the workspace.
+
+Built pages in `{runtime_dir}/dist/` are served at `GET /preview/{session_id}/` by the axum channel.
+
 ## Timeouts & Error Handling
 
 - Each execution is bounded by `timeout_secs` (per-request) or

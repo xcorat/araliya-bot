@@ -124,6 +124,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agent_docs: HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,
+                webbuilder: None,
                 debug_logging: false,
                 uniweb_session_id: None,
                 uniweb_use_instruction_llm: false,
@@ -266,6 +267,14 @@ pub fn load_from(
         }
     });
 
+    let webbuilder_cfg = parsed.agents.entries.get("webbuilder").map(|entry| {
+        let defaults = WebBuilderAgentConfig::default();
+        WebBuilderAgentConfig {
+            max_iterations: entry.max_iterations.unwrap_or(defaults.max_iterations),
+            scaffold: entry.scaffold.clone().unwrap_or(defaults.scaffold),
+        }
+    });
+
     // Build the instruction LLM config by inheriting the main provider values
     // and overlaying only the fields explicitly set in [llm.instruction.*].
     let instruction_llm = parsed.llm.instruction.map(|inst| {
@@ -380,6 +389,7 @@ pub fn load_from(
             agent_docs,
             agentic_chat: agentic_chat_cfg,
             runtime_cmd: runtime_cmd_cfg,
+            webbuilder: webbuilder_cfg,
             debug_logging: parsed.agents.debug_logging,
             uniweb_session_id: parsed
                 .agents

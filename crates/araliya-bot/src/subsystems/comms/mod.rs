@@ -155,6 +155,7 @@ pub fn start(
     bus: BusHandle,
     shutdown: CancellationToken,
     #[cfg(feature = "subsystem-ui")] ui_handle: Option<UiServeHandle>,
+    #[cfg(feature = "plugin-webbuilder")] preview_root: Option<std::path::PathBuf>,
     comms_info: Arc<OnceLock<ComponentInfo>>,
 ) -> SubsystemHandle {
     // Intra-subsystem event channel: channels → manager.
@@ -233,6 +234,8 @@ pub fn start(
                 config.comms.axum_channel.bind.clone(),
                 state.clone(),
                 ui,
+                #[cfg(feature = "plugin-webbuilder")]
+                preview_root.clone(),
             )));
         }
     }

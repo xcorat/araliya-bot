@@ -19,7 +19,11 @@ use crate::subsystems::agents::core::AgentRuntimeClass;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig, RuntimeCmdAgentConfig};
+use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
+#[cfg(feature = "plugin-runtime-cmd")]
+use crate::config::RuntimeCmdAgentConfig;
+#[cfg(feature = "plugin-webbuilder")]
+use crate::config::WebBuilderAgentConfig;
 use crate::error::AppError;
 use crate::llm::ModelRates;
 use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -53,6 +57,8 @@ mod news;
 mod runtime_cmd;
 #[cfg(feature = "plugin-uniweb")]
 mod uniweb;
+#[cfg(feature = "plugin-webbuilder")]
+mod webbuilder;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -603,6 +609,16 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-docs-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(docs_agent::DocsAgentWrapper::new());
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-webbuilder")]
+        if enabled_agents.contains("webbuilder") {
+            let wb_cfg = config.webbuilder.unwrap_or_default();
+            let agent: Box<dyn Agent> = Box::new(webbuilder::WebBuilderAgent::new(&wb_cfg));
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
