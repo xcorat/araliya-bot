@@ -61,6 +61,8 @@ mod runtime_cmd;
 mod uniweb;
 #[cfg(feature = "plugin-webbuilder")]
 mod webbuilder;
+#[cfg(feature = "isqlite")]
+pub mod sqlite_tool;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -81,6 +83,8 @@ pub struct AgentsState {
     pub llm_rates: ModelRates,
     /// Default args JSON forwarded by the `news` agent to `newsmail_aggregator/get`.
     pub news_query_args_json: String,
+    /// Default args JSON forwarded by the `gdelt_news` agent to `gdelt_bigquery/fetch`.
+    pub gdelt_query_args_json: String,
     /// Per-agent docstore configuration: agent_id → docs config.
     /// Agents with `docsdir` set in config get an entry here.
     pub agent_docs: HashMap<String, DocsAgentConfig>,
@@ -98,6 +102,7 @@ impl AgentsState {
         agent_memory: HashMap<String, Vec<String>>,
         agent_identities: HashMap<String, Identity>,
         news_query_args_json: String,
+        gdelt_query_args_json: String,
         agent_docs: HashMap<String, DocsAgentConfig>,
         agent_skills: HashMap<String, Vec<String>>,
         debug_logging: bool,
@@ -109,6 +114,7 @@ impl AgentsState {
             agent_identities,
             llm_rates: ModelRates::default(),
             news_query_args_json,
+            gdelt_query_args_json,
             agent_docs,
             agent_skills,
             debug_logging,
@@ -131,6 +137,27 @@ impl AgentsState {
             .get(agent_id)
             .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
         crate::subsystems::memory::stores::agent::AgentStore::open(&identity.identity_dir)
+    }
+
+    /// Open (or create) a named SQLite database for `agent_id`.
+    ///
+    /// The database is stored at `{agent_identity_dir}/sqlite/{db_name}.db`.
+    /// This call is synchronous (blocking I/O) — wrap in `spawn_blocking` when
+    /// called from an async context.
+    #[cfg(feature = "isqlite")]
+    pub fn open_sqlite_store(
+        &self,
+        agent_id: &str,
+        db_name: &str,
+    ) -> Result<crate::subsystems::memory::stores::sqlite_store::SqliteStore, AppError> {
+        let identity = self
+            .agent_identities
+            .get(agent_id)
+            .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
+        crate::subsystems::memory::stores::sqlite_store::SqliteStore::open(
+            &identity.identity_dir,
+            db_name,
+        )
     }
 
     /// Get or create a subagent identity under the parent agent's memory directory.
@@ -488,6 +515,41 @@ impl AgentsSubsystem {
             None => "{}".to_string(),
         };
 
+        let gdelt_query_args_json = match config.gdelt_query {
+            Some(q) => {
+                let mut map = serde_json::Map::new();
+                if let Some(lookback_minutes) = q.lookback_minutes {
+                    map.insert(
+                        "lookback_minutes".to_string(),
+                        serde_json::json!(lookback_minutes),
+                    );
+                }
+                if let Some(limit) = q.limit {
+                    map.insert("limit".to_string(), serde_json::json!(limit));
+                }
+                if let Some(min_articles) = q.min_articles {
+                    map.insert("min_articles".to_string(), serde_json::json!(min_articles));
+                }
+                if let Some(min_importance) = q.min_importance {
+                    map.insert(
+                        "min_importance".to_string(),
+                        serde_json::json!(min_importance),
+                    );
+                }
+                if let Some(sort_by_importance) = q.sort_by_importance {
+                    map.insert(
+                        "sort_by_importance".to_string(),
+                        serde_json::json!(sort_by_importance),
+                    );
+                }
+                if let Some(english_only) = q.english_only {
+                    map.insert("english_only".to_string(), serde_json::json!(english_only));
+                }
+                serde_json::Value::Object(map).to_string()
+            }
+            None => "{}".to_string(),
+        };
+
         let agent_docs = config.agent_docs;
 
         // Register all known built-in agents.
@@ -655,6 +717,7 @@ impl AgentsSubsystem {
                 agent_memory,
                 agent_identities,
                 news_query_args_json,
+                gdelt_query_args_json,
                 agent_docs,
                 agent_skills,
                 config.debug_logging,
@@ -1747,9 +1810,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -1792,9 +1857,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -1834,9 +1901,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -1873,9 +1942,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -1919,9 +1990,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -1989,9 +2062,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2092,9 +2167,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2158,9 +2235,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2204,9 +2283,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2315,6 +2396,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: HashMap::from([(
                 "docs".to_string(),
                 DocsAgentConfig {
@@ -2326,6 +2408,7 @@ mod tests {
             )]),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2369,10 +2452,12 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             // No docsdir configured — docstore will remain empty.
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2409,9 +2494,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2444,9 +2531,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2469,9 +2558,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2563,11 +2654,13 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2650,11 +2743,13 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2756,11 +2851,13 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: Some(crate::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: true,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2844,6 +2941,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: Some(RuntimeCmdAgentConfig {
@@ -2851,6 +2949,7 @@ mod tests {
                 command: "node".to_string(),
                 setup_script: None,
             }),
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2902,9 +3001,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2930,9 +3031,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2958,9 +3061,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2986,9 +3091,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3014,9 +3121,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3042,9 +3151,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3071,9 +3182,11 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: None,
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3142,6 +3255,7 @@ mod tests {
             agent_memory: HashMap::new(),
             agent_skills: HashMap::new(),
             news_query: None,
+            gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
             agentic_chat: None,
             runtime_cmd: Some(RuntimeCmdAgentConfig {
@@ -3149,6 +3263,7 @@ mod tests {
                 command: "node".to_string(),
                 setup_script: None,
             }),
+            webbuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,

@@ -62,7 +62,7 @@ impl Agent for GdeltNewsAgent {
                 .execute_tool(
                     "gdelt_bigquery",
                     "fetch",
-                    "{}".to_string(),
+                    state.gdelt_query_args_json.clone(),
                     &channel_id,
                     session_id.clone(),
                 )
@@ -204,10 +204,10 @@ impl Agent for GdeltNewsAgent {
 
             // ── 7. Record transcript in agent session ───────────────────
             if let Some(ref session) = agent_session {
-                if let Err(e) = session.transcript_append("agent", &user_prompt).await {
+                if let Err(e) = session.transcript_append("user", &user_prompt).await {
                     warn!(error = %e, "gdelt_news: failed to append prompt to transcript");
                 }
-                if let Err(e) = session.transcript_append("llm", &summary).await {
+                if let Err(e) = session.transcript_append("assistant", &summary).await {
                     warn!(error = %e, "gdelt_news: failed to append response to transcript");
                 }
             }
@@ -263,6 +263,11 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String
             .get("event_code")
             .map(|s| s.as_str())
             .unwrap_or("");
+        let goldstein = item
+            .metadata
+            .get("goldstein")
+            .map(|s| s.as_str())
+            .unwrap_or("0");
         let num_articles = item
             .metadata
             .get("num_articles")
@@ -279,11 +284,12 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String
             .map(|s| s.as_str())
             .unwrap_or("");
         items_str.push_str(&format!(
-            "[{}] {} ↔ {}  code={} articles={} tone={}\n    {}\n",
+            "[{}] {} ↔ {}  code={} importance={} articles={} tone={}\n    {}\n",
             i + 1,
             actor1,
             actor2,
             event_code,
+            goldstein,
             num_articles,
             avg_tone,
             source_url,

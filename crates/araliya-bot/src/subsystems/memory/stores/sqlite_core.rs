@@ -1,12 +1,12 @@
-//! `docstore_core` — shared types and internal helpers for document stores.
+//! `sqlite_core` — shared SQLite helpers used by all stores.
 //!
-//! Both [`IDocStore`](super::docstore::IDocStore) and
-//! [`IKGDocStore`](super::kg_docstore::IKGDocStore) use these types and
-//! helpers.  Nothing in this module is part of the public API of either store;
-//! the types are re-exported from each store's own module.
+//! [`IDocStore`](super::docstore::IDocStore),
+//! [`IKGDocStore`](super::kg_docstore::IKGDocStore), and
+//! [`SqliteStore`](super::sqlite_store::SqliteStore) all rely on this module.
+//! Nothing here is public API; types are re-exported by each consumer module.
 //!
 //! ## What lives here
-//! - **Schema constants** — `DB_FILENAME`, `SCHEMA_VERSION`, `init_schema`.
+//! - **Schema constants** — `DB_FILENAME`, `SCHEMA_VERSION`, `init_schema` (docstore-specific).
 //! - **Connection factory** — `open_conn` (WAL + foreign-keys + busy timeout).
 //! - **Utilities** — `sha256_hex`, `now_iso8601`, `escape_fts5_query`.
 //! - **Shared public types** — `Document`, `DocMetadata`, `Chunk`, `SearchResult`.

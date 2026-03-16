@@ -255,6 +255,9 @@ pub(super) struct RawAgentEntry {
     /// Scaffold type for the `webbuilder` agent (e.g. `"vite-svelte"`).
     #[serde(default)]
     pub scaffold: Option<String>,
+    /// Query params for the `gdelt_news` agent.
+    #[serde(default)]
+    pub gdelt_query: Option<RawGdeltAgentQuery>,
 }
 
 #[derive(Deserialize, Default)]
@@ -285,6 +288,28 @@ pub(super) struct RawNewsAgentQuery {
     pub tsec_last: Option<u64>,
     #[serde(default)]
     pub q: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+pub(super) struct RawGdeltAgentQuery {
+    /// How many minutes back to include (default 60).
+    #[serde(default)]
+    pub lookback_minutes: Option<u32>,
+    /// Maximum rows to return (default 50).
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Only include events with at least this many articles.
+    #[serde(default)]
+    pub min_articles: Option<u32>,
+    /// Only include events with ABS(GoldsteinScale) >= this value (0–10).
+    #[serde(default)]
+    pub min_importance: Option<f32>,
+    /// Sort by importance (ABS(GoldsteinScale)) rather than article count.
+    #[serde(default)]
+    pub sort_by_importance: Option<bool>,
+    /// Restrict to English-language source mentions.
+    #[serde(default)]
+    pub english_only: Option<bool>,
 }
 
 // ── Memory ───────────────────────────────────────────────────────────────────

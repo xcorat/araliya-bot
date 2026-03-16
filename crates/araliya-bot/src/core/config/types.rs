@@ -167,6 +167,23 @@ pub struct NewsAgentQueryConfig {
     pub q: Option<String>,
 }
 
+/// Optional query defaults for the `gdelt_news` agent.
+#[derive(Debug, Clone)]
+pub struct GdeltAgentQueryConfig {
+    /// How many minutes back to include (default 60).
+    pub lookback_minutes: Option<u32>,
+    /// Maximum rows to return (default 50).
+    pub limit: Option<u32>,
+    /// Only include events with at least this many articles.
+    pub min_articles: Option<u32>,
+    /// Only include events with ABS(GoldsteinScale) >= this value (0–10).
+    pub min_importance: Option<f32>,
+    /// Sort by ABS(GoldsteinScale) DESC then NumArticles DESC when true.
+    pub sort_by_importance: Option<bool>,
+    /// Restrict to events covered by English-language sources (eventmentions join).
+    pub english_only: Option<bool>,
+}
+
 /// Tuning parameters for the docs-agent KG pipeline.
 #[derive(Debug, Clone)]
 pub struct DocsKgConfig {
@@ -286,6 +303,8 @@ pub struct AgentsConfig {
     pub agent_memory: HashMap<String, Vec<String>>,
     /// Optional default query args for the `news` agent.
     pub news_query: Option<NewsAgentQueryConfig>,
+    /// Optional default query args for the `gdelt_news` agent.
+    pub gdelt_query: Option<GdeltAgentQueryConfig>,
     /// Per-agent docstore configuration: agent_id → docs config.
     /// Any agent with `docsdir` set in its config section gets an entry here.
     pub agent_docs: HashMap<String, DocsAgentConfig>,

@@ -196,10 +196,10 @@ impl Agent for NewsAgentPlugin {
 
             // ── 7. Record comm transcript in agent session ──────────────
             if let Some(ref session) = agent_session {
-                if let Err(e) = session.transcript_append("agent", &user_prompt).await {
+                if let Err(e) = session.transcript_append("user", &user_prompt).await {
                     warn!(error = %e, "news: failed to append prompt to transcript");
                 }
-                if let Err(e) = session.transcript_append("llm", &summary).await {
+                if let Err(e) = session.transcript_append("assistant", &summary).await {
                     warn!(error = %e, "news: failed to append response to transcript");
                 }
             }

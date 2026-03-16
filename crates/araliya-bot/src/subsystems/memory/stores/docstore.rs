@@ -10,13 +10,13 @@ use tracing::warn;
 
 use crate::error::AppError;
 
-use super::docstore_core::{
+use super::sqlite_core::{
     DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn, sha256_hex,
 };
 
 // Re-export shared types so external callers see them under this module path
 // (no breaking change for existing imports like `docstore::Document`).
-pub use super::docstore_core::{Chunk, DocMetadata, Document, SearchResult};
+pub use super::sqlite_core::{Chunk, DocMetadata, Document, SearchResult};
 
 const DOCSTORE_DIR: &str = "docstore";
 const DOCS_DIR: &str = "docs";

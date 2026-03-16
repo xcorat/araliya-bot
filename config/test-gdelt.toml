@@ -13,3 +13,11 @@ enabled_agents = [
 # No special config needed — uses BigQuery service account auth
 # from config/secrets/araliya-1012f47de255.json
 # Queries past 24h, limit 50 events, ordered by article count
+
+[agents.gdelt_news.gdelt_query]
+lookback_minutes = 120
+limit = 30
+min_articles = 1
+# min_importance = 2.0    # only events with |GoldsteinScale| >= 2 (0–10 scale)
+# sort_by_importance = true  # sort by |GoldsteinScale| DESC instead of NumArticles DESC
+# english_only = true     # restrict to events covered by English-language sources

@@ -172,7 +172,7 @@ pub fn populate_kgdocstore_from_source(
     index_name: &str,
     kg_cfg: &crate::config::DocsKgConfig,
 ) -> Result<(), AppError> {
-    use crate::subsystems::memory::stores::docstore_core::Document;
+    use crate::subsystems::memory::stores::sqlite_core::Document;
     use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 
     let store = IKGDocStore::open(agent_identity_dir)?;

@@ -93,12 +93,21 @@ async fn fetch_access_token(sa: &ServiceAccount) -> Result<String, String> {
 /// Public arguments for a GDELT fetch — all fields are optional.
 #[derive(Debug, Default, Deserialize)]
 pub struct GdeltQueryArgs {
-    /// How many days back to include (default 1).
-    pub days_back: Option<u32>,
+    /// How many minutes back to include (default 60).
+    pub lookback_minutes: Option<u32>,
     /// Maximum rows to return (default 50).
     pub limit: Option<u32>,
     /// Only include events with at least this many articles.
     pub min_articles: Option<u32>,
+    /// Only include events whose ABS(GoldsteinScale) is at least this value (0-10).
+    /// Goldstein scale measures event stability impact; 0 = any, 10 = most extreme.
+    pub min_importance: Option<f32>,
+    /// When true sort results by ABS(GoldsteinScale) DESC (importance) then NumArticles DESC.
+    /// When false (default) sort by NumArticles DESC only.
+    pub sort_by_importance: Option<bool>,
+    /// When true restrict results to events covered by English-language sources,
+    /// by joining with the `gdeltv2.eventmentions` table on MentionLanguage = 'eng'.
+    pub english_only: Option<bool>,
 }
 
 /// A single GDELT event row.
@@ -159,12 +168,40 @@ fn cell_u64(row: &BqRow, idx: usize) -> u64 {
 }
 
 fn build_query(args: &GdeltQueryArgs) -> String {
-    let days_back = args.days_back.unwrap_or(1);
+    let lookback_minutes = args.lookback_minutes.unwrap_or(60);
     let limit = args.limit.unwrap_or(50);
+
+    // WHERE clause extras
     let min_articles_clause = args
         .min_articles
-        .map(|n| format!(" AND NumArticles >= {n}"))
+        .map(|n| format!("  AND NumArticles >= {n}\n"))
         .unwrap_or_default();
+
+    let min_importance_clause = args
+        .min_importance
+        .map(|v| format!("  AND ABS(GoldsteinScale) >= {v}\n"))
+        .unwrap_or_default();
+
+    // English-only: restrict to events that have at least one English-language mention.
+    let english_join = if args.english_only.unwrap_or(false) {
+        format!(
+            "INNER JOIN (
+    SELECT DISTINCT GlobalEventID
+    FROM `gdelt-bq.gdeltv2.eventmentions`
+    WHERE MentionLanguage = 'eng'
+      AND DATEADDED >= UNIX_SECONDS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE))
+  ) eng_mentions USING (GLOBALEVENTID)\n"
+        )
+    } else {
+        String::new()
+    };
+
+    // ORDER BY
+    let order_clause = if args.sort_by_importance.unwrap_or(false) {
+        "ABS(GoldsteinScale) DESC, NumArticles DESC"
+    } else {
+        "NumArticles DESC"
+    };
 
     format!(
         r#"SELECT
@@ -177,9 +214,8 @@ fn build_query(args: &GdeltQueryArgs) -> String {
   IFNULL(AvgTone, 0.0) AS avg_tone,
   IFNULL(SOURCEURL, '') AS source_url
 FROM `gdelt-bq.gdeltv2.events`
-WHERE CAST(SQLDATE AS STRING) >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL {days_back} DAY))
-{min_articles_clause}
-ORDER BY NumArticles DESC
+{english_join}WHERE DATEADDED >= UNIX_SECONDS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE))
+{min_articles_clause}{min_importance_clause}ORDER BY {order_clause}
 LIMIT {limit}"#
     )
 }
@@ -251,9 +287,12 @@ pub async fn fetch_events(args: &GdeltQueryArgs) -> Result<Vec<GdeltEvent>, Stri
 /// Run a minimal 1-row query to verify BigQuery connectivity.
 pub async fn healthcheck() -> Result<String, String> {
     let args = GdeltQueryArgs {
-        days_back: Some(1),
+        lookback_minutes: Some(1440), // 24 h
         limit: Some(1),
         min_articles: None,
+        min_importance: None,
+        sort_by_importance: None,
+        english_only: None,
     };
     let events = fetch_events(&args).await?;
     if events.is_empty() {
