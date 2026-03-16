@@ -278,6 +278,21 @@ Default query arguments for the newsmail aggregator can be set under `[agents.ne
 | `agents.news.query.t_interval` | string | none | Recency window as a duration string (e.g. `1min`, `1d`, `1mon`). |
 | `agents.news.query.tsec_last` | integer | none | Recency window in seconds (legacy fallback for `t_interval`). |
 
+### GDELT News Agent (`gdelt_news`)
+
+Runtime class: `specialized`. Fetches recent global events from the GDELT v2 BigQuery dataset and summarises them via the LLM. Results are cached by content hash so identical event sets are summarised only once. The prompt renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
+
+Query parameters are set under `[agents.gdelt_news.gdelt_query]`:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `lookback_minutes` | integer | `60` | How many minutes back to include. |
+| `limit` | integer | `50` | Maximum rows to return. |
+| `min_articles` | integer | none | Only include events covered by at least this many articles. |
+| `min_importance` | float | none | Only include events where `ABS(GoldsteinScale) >= value` (0–10 scale). |
+| `sort_by_importance` | bool | `false` | Sort by `ABS(GoldsteinScale) DESC, NumArticles DESC` instead of `NumArticles DESC` only. |
+| `english_only` | bool | `false` | Restrict to events with at least one English-language mention (joins `gdeltv2.eventmentions`). |
+
 ### Gmail Agent (`gmail`)
 
 Runtime class: `specialized`. Reads the latest Gmail messages via the Gmail tool and returns a formatted summary.

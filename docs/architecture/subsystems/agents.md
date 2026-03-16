@@ -500,9 +500,20 @@ Non-prefixed chunks are plain LLM text shown in chat as normal.
 
 ### GDELT News Agent Settings
 
-The `gdelt_news` agent has no required config fields. It reads from the GDELT v2 BigQuery dataset using the service-account key at `config/secrets/araliya-1012f47de255.json`. Query parameters are fixed at compile-time defaults (`days_back=1`, `limit=50`).
+The `gdelt_news` agent fetches recent global events from the GDELT v2 BigQuery dataset (authenticated via `config/secrets/araliya-1012f47de255.json`) and summarises them with the LLM. Results are cached by content hash so identical event sets are only summarised once.
 
-Requires the `plugin-gdelt-news-agent` Cargo feature (includes `plugin-gdelt-tool`). The agent prompt template is loaded from `config/prompts/gdelt_news_summary.txt`.
+Requires the `plugin-gdelt-news-agent` Cargo feature (includes `plugin-gdelt-tool`). The summarisation prompt is loaded from `config/prompts/gdelt_news_summary.txt` and renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
+
+Query parameters are configured under `[agents.gdelt_news.gdelt_query]`:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `agents.gdelt_news.gdelt_query.lookback_minutes` | integer | `60` | How many minutes back to include. |
+| `agents.gdelt_news.gdelt_query.limit` | integer | `50` | Maximum rows to return. |
+| `agents.gdelt_news.gdelt_query.min_articles` | integer | none | Only include events covered by at least this many articles. |
+| `agents.gdelt_news.gdelt_query.min_importance` | float | none | Only include events where `ABS(GoldsteinScale) >= value` (0–10 scale). |
+| `agents.gdelt_news.gdelt_query.sort_by_importance` | bool | `false` | When `true`, sort results by `ABS(GoldsteinScale) DESC, NumArticles DESC` instead of `NumArticles DESC` only. |
+| `agents.gdelt_news.gdelt_query.english_only` | bool | `false` | When `true`, restrict to events that have at least one English-language mention (joins `gdeltv2.eventmentions`). |
 
 ```toml
 [agents]
@@ -510,6 +521,14 @@ enabled = ["gdelt_news"]
 
 [agents.gdelt_news]
 memory = ["basic_session"]
+
+[agents.gdelt_news.gdelt_query]
+lookback_minutes  = 120
+limit             = 30
+min_articles      = 2
+min_importance    = 2.0   # only events with |GoldsteinScale| >= 2
+sort_by_importance = true  # highest-impact events first
+english_only      = true   # English-language sources only
 ```
 
 ### Example Configuration
