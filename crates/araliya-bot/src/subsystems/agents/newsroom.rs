@@ -423,12 +423,65 @@ async fn handle_read(
         }
     };
 
-    // ── 7. Nothing new — skip LLM ────────────────────────────────────────────
+    // ── 7. Nothing new — check if we have a summary; if not, regenerate from stored events ──
+    let new_events = if new_events.is_empty() {
+        // If a summary already exists, nothing to do.
+        let has_summary = tokio::task::spawn_blocking({
+            let state2 = state.clone();
+            move || {
+                state2
+                    .open_sqlite_store("newsroom", "events")
+                    .ok()
+                    .and_then(|s| {
+                        s.query_one("SELECT COUNT(*) AS n FROM summaries", &[])
+                            .ok()
+                            .flatten()
+                    })
+                    .and_then(|row| match row.get("n") {
+                        Some(SqlValue::Integer(n)) => Some(*n > 0),
+                        _ => None,
+                    })
+                    .unwrap_or(true) // assume summary exists on error → skip LLM
+            }
+        })
+        .await
+        .unwrap_or(true);
+
+        if has_summary {
+            update_last_fetched(&state).await;
+            let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                channel_id,
+                content: "No new events since last fetch.".to_string(),
+                session_id,
+                usage: None,
+                timing: None,
+                thinking: None,
+            }));
+            return;
+        }
+
+        // No summary yet — reload stored events and run the LLM for the first time.
+        tokio::task::spawn_blocking({
+            let state2 = state.clone();
+            move || -> Vec<GdeltRow> {
+                state2
+                    .open_sqlite_store("newsroom", "events")
+                    .ok()
+                    .map(|s| load_recent_events(&s, 50))
+                    .unwrap_or_default()
+            }
+        })
+        .await
+        .unwrap_or_default()
+    } else {
+        new_events
+    };
+
     if new_events.is_empty() {
         update_last_fetched(&state).await;
         let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
             channel_id,
-            content: "No new events since last fetch.".to_string(),
+            content: "No events stored yet.".to_string(),
             session_id,
             usage: None,
             timing: None,
@@ -787,6 +840,31 @@ fn sync_root_rank(
 }
 
 /// Rank score in [0, 1].
+/// Load the most recent `limit` events from the store as `GdeltRow`s.
+fn load_recent_events(store: &SqliteStore, limit: usize) -> Vec<GdeltRow> {
+    store
+        .query_rows(
+            "SELECT date, actor1, actor2, event_code, goldstein, num_articles, avg_tone, source_url \
+             FROM events ORDER BY id DESC LIMIT ?1",
+            &[SqlValue::Integer(limit as i64)],
+        )
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|row| {
+            Some(GdeltRow {
+                date: match row.get("date")? { SqlValue::Text(v) => v.clone(), _ => return None },
+                actor1: match row.get("actor1")? { SqlValue::Text(v) => v.clone(), _ => return None },
+                actor2: match row.get("actor2")? { SqlValue::Text(v) => v.clone(), _ => return None },
+                event_code: match row.get("event_code")? { SqlValue::Text(v) => v.clone(), _ => return None },
+                goldstein: match row.get("goldstein")? { SqlValue::Real(v) => *v, _ => return None },
+                num_articles: match row.get("num_articles")? { SqlValue::Integer(v) => *v as u64, _ => return None },
+                avg_tone: match row.get("avg_tone")? { SqlValue::Real(v) => *v, _ => return None },
+                source_url: match row.get("source_url")? { SqlValue::Text(v) => v.clone(), _ => return None },
+            })
+        })
+        .collect()
+}
+
 /// - 50% fetch frequency (sigmoid, saturates around fetch_count ≈ 20)
 /// - 30% tone score (avg_tone mapped from [-10,+10] to [0,1])
 /// - 20% recency (exponential decay, half-life ≈ 21 days)
