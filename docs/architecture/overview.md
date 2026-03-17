@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Version:** v0.6 — runtime-classified agents · `AgentRuntimeClass` taxonomy · `AgentRegistration` model · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · compile-time modularity via Cargo features · chat-family composition (`ChatCore`) · memory subsystem with pluggable stores · UI subsystem (`svui` backend) · cron subsystem · tools subsystem (Gmail MVP) · LLM token usage tracking and per-session cost accounting.
+**Version:** v0.6 — runtime-classified agents · `AgentRuntimeClass` taxonomy · `AgentRegistration` model · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · compile-time modularity via Cargo features · chat-family composition (`ChatCore`) · memory subsystem with pluggable stores · `MemoryBusHandler` (`memory/*` prefix) for read-only bus-mediated KG access · UI subsystem (`svui` backend) · cron subsystem · tools subsystem (Gmail MVP) · LLM token usage tracking and per-session cost accounting.
 
 ---
 
@@ -52,6 +52,7 @@ Request { method, payload, reply_tx }
   ├─ "llm/*"     → llm.handle_request(method, payload, reply_tx)
   ├─ "cron/*"    → cron.handle_request(method, payload, reply_tx)
   ├─ "manage/*"  → management.handle_request(method, payload, reply_tx)
+  ├─ "memory/*"  → memory_bus.handle_request(method, payload, reply_tx)
   ├─ "tools/*"   → tools.handle_request(method, payload, reply_tx)
   └─ unknown     → reply_tx.send(Err(ERR_METHOD_NOT_FOUND))
 ```

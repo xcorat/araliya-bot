@@ -53,7 +53,8 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
   - `POST /api/message/stream`                  — **SSE streaming**; emits `thinking`, `content`, and `done` events
   - `GET  /api/sessions`                        — session list
   - `GET  /api/agents`                          — agent list
-  - `GET  /api/agents/{agent_id}/kg`            — knowledge graph for agent's KGDocStore
+  - `GET  /api/agents/{agent_id}/kg`            — knowledge graph for agent's KGDocStore (reads from agent fs directly)
+  - `GET  /api/memory/agents/{agent_id}/kg`     — knowledge graph via memory bus handler (`memory/kg_graph`)
   - `GET  /api/session/{session_id}`            — session detail (metadata + transcript)
   - `GET  /api/sessions/{session_id}/memory`    — working memory
   - `GET  /api/sessions/{session_id}/debug`     — per-turn debug data
@@ -139,7 +140,8 @@ channels call typed methods:
 | `request_session_memory(session_id, agent_id)` | Request working memory content. |
 | `request_session_files(session_id, agent_id)` | Request session file list. |
 | `request_session_debug(session_id, agent_id)` | Request per-turn debug data. |
-| `request_agent_kg(agent_id)` | Request knowledge graph for an agent's KGDocStore. |
+| `request_agent_kg(agent_id)` | Request knowledge graph for an agent's KGDocStore (direct fs read via agents subsystem). |
+| `request_memory_kg(agent_id)` | Request knowledge graph via the memory bus handler (`memory/kg_graph`). Preferred for UI endpoints. |
 | `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
 
 `CommsReply` carries `reply: String`, `session_id: Option<String>`, and `thinking: Option<String>`. The `thinking` field is populated when the underlying agent's LLM call produced reasoning content.

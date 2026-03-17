@@ -14,7 +14,14 @@ The Memory subsystem owns all session data for the bot instance.  It provides:
 - A **`BasicSessionStore`** — disk-backed JSON + Markdown transcript store for durable sessions.
 - A **`SessionHandle`** — async-safe handle agents use to read and write session state, with direct typed accessors for `TmpStore` sessions.
 
-Memory is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages.
+Session access is **not bus-mediated** — agents receive a `SessionHandle` directly from `AgentsState.memory` rather than routing through bus messages.
+
+Read-only KG queries **are** bus-accessible via `MemoryBusHandler` (`subsystems/memory_bus.rs`), which registers the `memory/` prefix on the supervisor bus. This decouples HTTP layer KG reads from agent internals. Currently exposed methods:
+
+| Method | Description |
+|--------|-------------|
+| `memory/kg_graph` | Return knowledge graph JSON for an agent's `kgdocstore/`. Returns `{"agent_id", "graph"}`. Empty graph when no data yet. |
+| `memory/status` | Health status (convention requirement). |
 
 `IDocStore` is currently **agent-scoped storage infrastructure** in the memory subsystem; active agent prompt augmentation is a follow-up phase.
 

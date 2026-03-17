@@ -81,6 +81,7 @@ Feature-gated code uses `#[cfg(feature = "feature-name")]` throughout.
 "llm/*"     → LLM subsystem
 "cron/*"    → cron subsystem
 "manage/*"  → management subsystem
+"memory/*"  → memory bus handler (read-only KG queries)
 "tools/*"   → tools subsystem
 ```
 
