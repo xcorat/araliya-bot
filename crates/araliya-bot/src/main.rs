@@ -51,6 +51,8 @@ use subsystems::runtimes::RuntimesSubsystem;
 
 #[cfg(feature = "subsystem-memory")]
 use subsystems::memory::{MemoryConfig, MemorySystem};
+#[cfg(all(feature = "subsystem-memory", feature = "subsystem-agents"))]
+use subsystems::memory_bus::MemoryBusHandler;
 
 #[cfg(feature = "subsystem-comms")]
 use subsystems::comms::CommsStatusHandler;
@@ -209,6 +211,12 @@ async fn run() -> Result<(), error::AppError> {
                 .with_health_reporter(health_registry.reporter("agents"));
         #[cfg(feature = "plugin-docs")]
         agents.init_docs().await?;
+
+        // Share agent identity dirs with the memory bus handler.
+        let agent_id_dirs = Arc::new(agents.agent_identity_dirs());
+        handlers.push(Box::new(MemoryBusHandler::new(agent_id_dirs)));
+        configured_handlers.push("memory".to_string());
+
         handlers.push(Box::new(agents));
         configured_handlers.push("agents".to_string());
     }

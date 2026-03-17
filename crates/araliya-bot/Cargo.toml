@@ -37,6 +37,7 @@ chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
 jsonwebtoken = { version = "9", optional = true }
+htmd = "0.5"
 
 [features]
 default = [

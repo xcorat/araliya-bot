@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::subsystems::memory::stores::kg_docstore::IKGDocStore;
 use crate::subsystems::memory::stores::sqlite_core::Document;
@@ -209,6 +209,7 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         let text = strip_html(&html);
         let truncated = truncate_chars(&text, MAX_ARTICLE_CHARS);
         if truncated.trim().is_empty() {
+            warn!(url = %url, "news_aggregator: stripped article body is empty — skipping");
             skipped += 1;
             continue;
         }
@@ -265,7 +266,7 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         match store_result {
             Ok(()) => processed += 1,
             Err(e) => {
-                warn!(error = %e, "news_aggregator: failed to store article");
+                error!(error = %e, url = %url, "news_aggregator: failed to store article in KG");
                 skipped += 1;
             }
         }
@@ -279,7 +280,7 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
     // ── 5. Rebuild KG ────────────────────────────────────────────────────────
     if processed > 0 {
         let dir = newsroom_dir.clone();
-        if let Err(e) = tokio::task::spawn_blocking(move || {
+        match tokio::task::spawn_blocking(move || {
             IKGDocStore::open(&dir)
                 .and_then(|s| s.rebuild_kg())
                 .map_err(|e| format!("news_aggregator: rebuild_kg: {e}"))
@@ -287,7 +288,8 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         .await
         .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking rebuild: {e}")))
         {
-            warn!(error = %e, "news_aggregator: KG rebuild failed (non-fatal)");
+            Ok(()) => tracing::info!("news_aggregator: KG rebuilt successfully"),
+            Err(e) => error!(error = %e, "news_aggregator: KG rebuild FAILED — graph will be stale"),
         }
     }
 
@@ -306,19 +308,28 @@ async fn handle_aggregate(
 ) {
     // Respond immediately so the bus doesn't time out.
     // The actual aggregation happens in the background.
-    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-        channel_id: channel_id.clone(),
-        content: "Aggregation started in background.".to_string(),
-        session_id,
-        usage: None,
-        timing: None,
-        thinking: None,
-    }));
+    if reply_tx
+        .send(Ok(BusPayload::CommsMessage {
+            channel_id: channel_id.clone(),
+            content: "Aggregation started in background.".to_string(),
+            session_id,
+            usage: None,
+            timing: None,
+            thinking: None,
+        }))
+        .is_err()
+    {
+        warn!("news_aggregator: caller dropped reply receiver before aggregate ack — proceeding anyway");
+    }
 
     // Spawn the long-running aggregation as a background task.
     tokio::spawn(async move {
         let result = do_aggregate(channel_id, state).await;
-        tracing::info!(result = %result, "news_aggregator: background aggregation complete");
+        if result.starts_with("news_aggregator:") || result.starts_with("No new") {
+            tracing::info!(result = %result, "news_aggregator: background aggregation complete");
+        } else {
+            tracing::info!(result = %result, "news_aggregator: background aggregation complete");
+        }
     });
 }
 
@@ -470,70 +481,14 @@ async fn handle_search(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Strip HTML tags and decode common entities, normalising whitespace.
+/// Convert HTML to plain text using htmd, skipping script/style tags.
 fn strip_html(html: &str) -> String {
-    let mut out = String::with_capacity(html.len() / 2);
-    let mut in_tag = false;
-    let mut in_skip = false; // inside <script> or <style>
-    let mut i = 0;
-    let bytes = html.as_bytes();
-
-    while i < bytes.len() {
-        if !in_tag && !in_skip {
-            // Detect start of <script> or <style> blocks to skip entirely.
-            let rest = &html[i..];
-            let rest_lo = rest.to_lowercase();
-            if rest_lo.starts_with("<script") || rest_lo.starts_with("<style") {
-                in_skip = true;
-                in_tag = true;
-            }
-        }
-
-        if in_skip {
-            let rest = html[i..].to_lowercase();
-            if rest.starts_with("</script>") {
-                i += 9;
-                in_skip = false;
-                in_tag = false;
-                continue;
-            } else if rest.starts_with("</style>") {
-                i += 8;
-                in_skip = false;
-                in_tag = false;
-                continue;
-            }
-            i += 1;
-            continue;
-        }
-
-        match bytes[i] {
-            b'<' => {
-                in_tag = true;
-                out.push(' '); // block-level separation
-            }
-            b'>' => {
-                in_tag = false;
-            }
-            b if !in_tag => {
-                out.push(b as char);
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    // Decode HTML entities.
-    let decoded = out
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&nbsp;", " ");
-
+    let converter = htmd::HtmlToMarkdown::builder()
+        .skip_tags(vec!["script", "style", "head", "nav", "footer"])
+        .build();
+    let text = converter.convert(html).unwrap_or_default();
     // Normalise whitespace.
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Truncate `s` to at most `max_chars` Unicode scalar values.

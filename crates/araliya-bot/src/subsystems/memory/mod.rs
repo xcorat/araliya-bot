@@ -42,6 +42,7 @@ use crate::error::AppError;
 use handle::SessionHandle;
 use store::SessionStore;
 
+
 /// Directory name under `{memory_root}/` that stores per-agent identities.
 pub const AGENTS_DIRNAME: &str = "agents";
 

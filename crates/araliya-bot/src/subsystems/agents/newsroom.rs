@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::subsystems::memory::stores::sqlite_core::now_iso8601;
 use crate::subsystems::memory::stores::sqlite_store::{SqlValue, SqliteStore};
@@ -582,17 +582,27 @@ async fn handle_read(
 
     // ── 11. Trigger news aggregator in background ─────────────────────────────
     // Fire-and-forget: if the news_aggregator agent is registered it will pick
-    // up the new event URLs and build the knowledge graph.  If it is not
-    // registered the bus returns ERR_METHOD_NOT_FOUND which we discard silently.
+    // up the new event URLs and build the knowledge graph.  ERR_METHOD_NOT_FOUND
+    // means the plugin is simply not enabled and can be ignored; all other
+    // errors indicate a real problem and should be surfaced as warnings.
     {
         let agg_state = state.clone();
         let agg_channel = channel_id.clone();
         tokio::spawn(async move {
-            let result = agg_state
+            match agg_state
                 .dispatch_to_agent("news_aggregator", "aggregate", "", &agg_channel, None)
-                .await;
-            if let Err(e) = result {
-                tracing::debug!(error = ?e, "newsroom: news_aggregator not available or aggregate failed");
+                .await
+            {
+                Ok(_) => {}
+                Err(e) if e.code == crate::supervisor::bus::ERR_METHOD_NOT_FOUND => {
+                    tracing::debug!("newsroom: news_aggregator plugin not enabled — KG will not be updated");
+                }
+                Err(e) => {
+                    error!(
+                        error = ?e,
+                        "newsroom: news_aggregator aggregate FAILED — knowledge graph will NOT be updated"
+                    );
+                }
             }
         });
     }
@@ -783,10 +793,10 @@ async fn update_last_fetched(state: &Arc<AgentsState>) {
     let state = state.clone();
     let now = now_iso8601();
     tokio::task::spawn_blocking(move || match state.open_agent_store("newsroom") {
-        Err(e) => warn!(error = %e, "newsroom: failed to open agent store for last_fetched"),
+        Err(e) => error!(error = %e, "newsroom: failed to open agent store for last_fetched — fetch time will not be recorded"),
         Ok(store) => {
             if let Err(e) = store.kv_set("last_fetched", &now) {
-                warn!(error = %e, "newsroom: failed to update last_fetched");
+                error!(error = %e, "newsroom: failed to update last_fetched");
             }
         }
     })

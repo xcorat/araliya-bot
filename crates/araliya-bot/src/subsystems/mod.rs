@@ -9,6 +9,8 @@ pub mod llm;
 pub mod management;
 #[cfg(feature = "subsystem-memory")]
 pub mod memory;
+#[cfg(all(feature = "subsystem-memory", feature = "subsystem-agents"))]
+pub mod memory_bus;
 pub mod runtime;
 #[cfg(feature = "subsystem-runtimes")]
 pub mod runtimes;

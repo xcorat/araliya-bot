@@ -13,7 +13,7 @@
 		doCheckHealth,
 		resetSession
 	} from '$lib/state.svelte';
-	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft } from '@lucide/svelte';
+	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft, Newspaper } from '@lucide/svelte';
 	import { fireSidebarToggle } from '$lib/sidebar-bridge.svelte';
 
 	const health = $derived(getHealthStatus());
@@ -25,11 +25,13 @@
 	const chatPath = $derived(basePath ? `${basePath}/` : '/');
 	const statusPath = $derived(basePath ? `${basePath}/status` : '/status');
 	const docsPath = $derived(basePath ? `${basePath}/docs` : '/docs');
+	const newsroomPath = $derived(basePath ? `${basePath}/newsroom` : '/newsroom');
 	const isChatRoute = $derived(page.url.pathname === chatPath);
 	const isStatusRoute = $derived(
 		page.url.pathname === statusPath || page.url.pathname.startsWith(`${statusPath}/`)
 	);
 	const isDocsRoute = $derived(page.url.pathname === docsPath || page.url.pathname.startsWith(`${docsPath}/`));
+	const isNewsroomRoute = $derived(page.url.pathname === newsroomPath || page.url.pathname.startsWith(`${newsroomPath}/`));
 
 	const healthColor = $derived(
 		health === 'ok'
@@ -61,6 +63,12 @@
 	function openDocs() {
 		if (!isDocsRoute) {
 			void goto(docsPath);
+		}
+	}
+
+	function openNewsroom() {
+		if (!isNewsroomRoute) {
+			void goto(newsroomPath);
 		}
 	}
 </script>
@@ -123,6 +131,15 @@
 			>
 				<BookOpen class="size-3" />
 				Docs
+			</button>
+			<button
+				onclick={openNewsroom}
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {isNewsroomRoute
+					? 'bg-background text-foreground shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				<Newspaper class="size-3" />
+				Newsroom
 			</button>
 		</div>
 

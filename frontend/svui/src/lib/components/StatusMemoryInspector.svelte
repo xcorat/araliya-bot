@@ -2,8 +2,8 @@
 	import { base } from '$app/paths';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Loader2, Database, FileText } from '@lucide/svelte';
-	import type { TreeNode, SessionInfo, AgentInfo, SessionFileInfo } from '$lib/types';
+	import { Loader2, Database, FileText, Network } from '@lucide/svelte';
+	import type { TreeNode, SessionInfo, AgentInfo, SessionFileInfo, KgGraph, KgEntity, KgEntityKind } from '$lib/types';
 	import { getBaseUrl } from '$lib/state.svelte';
 	import * as api from '$lib/api';
 
@@ -25,6 +25,13 @@
 
 	let activeStore = $state<string | null>(null);
 	let activeFile = $state<{ sessionId: string; file: SessionFileInfo } | null>(null);
+
+	let kgState = $state<{
+		loading: boolean;
+		loaded: boolean;
+		error: string;
+		graph: KgGraph | null;
+	}>({ loading: false, loaded: false, error: '', graph: null });
 
 	let sessionsHydrated = $state(false);
 	let agentsHydrated = $state(false);
@@ -185,12 +192,64 @@
 		}
 	}
 
+	// ── KG helpers (consistent with StatusKGInspector) ───────────────
+
+	const kgEntities = $derived.by(() => {
+		if (!kgState.graph) return [];
+		return Object.values(kgState.graph.entities).sort((a, b) => b.mention_count - a.mention_count);
+	});
+	const kgRelations = $derived.by(() => {
+		if (!kgState.graph) return [];
+		return [...kgState.graph.relations].sort((a, b) => b.weight - a.weight);
+	});
+	const kgEntityMap = $derived(kgState.graph?.entities ?? {});
+
+	function kindClass(kind: KgEntityKind): string {
+		switch (kind) {
+			case 'concept': return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
+			case 'system':  return 'bg-purple-500/10 text-purple-600 border-purple-500/30';
+			case 'person':  return 'bg-green-500/10 text-green-600 border-green-500/30';
+			case 'term':    return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+			case 'acronym': return 'bg-rose-500/10 text-rose-600 border-rose-500/30';
+			default:        return 'bg-muted text-muted-foreground';
+		}
+	}
+
+	function entityName(id: string): string {
+		return kgEntityMap[id]?.name ?? id.slice(0, 8);
+	}
+
+	function formatWeight(w: number): string {
+		return (w * 100).toFixed(0) + '%';
+	}
+
+	async function loadKG() {
+		if (kgState.loading || kgState.loaded) return;
+		const baseUrl = getBaseUrl();
+		if (!baseUrl) return;
+		kgState = { loading: true, loaded: false, error: '', graph: null };
+		try {
+			const response = await api.getMemoryAgentKG(baseUrl, selectedAgentId);
+			kgState = { loading: false, loaded: true, error: '', graph: response.graph };
+		} catch (error) {
+			kgState = {
+				loading: false,
+				loaded: false,
+				error: error instanceof Error ? error.message : 'Failed to load KG',
+				graph: null
+			};
+		}
+	}
+
 	function onStoreClick(storeType: string) {
 		activeStore = storeType;
 		activeFile = null;
 
 		if ((storeType.toLowerCase().includes('memory') || storeType.toLowerCase() === 'wm') && primarySessionId) {
 			void ensureMemory(primarySessionId);
+		}
+		if (storeType === 'kgdocstore') {
+			void loadKG();
 		}
 	}
 
@@ -334,7 +393,11 @@
 				{#if activeStore}
 					<div class="rounded border border-border/60 bg-muted/15 p-2">
 						<div class="mb-1 flex items-center gap-1.5 font-medium">
-							<Database class="size-3.5" />
+							{#if activeStore === 'kgdocstore'}
+								<Network class="size-3.5" />
+							{:else}
+								<Database class="size-3.5" />
+							{/if}
 							<span>{activeStore}</span>
 						</div>
 						{#if primarySessionId && (activeStore.toLowerCase().includes('memory') || activeStore.toLowerCase() === 'wm')}
@@ -354,6 +417,66 @@
 								{/if}
 							{:else}
 								<p class="text-muted-foreground">Memory preview will load from the latest session.</p>
+							{/if}
+						{:else if activeStore === 'kgdocstore'}
+							{#if kgState.loading}
+								<div class="flex items-center gap-2 text-muted-foreground">
+									<Loader2 class="size-3.5 animate-spin" />
+									<span>Loading knowledge graph…</span>
+								</div>
+							{:else if kgState.error}
+								<p class="text-destructive">{kgState.error}</p>
+							{:else if kgState.loaded && kgState.graph}
+								{#if kgEntities.length === 0 && kgRelations.length === 0}
+									<p class="text-muted-foreground">Knowledge graph is empty.</p>
+								{:else}
+									<div class="mb-1.5 flex gap-2 text-[10px] text-muted-foreground">
+										<span>{kgEntities.length} entities</span>
+										<span>·</span>
+										<span>{kgRelations.length} relations</span>
+									</div>
+									<div class="space-y-2">
+										{#if kgEntities.length > 0}
+											<div>
+												<p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+													Entities
+												</p>
+												<div class="max-h-48 space-y-0.5 overflow-y-auto">
+													{#each kgEntities as entity (entity.id)}
+														<div class="flex items-center gap-2 rounded-md border border-border/40 bg-muted/5 px-2 py-1">
+															<span class={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide ${kindClass(entity.kind)}`}>
+																{entity.kind}
+															</span>
+															<span class="min-w-0 flex-1 truncate text-[11px] font-medium">{entity.name}</span>
+															<span class="shrink-0 font-mono text-[10px] text-muted-foreground" title="mention count">
+																×{entity.mention_count}
+															</span>
+														</div>
+													{/each}
+												</div>
+											</div>
+										{/if}
+										{#if kgRelations.length > 0}
+											<div>
+												<p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+													Relations
+												</p>
+												<div class="max-h-40 space-y-0.5 overflow-y-auto">
+													{#each kgRelations as rel, i (i)}
+														<div class="flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/5 px-2 py-1 text-[10px]">
+															<span class="min-w-0 truncate font-medium text-foreground/80">{entityName(rel.from)}</span>
+															<Badge variant="outline" class="shrink-0 px-1.5 py-0 text-[9px]">{rel.label}</Badge>
+															<span class="min-w-0 truncate font-medium text-foreground/80">{entityName(rel.to)}</span>
+															<span class="ml-auto shrink-0 font-mono text-muted-foreground">{formatWeight(rel.weight)}</span>
+														</div>
+													{/each}
+												</div>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							{:else}
+								<p class="text-muted-foreground">Knowledge graph will load when selected.</p>
 							{/if}
 						{:else}
 							<p class="text-muted-foreground">This store has metadata-only inspection in this phase.</p>

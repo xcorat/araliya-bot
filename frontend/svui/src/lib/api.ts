@@ -129,6 +129,17 @@ export async function getAgentKG(baseUrl: string, agentId: string): Promise<Agen
 	return readResponse<AgentKGResponse>(response);
 }
 
+export async function getMemoryAgentKG(
+	baseUrl: string,
+	agentId: string
+): Promise<AgentKGResponse> {
+	const response = await fetch(
+		`${baseUrl}/api/memory/agents/${encodeURIComponent(agentId)}/kg`
+	);
+	if (!response.ok) return handleError(response);
+	return readResponse<AgentKGResponse>(response);
+}
+
 export async function getAgentSpend(baseUrl: string, agentId: string): Promise<AgentSpendResponse> {
 	const response = await fetch(`${baseUrl}/api/agents/${encodeURIComponent(agentId)}/spend`);
 	if (!response.ok) return handleError(response);

@@ -368,6 +368,35 @@ pub(super) async fn agent_kg(
     }
 }
 
+/// GET /api/memory/agents/{agent_id}/kg — KG via memory subsystem.
+pub(super) async fn memory_agent_kg(
+    State(state): State<AxumState>,
+    Path(agent_id): Path<String>,
+) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        state.comms.request_memory_kg(&agent_id),
+    )
+    .await
+    {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, %agent_id, "memory KG request failed: {e}");
+            (StatusCode::NOT_FOUND, json_error("not_found", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "memory KG request timed out"),
+        )
+            .into_response(),
+    }
+}
+
 /// GET /api/session/{session_id}
 pub(super) async fn session_detail(
     State(state): State<AxumState>,

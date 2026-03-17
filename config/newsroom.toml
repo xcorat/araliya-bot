@@ -18,7 +18,7 @@ enabled = true
 memory = ["basic_session"]
 
 [agents.newsroom.gdelt_query]
-lookback_minutes = 120
+lookback_minutes = 600
 limit            = 50
 min_articles     = 1
 english_only     = true

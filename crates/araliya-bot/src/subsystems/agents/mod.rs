@@ -503,6 +503,16 @@ pub struct AgentsSubsystem {
 }
 
 impl AgentsSubsystem {
+    /// Return a snapshot of agent_id → identity_dir mappings.
+    /// Used by the memory subsystem bus handler to serve `memory/kg_graph`.
+    pub fn agent_identity_dirs(&self) -> std::collections::HashMap<String, std::path::PathBuf> {
+        self.state
+            .agent_identities
+            .iter()
+            .map(|(id, identity)| (id.clone(), identity.identity_dir.clone()))
+            .collect()
+    }
+
     fn effective_enabled_agent_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = if self.enabled_agents.is_empty() {
             self.agents.keys().cloned().collect()

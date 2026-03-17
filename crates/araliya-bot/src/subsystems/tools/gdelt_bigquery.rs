@@ -191,7 +191,7 @@ fn build_query(args: &GdeltQueryArgs) -> String {
     SELECT DISTINCT GLOBALEVENTID
     FROM `gdelt-bq.gdeltv2.eventmentions_partitioned`
     WHERE (MentionDocTranslationInfo IS NULL OR MentionDocTranslationInfo = '')
-      AND _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE)
+      AND _PARTITIONTIME >= TIMESTAMP_TRUNC(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE), DAY)
   ) eng_mentions USING (GLOBALEVENTID)\n"
         )
     } else {
@@ -205,6 +205,12 @@ fn build_query(args: &GdeltQueryArgs) -> String {
         "NumArticles DESC"
     };
 
+    // _PARTITIONTIME is the start-of-partition boundary (midnight UTC for daily
+    // partitions), NOT a per-row timestamp.  Using it with a sub-day interval
+    // means zero rows are returned for most of the day.  Instead, truncate to
+    // the day boundary so BigQuery prunes unnecessary partitions, then apply
+    // the real time filter using the DateAdded column (YYYYMMDDHHMMSS integer)
+    // which records when GDELT first published the event.
     format!(
         r#"SELECT
   CAST(SQLDATE AS STRING) AS date,
@@ -216,7 +222,8 @@ fn build_query(args: &GdeltQueryArgs) -> String {
   IFNULL(AvgTone, 0.0) AS avg_tone,
   IFNULL(SOURCEURL, '') AS source_url
 FROM `gdelt-bq.gdeltv2.events_partitioned`
-{english_join}WHERE _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE)
+{english_join}WHERE _PARTITIONTIME >= TIMESTAMP_TRUNC(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE), DAY)
+  AND PARSE_TIMESTAMP('%Y%m%d%H%M%S', CAST(DateAdded AS STRING)) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE)
 {min_articles_clause}{min_importance_clause}ORDER BY {order_clause}
 LIMIT {limit}"#
     )

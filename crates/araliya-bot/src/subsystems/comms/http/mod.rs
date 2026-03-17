@@ -141,6 +141,7 @@ async fn handle_connection(
     let session_debug = parse_session_subresource_path(&path, "debug");
     let session_files = parse_session_subresource_path(&path, "files");
     let agent_kg = parse_agent_subresource_path(&path, "kg");
+    let memory_agent_kg = parse_memory_agent_subresource_path(&path, "kg");
 
     match (method.as_str(), path.as_str()) {
         ("GET", "/api/health") => api::handle_health(&mut socket, &state, &channel_id).await,
@@ -167,6 +168,15 @@ async fn handle_connection(
         ("GET", _) if agent_kg.is_some() => {
             api::handle_agent_kg(&mut socket, &state, &channel_id, agent_kg.unwrap()).await
         }
+        ("GET", _) if memory_agent_kg.is_some() => {
+            api::handle_memory_agent_kg(
+                &mut socket,
+                &state,
+                &channel_id,
+                memory_agent_kg.unwrap(),
+            )
+            .await
+        }
         ("GET", p) if p.starts_with("/api/session/") => {
             let session_id = &p["/api/session/".len()..];
             api::handle_session_detail(&mut socket, &state, &channel_id, session_id).await
@@ -182,6 +192,23 @@ async fn handle_connection(
 
 fn parse_agent_subresource_path<'a>(path: &'a str, subresource: &str) -> Option<&'a str> {
     let prefix = "/api/agents/";
+    let suffix = format!("/{subresource}");
+
+    if !path.starts_with(prefix) || !path.ends_with(&suffix) {
+        return None;
+    }
+
+    let inner = &path[prefix.len()..path.len() - suffix.len()];
+    if inner.is_empty() || inner.contains('/') {
+        return None;
+    }
+
+    Some(inner)
+}
+
+/// Parse `/api/memory/agents/{agent_id}/{subresource}` → agent_id.
+fn parse_memory_agent_subresource_path<'a>(path: &'a str, subresource: &str) -> Option<&'a str> {
+    let prefix = "/api/memory/agents/";
     let suffix = format!("/{subresource}");
 
     if !path.starts_with(prefix) || !path.ends_with(&suffix) {
