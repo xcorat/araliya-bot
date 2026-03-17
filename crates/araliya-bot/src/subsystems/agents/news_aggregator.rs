@@ -33,7 +33,7 @@ use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOU
 use super::{Agent, AgentsState};
 
 const MAX_ARTICLE_CHARS: usize = 4_000;
-const BATCH_LIMIT: i64 = 30;
+const BATCH_LIMIT: i64 = 8;  // Process 8 URLs per aggregation cycle (≈12s + LLM)
 const FETCH_TIMEOUT_S: u64 = 15;
 const CHUNK_SIZE: usize = 512;
 const FETCH_DELAY_MS: u64 = 1_500;
@@ -304,15 +304,22 @@ async fn handle_aggregate(
     state: Arc<AgentsState>,
     reply_tx: oneshot::Sender<BusResult>,
 ) {
-    let result = do_aggregate(channel_id.clone(), state).await;
+    // Respond immediately so the bus doesn't time out.
+    // The actual aggregation happens in the background.
     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-        channel_id,
-        content: result,
+        channel_id: channel_id.clone(),
+        content: "Aggregation started in background.".to_string(),
         session_id,
         usage: None,
         timing: None,
         thinking: None,
     }));
+
+    // Spawn the long-running aggregation as a background task.
+    tokio::spawn(async move {
+        let result = do_aggregate(channel_id, state).await;
+        tracing::info!(result = %result, "news_aggregator: background aggregation complete");
+    });
 }
 
 // ── status ────────────────────────────────────────────────────────────────────
