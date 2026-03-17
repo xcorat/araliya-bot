@@ -305,6 +305,8 @@ pub struct AgentsConfig {
     pub news_query: Option<NewsAgentQueryConfig>,
     /// Optional default query args for the `gdelt_news` agent.
     pub gdelt_query: Option<GdeltAgentQueryConfig>,
+    /// Optional default query args for the `newsroom` agent.
+    pub newsroom_query: Option<GdeltAgentQueryConfig>,
     /// Per-agent docstore configuration: agent_id → docs config.
     /// Any agent with `docsdir` set in its config section gets an entry here.
     pub agent_docs: HashMap<String, DocsAgentConfig>,

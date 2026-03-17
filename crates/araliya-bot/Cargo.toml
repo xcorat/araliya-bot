@@ -56,6 +56,7 @@ default = [
     "plugin-docs-agent",
     "plugin-runtime-cmd",
     "plugin-webbuilder",
+    "plugin-newsroom-agent",
     "subsystem-runtimes",
     "channel-pty",
     "channel-axum",
@@ -68,6 +69,8 @@ full    = [
     "plugin-news-agent",
     "plugin-gdelt-tool",
     "plugin-gdelt-news-agent",
+    "plugin-newsroom-agent",
+    "plugin-news-aggregator",
     "channel-telegram",
     "cli",
     "gmail-app",
@@ -106,6 +109,8 @@ plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"
 plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-gdelt-tool = ["dep:jsonwebtoken", "subsystem-tools"]
 plugin-gdelt-news-agent = ["plugin-gdelt-tool", "subsystem-agents"]
+plugin-newsroom-agent = ["plugin-gdelt-tool", "subsystem-agents", "isqlite"]
+plugin-news-aggregator = ["plugin-newsroom-agent", "ikgdocstore"]
 plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]

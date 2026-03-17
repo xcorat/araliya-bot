@@ -183,13 +183,15 @@ fn build_query(args: &GdeltQueryArgs) -> String {
         .unwrap_or_default();
 
     // English-only: restrict to events that have at least one English-language mention.
+    // MentionDocTranslationInfo is blank for English-original documents; populated for
+    // translated ones. _PARTITIONTIME prunes the eventmentions scan to the time window.
     let english_join = if args.english_only.unwrap_or(false) {
         format!(
             "INNER JOIN (
-    SELECT DISTINCT GlobalEventID
-    FROM `gdelt-bq.gdeltv2.eventmentions`
-    WHERE MentionLanguage = 'eng'
-      AND DATEADDED >= UNIX_SECONDS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE))
+    SELECT DISTINCT GLOBALEVENTID
+    FROM `gdelt-bq.gdeltv2.eventmentions_partitioned`
+    WHERE (MentionDocTranslationInfo IS NULL OR MentionDocTranslationInfo = '')
+      AND _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE)
   ) eng_mentions USING (GLOBALEVENTID)\n"
         )
     } else {
@@ -213,8 +215,8 @@ fn build_query(args: &GdeltQueryArgs) -> String {
   IFNULL(NumArticles, 0) AS num_articles,
   IFNULL(AvgTone, 0.0) AS avg_tone,
   IFNULL(SOURCEURL, '') AS source_url
-FROM `gdelt-bq.gdeltv2.events`
-{english_join}WHERE DATEADDED >= UNIX_SECONDS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE))
+FROM `gdelt-bq.gdeltv2.events_partitioned`
+{english_join}WHERE _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback_minutes} MINUTE)
 {min_articles_clause}{min_importance_clause}ORDER BY {order_clause}
 LIMIT {limit}"#
     )
@@ -234,6 +236,12 @@ pub async fn fetch_events(args: &GdeltQueryArgs) -> Result<Vec<GdeltEvent>, Stri
     let client = build_http_client()?;
 
     let query = build_query(args);
+
+    // Safety: never query unpartitioned tables.
+    if query.contains("gdeltv2.events`") || query.contains("gdeltv2.eventmentions`") {
+        return Err("gdelt: query rejected — must use events_partitioned and eventmentions_partitioned".to_string());
+    }
+
     let limit = args.limit.unwrap_or(50);
     let url = format!(
         "https://bigquery.googleapis.com/bigquery/v2/projects/{}/queries",

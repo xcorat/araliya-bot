@@ -1,0 +1,27 @@
+[meta]
+base = "default.toml"
+
+[supervisor]
+# bot_name = "araliya"
+# work_dir = "~/.araliya"
+# Optional explicit identity directory.
+# Absolute path or relative to work_dir (example: "bot-pkey51aee87e").
+# Useful when multiple bot-pkey* directories exist.
+# identity_dir = "bot-pkey51aee87e"
+log_level = "debug"
+
+[agents]
+default = "newsroom"
+
+[agents.newsroom]
+enabled = true
+memory = ["basic_session"]
+
+[agents.newsroom.gdelt_query]
+lookback_minutes = 120
+limit            = 50
+min_articles     = 1
+english_only     = true
+
+[agents.news_aggregator]
+enabled = true

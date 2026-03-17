@@ -145,6 +145,27 @@ enabled = false
 max_iterations = 12
 scaffold = "vite-svelte"
 
+[agents.newsroom]
+# Persistent GDELT newsroom agent — stores individual events in SQLite (dedup
+# by source_url, capped at 2500 rows) and summarises only newly detected events.
+# Bus methods: agents/newsroom/read, agents/newsroom/status, agents/newsroom/health
+# Requires: plugin-newsroom-agent feature.
+enabled = false
+memory = ["basic_session"]
+
+[agents.newsroom.gdelt_query]
+lookback_minutes = 60
+limit            = 50
+min_articles     = 1
+
+[agents.news_aggregator]
+# News aggregator sub-agent — fetches article HTML from newsroom's source URLs,
+# summarises each via the instruction LLM, and stores summaries in an
+# IKGDocStore inside the newsroom agent's identity directory.
+# Bus methods: agents/news_aggregator/aggregate, /status, /search
+# Requires: plugin-news-aggregator feature (implies plugin-newsroom-agent + ikgdocstore).
+enabled = false
+
 ## ------------------------- Memory Subsystem ---------------------------------
 
 [memory]
@@ -212,7 +233,7 @@ cached_input_per_million_usd = 0.0
 [runtimes]
 # External script execution (node, python3, etc.).
 # Working directories are created under {identity_dir}/runtimes/{runtime}/.
-enabled = true
+enabled = false # *DO NOT CHANGE*
 default_timeout_secs = 30
 
 ## ------------------------- Tools Subsystem ---------------------------------

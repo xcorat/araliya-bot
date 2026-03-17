@@ -122,6 +122,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agent_skills: HashMap::new(),
                 news_query: None,
                 gdelt_query: None,
+                newsroom_query: None,
                 agent_docs: HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,
@@ -221,6 +222,20 @@ pub fn load_from(
         .agents
         .entries
         .get("gdelt_news")
+        .and_then(|entry| entry.gdelt_query.as_ref())
+        .map(|q| GdeltAgentQueryConfig {
+            lookback_minutes: q.lookback_minutes,
+            limit: q.limit,
+            min_articles: q.min_articles,
+            min_importance: q.min_importance,
+            sort_by_importance: q.sort_by_importance,
+            english_only: q.english_only,
+        });
+
+    let newsroom_query = parsed
+        .agents
+        .entries
+        .get("newsroom")
         .and_then(|entry| entry.gdelt_query.as_ref())
         .map(|q| GdeltAgentQueryConfig {
             lookback_minutes: q.lookback_minutes,
@@ -402,6 +417,7 @@ pub fn load_from(
                 .collect(),
             news_query,
             gdelt_query,
+            newsroom_query,
             agent_docs,
             agentic_chat: agentic_chat_cfg,
             runtime_cmd: runtime_cmd_cfg,

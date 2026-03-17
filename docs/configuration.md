@@ -280,7 +280,7 @@ Default query arguments for the newsmail aggregator can be set under `[agents.ne
 
 ### GDELT News Agent (`gdelt_news`)
 
-Runtime class: `specialized`. Fetches recent global events from the GDELT v2 BigQuery dataset and summarises them via the LLM. Results are cached by content hash so identical event sets are summarised only once. The prompt renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
+Runtime class: `specialized`. Fetches recent global events from the GDELT v2 BigQuery dataset (`events_partitioned`) and summarises them via the LLM. Results are cached by content hash so identical event sets are summarised only once. The prompt renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
 
 Query parameters are set under `[agents.gdelt_news.gdelt_query]`:
 
@@ -291,7 +291,46 @@ Query parameters are set under `[agents.gdelt_news.gdelt_query]`:
 | `min_articles` | integer | none | Only include events covered by at least this many articles. |
 | `min_importance` | float | none | Only include events where `ABS(GoldsteinScale) >= value` (0–10 scale). |
 | `sort_by_importance` | bool | `false` | Sort by `ABS(GoldsteinScale) DESC, NumArticles DESC` instead of `NumArticles DESC` only. |
-| `english_only` | bool | `false` | Restrict to events with at least one English-language mention (joins `gdeltv2.eventmentions`). |
+| `english_only` | bool | `false` | Restrict to events with at least one English-language mention (joins `gdeltv2.eventmentions_partitioned` on `MentionDocTranslationInfo IS NULL`). |
+
+### Newsroom Agent (`newsroom`)
+
+Runtime class: `specialized`. Persistent GDELT newsroom: fetches events from BigQuery, deduplicates at the individual-event level in SQLite (capped at 2 500 rows), and summarises only the **newly detected** events via the LLM. The last 10 summaries are retained; the most recent is returned on page load without a BigQuery query. Source outlets are tracked with an EMA tone score and a composite rank (50 % fetch frequency · 30 % tone · 20 % recency).
+
+Requires: `plugin-newsroom-agent` Cargo feature (implies `plugin-gdelt-tool` + `isqlite`).
+
+Bus methods: `agents/newsroom/read`, `agents/newsroom/latest`, `agents/newsroom/events`, `agents/newsroom/sources`, `agents/newsroom/status`, `agents/newsroom/health`.
+
+Query parameters share the same fields as `gdelt_news` and are set under `[agents.newsroom.gdelt_query]`:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `lookback_minutes` | integer | `60` | How many minutes back to include. |
+| `limit` | integer | `50` | Maximum rows to return per fetch. |
+| `min_articles` | integer | none | Drop events covered by fewer than this many articles. |
+| `min_importance` | float | none | Drop events where `ABS(GoldsteinScale) < value` (0–10). |
+| `sort_by_importance` | bool | `false` | Order by `ABS(GoldsteinScale) DESC, NumArticles DESC`. |
+| `english_only` | bool | `false` | English-language filter (joins `eventmentions_partitioned`). |
+
+### News Aggregator Agent (`news_aggregator`)
+
+Runtime class: `specialized`. Reads source URLs from the newsroom's event store, fetches article HTML, strips tags, and summarises each article via the instruction LLM. Summaries are stored in an `IKGDocStore` inside the **newsroom agent's own identity directory** (`{newsroom_identity_dir}/kgdocstore/`) — no separate identity is created. After each batch the knowledge graph is rebuilt for KG-RAG search.
+
+The agent is triggered automatically in the background every time `newsroom/read` produces a new summary. It can also be invoked directly.
+
+Requires: `plugin-news-aggregator` Cargo feature (implies `plugin-newsroom-agent` + `ikgdocstore`).
+
+Bus methods: `agents/news_aggregator/aggregate`, `agents/news_aggregator/status`, `agents/news_aggregator/search`.
+
+Constants (compile-time, not configurable via TOML):
+
+| Constant | Value | Description |
+|---|---|---|
+| `MAX_ARTICLE_CHARS` | `4 000` | Input character cap per article sent to the LLM. |
+| `BATCH_LIMIT` | `30` | Maximum URLs processed per `aggregate` run. |
+| `FETCH_TIMEOUT_S` | `15` | Per-request HTTP timeout in seconds. |
+| `FETCH_DELAY_MS` | `1 500` | Polite delay between consecutive article fetches. |
+| `CHUNK_SIZE` | `512` | Byte chunk size for BM25 indexing. |
 
 ### Gmail Agent (`gmail`)
 

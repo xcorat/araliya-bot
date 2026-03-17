@@ -55,6 +55,10 @@ mod gmail;
 mod news;
 #[cfg(feature = "plugin-gdelt-news-agent")]
 mod gdelt_news;
+#[cfg(feature = "plugin-newsroom-agent")]
+mod newsroom;
+#[cfg(feature = "plugin-news-aggregator")]
+mod news_aggregator;
 #[cfg(feature = "plugin-runtime-cmd")]
 mod runtime_cmd;
 #[cfg(feature = "plugin-uniweb")]
@@ -85,6 +89,8 @@ pub struct AgentsState {
     pub news_query_args_json: String,
     /// Default args JSON forwarded by the `gdelt_news` agent to `gdelt_bigquery/fetch`.
     pub gdelt_query_args_json: String,
+    /// Default args JSON forwarded by the `newsroom` agent to `gdelt_bigquery/fetch`.
+    pub newsroom_query_args_json: String,
     /// Per-agent docstore configuration: agent_id → docs config.
     /// Agents with `docsdir` set in config get an entry here.
     pub agent_docs: HashMap<String, DocsAgentConfig>,
@@ -103,6 +109,7 @@ impl AgentsState {
         agent_identities: HashMap<String, Identity>,
         news_query_args_json: String,
         gdelt_query_args_json: String,
+        newsroom_query_args_json: String,
         agent_docs: HashMap<String, DocsAgentConfig>,
         agent_skills: HashMap<String, Vec<String>>,
         debug_logging: bool,
@@ -115,6 +122,7 @@ impl AgentsState {
             llm_rates: ModelRates::default(),
             news_query_args_json,
             gdelt_query_args_json,
+            newsroom_query_args_json,
             agent_docs,
             agent_skills,
             debug_logging,
@@ -550,6 +558,41 @@ impl AgentsSubsystem {
             None => "{}".to_string(),
         };
 
+        let newsroom_query_args_json = match config.newsroom_query {
+            Some(q) => {
+                let mut map = serde_json::Map::new();
+                if let Some(lookback_minutes) = q.lookback_minutes {
+                    map.insert(
+                        "lookback_minutes".to_string(),
+                        serde_json::json!(lookback_minutes),
+                    );
+                }
+                if let Some(limit) = q.limit {
+                    map.insert("limit".to_string(), serde_json::json!(limit));
+                }
+                if let Some(min_articles) = q.min_articles {
+                    map.insert("min_articles".to_string(), serde_json::json!(min_articles));
+                }
+                if let Some(min_importance) = q.min_importance {
+                    map.insert(
+                        "min_importance".to_string(),
+                        serde_json::json!(min_importance),
+                    );
+                }
+                if let Some(sort_by_importance) = q.sort_by_importance {
+                    map.insert(
+                        "sort_by_importance".to_string(),
+                        serde_json::json!(sort_by_importance),
+                    );
+                }
+                if let Some(english_only) = q.english_only {
+                    map.insert("english_only".to_string(), serde_json::json!(english_only));
+                }
+                serde_json::Value::Object(map).to_string()
+            }
+            None => "{}".to_string(),
+        };
+
         let agent_docs = config.agent_docs;
 
         // Register all known built-in agents.
@@ -626,6 +669,24 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-gdelt-news-agent")]
         {
             let agent: Box<dyn Agent> = Box::new(gdelt_news::GdeltNewsAgent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-newsroom-agent")]
+        {
+            let agent: Box<dyn Agent> = Box::new(newsroom::NewsroomAgent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-news-aggregator")]
+        {
+            let agent: Box<dyn Agent> = Box::new(news_aggregator::NewsAggregatorAgent);
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
@@ -718,6 +779,7 @@ impl AgentsSubsystem {
                 agent_identities,
                 news_query_args_json,
                 gdelt_query_args_json,
+                newsroom_query_args_json,
                 agent_docs,
                 agent_skills,
                 config.debug_logging,
