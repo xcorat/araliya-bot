@@ -528,15 +528,19 @@ async fn handle_read(
     update_last_fetched(&state).await;
 
     // ── 11. Trigger news aggregator in background ─────────────────────────────
-    // Fire-and-forget: fetch article HTML for the new events and build the KG.
-    // Only active when the `plugin-news-aggregator` feature is compiled in.
-    #[cfg(feature = "plugin-news-aggregator")]
+    // Fire-and-forget: if the news_aggregator agent is registered it will pick
+    // up the new event URLs and build the knowledge graph.  If it is not
+    // registered the bus returns ERR_METHOD_NOT_FOUND which we discard silently.
     {
         let agg_state = state.clone();
         let agg_channel = channel_id.clone();
         tokio::spawn(async move {
-            let result = super::news_aggregator::do_aggregate(agg_channel, agg_state).await;
-            tracing::info!(result = %result, "newsroom: background aggregation complete");
+            let result = agg_state
+                .dispatch_to_agent("news_aggregator", "aggregate", "", &agg_channel, None)
+                .await;
+            if let Err(e) = result {
+                tracing::debug!(error = ?e, "newsroom: news_aggregator not available or aggregate failed");
+            }
         });
     }
 

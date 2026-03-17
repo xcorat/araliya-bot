@@ -185,6 +185,39 @@ impl AgentsState {
         identity::setup_named_identity(&subagents_dir, subagent_name)
     }
 
+    /// Dispatch a message to another registered agent via the bus.
+    ///
+    /// Equivalent to an inbound comms message delivered to `agents/{agent_id}/{action}`.
+    /// If the target agent is not registered the bus returns `ERR_METHOD_NOT_FOUND` — callers
+    /// should handle or discard that error as appropriate.
+    pub async fn dispatch_to_agent(
+        &self,
+        agent_id: &str,
+        action: &str,
+        content: &str,
+        channel_id: &str,
+        session_id: Option<String>,
+    ) -> BusResult {
+        let result = self
+            .bus
+            .request(
+                &format!("agents/{agent_id}/{action}"),
+                BusPayload::CommsMessage {
+                    channel_id: channel_id.to_string(),
+                    content: content.to_string(),
+                    session_id,
+                    usage: None,
+                    timing: None,
+                    thinking: None,
+                },
+            )
+            .await;
+        match result {
+            Ok(r) => r,
+            Err(e) => Err(BusError::new(-32000, e.to_string())),
+        }
+    }
+
     /// Forward content to the LLM subsystem and return the completion.
     pub async fn complete_via_llm(&self, channel_id: &str, content: &str) -> BusResult {
         self.complete_via_llm_with_system(channel_id, content, None)

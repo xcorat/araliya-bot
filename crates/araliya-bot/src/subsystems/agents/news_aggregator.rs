@@ -97,7 +97,7 @@ impl Agent for NewsAggregatorAgent {
 /// successful summary update.
 ///
 /// Returns a human-readable result string (for logging or direct reply).
-pub(super) async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
+async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
     // ── 1. Resolve newsroom identity dir ────────────────────────────────────
     let newsroom_dir = match state.agent_identities.get("newsroom") {
         Some(id) => id.identity_dir.clone(),
