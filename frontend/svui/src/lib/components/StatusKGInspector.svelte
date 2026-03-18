@@ -58,6 +58,8 @@
 	function formatWeight(w: number): string {
 		return (w * 100).toFixed(0) + '%';
 	}
+
+	const isNewsroom = $derived(node.id === 'newsroom');
 </script>
 
 <div class="flex h-full flex-1 flex-col overflow-hidden">
@@ -93,13 +95,23 @@
 			<div class="rounded-full border border-border/50 bg-muted/30 p-4">
 				<ChartNetwork class="size-6 text-muted-foreground/40" />
 			</div>
-			<div>
-				<p class="text-sm font-medium text-foreground/70">No knowledge graph yet</p>
-				<p class="mt-1 text-xs text-muted-foreground">
-					The graph is built when the agent indexes documents.<br />
-					Trigger a rebuild via the docs agent to populate it.
-				</p>
-			</div>
+			{#if isNewsroom}
+				<div>
+					<p class="text-sm font-medium text-foreground/70">No knowledge graph yet</p>
+					<p class="mt-1 text-xs text-muted-foreground">
+						The newsroom graph is built from aggregated news articles.<br />
+						Press <strong>Update</strong> on the Newsroom page to fetch events and build the graph.
+					</p>
+				</div>
+			{:else}
+				<div>
+					<p class="text-sm font-medium text-foreground/70">No knowledge graph yet</p>
+					<p class="mt-1 text-xs text-muted-foreground">
+						The graph is built when the agent indexes documents.<br />
+						Trigger a rebuild via the docs agent to populate it.
+					</p>
+				</div>
+			{/if}
 		</div>
 	{:else}
 		<div class="flex-1 space-y-3 overflow-y-auto p-4">

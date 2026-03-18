@@ -1154,6 +1154,9 @@ impl AgentsSubsystem {
 
     /// Handle `agents/kg_graph` — return the knowledge graph JSON for an agent.
     fn handle_agent_kg_graph(&self, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+        const MAX_ENTITIES_FOR_INSPECTOR: usize = 100;
+        const MAX_RELATIONS_FOR_INSPECTOR: usize = 200;
+
         let agent_id = match payload {
             BusPayload::SessionQuery {
                 agent_id: Some(id), ..
@@ -1183,9 +1186,119 @@ impl AgentsSubsystem {
 
         let body = match std::fs::read_to_string(&kg_path) {
             Ok(json) => {
-                let graph = serde_json::from_str::<serde_json::Value>(&json)
+                let full_graph = serde_json::from_str::<serde_json::Value>(&json)
                     .unwrap_or_else(|_| serde_json::json!({"entities": {}, "relations": []}));
-                serde_json::json!({ "agent_id": agent_id, "graph": graph })
+
+                // Truncate entities: pick the most-mentioned / most-connected ones.
+                let mut entities_vec: Vec<(String, serde_json::Value)> = match full_graph
+                    .get("entities")
+                    .and_then(|e| e.as_object())
+                {
+                    Some(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    None => Vec::new(),
+                };
+
+                if !entities_vec.is_empty() {
+                    // Pre-compute degrees for each entity based on relations.
+                    let mut degree: std::collections::HashMap<String, usize> =
+                        std::collections::HashMap::new();
+                    if let Some(rels) = full_graph.get("relations").and_then(|r| r.as_array()) {
+                        for rel in rels {
+                            if let (Some(from), Some(to)) =
+                                (rel.get("from").and_then(|v| v.as_str()), rel.get("to").and_then(|v| v.as_str()))
+                            {
+                                *degree.entry(from.to_string()).or_insert(0) += 1;
+                                *degree.entry(to.to_string()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+
+                    entities_vec.sort_by(|(_, a), (_, b)| {
+                        let ma = a
+                            .get("mention_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+                        let mb = b
+                            .get("mention_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+
+                        let da = a
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|id| degree.get(id))
+                            .cloned()
+                            .unwrap_or(0);
+                        let db = b
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|id| degree.get(id))
+                            .cloned()
+                            .unwrap_or(0);
+
+                        // Sort by mention_count desc, then degree desc.
+                        mb.cmp(&ma).then_with(|| db.cmp(&da))
+                    });
+
+                    entities_vec.truncate(MAX_ENTITIES_FOR_INSPECTOR);
+                }
+
+                let allowed_ids: std::collections::HashSet<String> =
+                    entities_vec.iter().filter_map(|(_, v)| {
+                        v.get("id")
+                            .and_then(|id| id.as_str())
+                            .map(|s| s.to_string())
+                    }).collect();
+
+                // Truncate relations to those connecting kept entities, by weight.
+                let mut relations_vec: Vec<serde_json::Value> = match full_graph
+                    .get("relations")
+                    .and_then(|r| r.as_array())
+                {
+                    Some(list) => list
+                        .iter()
+                        .cloned()
+                        .filter(|rel| {
+                            let from_ok = rel
+                                .get("from")
+                                .and_then(|v| v.as_str())
+                                .map(|id| allowed_ids.contains(id))
+                                .unwrap_or(false);
+                            let to_ok = rel
+                                .get("to")
+                                .and_then(|v| v.as_str())
+                                .map(|id| allowed_ids.contains(id))
+                                .unwrap_or(false);
+                            from_ok && to_ok
+                        })
+                        .collect(),
+                    None => Vec::new(),
+                };
+
+                relations_vec.sort_by(|a, b| {
+                    let wa = a
+                        .get("weight")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let wb = b
+                        .get("weight")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                relations_vec.truncate(MAX_RELATIONS_FOR_INSPECTOR);
+
+                let mut entities_obj = serde_json::Map::new();
+                for (k, v) in entities_vec {
+                    entities_obj.insert(k, v);
+                }
+
+                let truncated_graph = serde_json::json!({
+                    "entities": entities_obj,
+                    "relations": relations_vec,
+                });
+
+                serde_json::json!({ "agent_id": agent_id, "graph": truncated_graph })
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 serde_json::json!({ "agent_id": agent_id, "graph": { "entities": {}, "relations": [] } })

@@ -588,6 +588,7 @@ async fn handle_read(
     {
         let agg_state = state.clone();
         let agg_channel = channel_id.clone();
+        tracing::info!("newsroom: triggering news_aggregator in background");
         tokio::spawn(async move {
             match agg_state
                 .dispatch_to_agent("news_aggregator", "aggregate", "", &agg_channel, None)

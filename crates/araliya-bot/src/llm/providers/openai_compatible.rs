@@ -143,7 +143,7 @@ impl OpenAiCompatibleProvider {
             model: self.model.clone(),
             messages,
             temperature,
-            max_tokens: effective_max_tokens.map(|m| m as u32),
+            max_completion_tokens: effective_max_tokens.map(|m| m as u32),
         };
 
         debug!(
@@ -306,7 +306,7 @@ impl OpenAiCompatibleProvider {
             stream_options: Some(StreamOptions {
                 include_usage: true,
             }),
-            max_tokens: effective_max_tokens.map(|m| m as u32),
+            max_completion_tokens: effective_max_tokens.map(|m| m as u32),
         };
 
         debug!(model = %payload.model, "sending streaming LLM request");
@@ -432,7 +432,7 @@ struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -445,7 +445,7 @@ struct ChatCompletionStreamRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<StreamOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]

@@ -10,6 +10,9 @@ base = "default.toml"
 # identity_dir = "bot-pkey51aee87e"
 log_level = "debug"
 
+[comms.axum_channel]
+bind = "127.0.0.1:8080"
+
 [agents]
 default = "newsroom"
 
