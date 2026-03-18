@@ -23,9 +23,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
-use crate::subsystems::memory::stores::kg_docstore::IKGDocStore;
+use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 use crate::subsystems::memory::stores::sqlite_core::Document;
 use crate::subsystems::memory::stores::sqlite_store::SqlValue;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
@@ -33,7 +33,7 @@ use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOU
 use super::{Agent, AgentsState};
 
 const MAX_ARTICLE_CHARS: usize = 4_000;
-const BATCH_LIMIT: i64 = 8;  // Process 8 URLs per aggregation cycle (≈12s + LLM)
+const BATCH_LIMIT: i64 = 50; // Process up to 50 URLs per cycle — matches GDELT fetch limit
 const FETCH_TIMEOUT_S: u64 = 15;
 const CHUNK_SIZE: usize = 512;
 const FETCH_DELAY_MS: u64 = 1_500;
@@ -107,33 +107,76 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         }
     };
 
-    // ── 2. Load source URLs from newsroom events DB ─────────────────────────
+    // ── 2. Load source URLs from newsroom events DB using a forward cursor ──
+    //
+    // We persist `last_processed_id` in an `agg_state` table inside the
+    // newsroom events DB.  Each cycle reads events with `id > cursor` in
+    // ascending order, then advances the cursor to the highest id seen.
+    // This ensures every event is eventually processed and dead/transient
+    // URLs never block the queue indefinitely.
     let state_db = state.clone();
     let urls_result = tokio::task::spawn_blocking(move || {
         let store = state_db
             .open_sqlite_store("newsroom", "events")
             .map_err(|e| format!("news_aggregator: open events db: {e}"))?;
 
+        // Ensure the cursor state table exists.
+        store
+            .execute_ddl(
+                "CREATE TABLE IF NOT EXISTS agg_state \
+                 (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            )
+            .map_err(|e| format!("news_aggregator: create agg_state table: {e}"))?;
+
+        // Read the cursor (defaults to 0 so all existing events are eligible).
+        let cursor_rows = store
+            .query_rows(
+                "SELECT value FROM agg_state WHERE key = 'last_processed_id'",
+                &[],
+            )
+            .map_err(|e| format!("news_aggregator: read cursor: {e}"))?;
+        let cursor: i64 = cursor_rows
+            .first()
+            .and_then(|r| r.get("value"))
+            .and_then(|v| {
+                if let SqlValue::Text(s) = v {
+                    s.parse().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+
+        // Fetch the next batch of events after the cursor, oldest-first.
         let rows = store
             .query_rows(
-                "SELECT source_url FROM events ORDER BY id DESC LIMIT ?1",
-                &[SqlValue::Integer(BATCH_LIMIT)],
+                "SELECT id, source_url FROM events \
+                 WHERE id > ?1 ORDER BY id ASC LIMIT ?2",
+                &[SqlValue::Integer(cursor), SqlValue::Integer(BATCH_LIMIT)],
             )
             .map_err(|e| format!("news_aggregator: query events: {e}"))?;
 
-        Ok::<Vec<String>, String>(
-            rows.into_iter()
-                .filter_map(|r| match r.get("source_url") {
-                    Some(SqlValue::Text(s)) => Some(s.clone()),
-                    _ => None,
-                })
-                .collect(),
-        )
+        let pairs: Vec<(i64, String)> = rows
+            .into_iter()
+            .filter_map(|r| {
+                let id = match r.get("id") {
+                    Some(SqlValue::Integer(i)) => *i,
+                    _ => return None,
+                };
+                let url = match r.get("source_url") {
+                    Some(SqlValue::Text(s)) => s.clone(),
+                    _ => return None,
+                };
+                Some((id, url))
+            })
+            .collect();
+
+        Ok::<(i64, Vec<(i64, String)>), String>((cursor, pairs))
     })
     .await
     .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking urls: {e}")));
 
-    let all_urls = match urls_result {
+    let (cursor, event_pairs) = match urls_result {
         Ok(v) => v,
         Err(e) => return e,
     };
@@ -159,12 +202,38 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         Err(e) => return e,
     };
 
-    let new_urls: Vec<String> = all_urls
+    // Capture the highest event id in the full batch BEFORE filtering — this
+    // is used to advance the cursor even when all URLs are already known.
+    let max_id_in_batch: Option<i64> = event_pairs.iter().map(|(id, _)| *id).max();
+
+    // Filter to genuinely new URLs.
+    let new_urls: Vec<String> = event_pairs
         .into_iter()
-        .filter(|u| !u.is_empty() && !known_urls.contains(u))
+        .filter(|(_, u)| !u.is_empty() && !known_urls.contains(u))
+        .map(|(_, u)| u)
         .collect();
 
     if new_urls.is_empty() {
+        info!(
+            cursor,
+            known = known_urls.len(),
+            "news_aggregator: no new articles to aggregate"
+        );
+        // Still advance the cursor so future cycles see events beyond this batch.
+        if let Some(new_cursor) = max_id_in_batch {
+            let state_adv = state.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(store) = state_adv.open_sqlite_store("newsroom", "events") {
+                    let _ = store.execute(
+                        "INSERT INTO agg_state (key, value) VALUES ('last_processed_id', ?1) \
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        &[SqlValue::Text(new_cursor.to_string())],
+                    );
+                }
+            })
+            .await
+            .ok();
+        }
         return "No new articles to aggregate.".to_string();
     }
 
@@ -179,6 +248,10 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
     };
 
     let total_new = new_urls.len();
+    info!(
+        total_new,
+        "news_aggregator: starting aggregation for new articles"
+    );
     let mut processed = 0usize;
     let mut skipped = 0usize;
 
@@ -278,25 +351,71 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
     }
 
     // ── 5. Rebuild KG ────────────────────────────────────────────────────────
+    // Use min_entity_mentions=1 so small corpora (few articles) still produce
+    // a non-empty graph.  The default of 2 filters out almost everything when
+    // the corpus has fewer than ~10 documents.
     if processed > 0 {
         let dir = newsroom_dir.clone();
+        let doc_count = processed + known_urls.len();
+        let cfg = KgConfig {
+            min_entity_mentions: if doc_count < 10 { 1 } else { 2 },
+            ..KgConfig::default()
+        };
         match tokio::task::spawn_blocking(move || {
             IKGDocStore::open(&dir)
-                .and_then(|s| s.rebuild_kg())
+                .and_then(|s| s.rebuild_kg_with_config(&cfg, &[]))
                 .map_err(|e| format!("news_aggregator: rebuild_kg: {e}"))
         })
         .await
         .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking rebuild: {e}")))
         {
-            Ok(()) => tracing::info!("news_aggregator: KG rebuilt successfully"),
+            Ok(()) => info!(doc_count, "news_aggregator: KG rebuilt successfully"),
             Err(e) => error!(error = %e, "news_aggregator: KG rebuild FAILED — graph will be stale"),
         }
     }
 
+    // ── 6. Advance the cursor ────────────────────────────────────────────────
+    // Advance even when some URLs were skipped/failed, so transient errors
+    // don't block the queue indefinitely.  A retry mechanism can be layered
+    // on top later by tracking failed URLs separately.
+    if let Some(new_cursor) = max_id_in_batch {
+        let state_adv = state.clone();
+        let adv_result = tokio::task::spawn_blocking(move || {
+            let store = state_adv
+                .open_sqlite_store("newsroom", "events")
+                .map_err(|e| format!("news_aggregator: open events db (cursor advance): {e}"))?;
+            store
+                .execute(
+                    "INSERT INTO agg_state (key, value) VALUES ('last_processed_id', ?1) \
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    &[SqlValue::Text(new_cursor.to_string())],
+                )
+                .map_err(|e| format!("news_aggregator: advance cursor: {e}"))?;
+            Ok::<(), String>(())
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking cursor: {e}")));
+
+        match adv_result {
+            Ok(()) => info!(
+                old_cursor = cursor,
+                new_cursor,
+                "news_aggregator: cursor advanced"
+            ),
+            Err(e) => error!(error = %e, "news_aggregator: failed to advance cursor"),
+        }
+    }
+
+    let total_in_kg = processed + known_urls.len();
+    info!(
+        processed,
+        skipped,
+        total_in_kg,
+        "news_aggregator: aggregation cycle complete"
+    );
     format!(
         "Aggregated {processed} new article(s) into the knowledge graph \
-         ({skipped} skipped). KG now covers {} article(s).",
-        processed + known_urls.len()
+         ({skipped} skipped). KG now covers {total_in_kg} article(s)."
     )
 }
 
@@ -366,7 +485,7 @@ async fn handle_status(
             match std::fs::read_to_string(&graph_path) {
                 Ok(s) => {
                     let v: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
-                    let e = v["entities"].as_array().map_or(0, |a| a.len());
+                    let e = v["entities"].as_object().map_or(0, |o| o.len());
                     let r = v["relations"].as_array().map_or(0, |a| a.len());
                     (e, r)
                 }
@@ -446,7 +565,6 @@ async fn handle_search(
     };
 
     let result = tokio::task::spawn_blocking(move || {
-        use crate::subsystems::memory::stores::kg_docstore::KgConfig;
         let store = IKGDocStore::open(&newsroom_dir)
             .map_err(|e| format!("news_aggregator: open kgdocstore: {e}"))?;
         let kg_result = store
@@ -484,11 +602,36 @@ async fn handle_search(
 /// Convert HTML to plain text using htmd, skipping script/style tags.
 fn strip_html(html: &str) -> String {
     let converter = htmd::HtmlToMarkdown::builder()
-        .skip_tags(vec!["script", "style", "head", "nav", "footer"])
+        // Skip non-content and media tags.  Crucially, skipping "img" prevents
+        // htmd from emitting inline base64 data-URIs (data:image/...;base64,...)
+        // which would eat the entire MAX_ARTICLE_CHARS budget before any text.
+        .skip_tags(vec!["script", "style", "head", "nav", "footer", "iframe", "img"])
         .build();
     let text = converter.convert(html).unwrap_or_default();
+    // Strip any residual data-URI blobs that slipped through (e.g. inline svg
+    // or background-image attributes converted to markdown links).
+    let text = regex_strip_data_uris(&text);
     // Normalise whitespace.
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Remove `data:<mime>;base64,<blob>` substrings left after HTML→Markdown conversion.
+fn regex_strip_data_uris(s: &str) -> String {
+    // A data URI starts with `data:` and the base64 payload has no whitespace,
+    // so we can match greedily until the first whitespace or closing bracket.
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find("data:") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        // Skip to the next whitespace, `'`, `"`, or `)` — whichever comes first.
+        let end = after
+            .find(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | ')' | ']'))
+            .unwrap_or(after.len());
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Truncate `s` to at most `max_chars` Unicode scalar values.

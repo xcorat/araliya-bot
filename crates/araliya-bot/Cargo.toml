@@ -132,6 +132,10 @@ ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster"]
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["test-util"] }
+htmd = "0.5"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json = "1"
 
 [lib]
 name = "araliya_bot"
@@ -160,6 +164,11 @@ required-features = ["ui-gpui"]
 name = "araliya-beacon"
 path = "src/bin/araliya-beacon/main.rs"
 required-features = ["ui-beacon"]
+
+[[test]]
+name = "test_news_agg_pipeline"
+path = "tests/test_news_agg_pipeline.rs"
+required-features = ["plugin-news-aggregator"]
 
 [[test]]
 name = "test_docstore"
