@@ -224,7 +224,7 @@ Reasoning models expose their chain-of-thought separately from their final answe
 
 `DummyProvider` requires no API key. Returns `"[echo] {input}"` with `usage: None`. Supports `complete_stream()` for test coverage.
 
-`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env. Extracts `reasoning_content` and `reasoning_tokens`. Supports full SSE streaming via `complete_stream()`.
+`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env. Extracts `reasoning_content` and `reasoning_tokens`. Supports full SSE streaming via `complete_stream()`. Sends `max_completion_tokens` (not the deprecated `max_tokens`) in the request body — required by gpt-5-series and later OpenAI models which reject `max_tokens` with HTTP 400. Also omits `temperature` for the `gpt-5` family. Both fields are handled automatically based on the configured model prefix; no extra config is needed.
 
 `QwenProvider` wraps `OpenAiCompatibleProvider` with Qwen-specific defaults and endpoint handling. Full streaming and reasoning content support.
 

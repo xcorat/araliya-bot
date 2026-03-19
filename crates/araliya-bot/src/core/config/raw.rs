@@ -258,6 +258,11 @@ pub(super) struct RawAgentEntry {
     /// Query params for the `gdelt_news` agent.
     #[serde(default)]
     pub gdelt_query: Option<RawGdeltAgentQuery>,
+    /// Target aggregator agent for dispatching article URLs (e.g. "news_aggregator").
+    /// Used by agents like newsroom to feed URLs to an aggregator for KG processing.
+    /// Defaults to "news_aggregator" if not specified.
+    #[serde(default)]
+    pub target_agent: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

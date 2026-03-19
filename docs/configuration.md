@@ -318,6 +318,10 @@ Runtime class: `specialized`. Reads source URLs from the newsroom's event store,
 
 The agent is triggered automatically in the background every time `newsroom/read` produces a new summary. It can also be invoked directly.
 
+**Forward cursor:** processed URLs are tracked with a persistent cursor in the `agg_state` table of the newsroom's `events.db`. Each cycle queries events with `id > last_processed_id ORDER BY id ASC LIMIT BATCH_LIMIT`, so every event is processed exactly once across restarts and cycles. The cursor is advanced even when all URLs in a batch are already present in the KGDocStore.
+
+**Adaptive KG config:** `rebuild_kg_with_config` is called after each cycle with `min_entity_mentions = 1` when the store has fewer than 10 documents, and `2` otherwise. This prevents an empty graph on small corpora where entities rarely repeat across articles.
+
 Requires: `plugin-news-aggregator` Cargo feature (implies `plugin-newsroom-agent` + `ikgdocstore`).
 
 Bus methods: `agents/news_aggregator/aggregate`, `agents/news_aggregator/status`, `agents/news_aggregator/search`.
@@ -327,7 +331,7 @@ Constants (compile-time, not configurable via TOML):
 | Constant | Value | Description |
 |---|---|---|
 | `MAX_ARTICLE_CHARS` | `4 000` | Input character cap per article sent to the LLM. |
-| `BATCH_LIMIT` | `30` | Maximum URLs processed per `aggregate` run. |
+| `BATCH_LIMIT` | `50` | Maximum URLs processed per `aggregate` cycle (matches GDELT fetch limit). |
 | `FETCH_TIMEOUT_S` | `15` | Per-request HTTP timeout in seconds. |
 | `FETCH_DELAY_MS` | `1 500` | Polite delay between consecutive article fetches. |
 | `CHUNK_SIZE` | `512` | Byte chunk size for BM25 indexing. |

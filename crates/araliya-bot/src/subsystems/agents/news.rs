@@ -207,6 +207,12 @@ impl Agent for NewsAgentPlugin {
             // ── 8. Cache the summary + record fetch time ────────────────
             persist_summary(&state, &cache_key, &summary).await;
 
+            // TODO: extract article URLs from Gmail news items and dispatch to
+            // news_aggregator/aggregate when plugin-news-aggregator is enabled.
+            // Payload format: {"urls":["...", "..."], "source_agent":"news"}
+            // This would require parsing the email JSON for a URL field or using
+            // an LLM pass to extract URLs from email bodies.
+
             let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
                 channel_id,
                 content: summary,

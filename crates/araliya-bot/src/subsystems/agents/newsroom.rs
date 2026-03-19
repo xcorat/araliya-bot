@@ -581,31 +581,61 @@ async fn handle_read(
     update_last_fetched(&state).await;
 
     // ── 11. Trigger news aggregator in background ─────────────────────────────
-    // Fire-and-forget: if the news_aggregator agent is registered it will pick
-    // up the new event URLs and build the knowledge graph.  ERR_METHOD_NOT_FOUND
-    // means the plugin is simply not enabled and can be ignored; all other
-    // errors indicate a real problem and should be surfaced as warnings.
+    // Extract URLs from new_events and dispatch to the configured aggregator target.
+    // Fire-and-forget: if the aggregator agent is registered it will pick up the
+    // URLs and build the knowledge graph.  ERR_METHOD_NOT_FOUND means the plugin
+    // is simply not enabled and can be ignored; all other errors indicate a real
+    // problem and should be surfaced as warnings.
     {
         let agg_state = state.clone();
         let agg_channel = channel_id.clone();
-        tracing::info!("newsroom: triggering news_aggregator in background");
-        tokio::spawn(async move {
-            match agg_state
-                .dispatch_to_agent("news_aggregator", "aggregate", "", &agg_channel, None)
-                .await
-            {
-                Ok(_) => {}
-                Err(e) if e.code == crate::supervisor::bus::ERR_METHOD_NOT_FOUND => {
-                    tracing::debug!("newsroom: news_aggregator plugin not enabled — KG will not be updated");
+
+        // Extract URLs from new_events.
+        let new_event_urls: Vec<String> = new_events
+            .iter()
+            .map(|e| e.source_url.clone())
+            .filter(|u| !u.is_empty())
+            .collect();
+
+        if !new_event_urls.is_empty() {
+            // Resolve the target aggregator from config (default: "news_aggregator").
+            let agg_target: String = agg_state
+                .agent_aggregation_targets
+                .get("newsroom")
+                .cloned()
+                .unwrap_or_else(|| "news_aggregator".to_string());
+
+            tracing::info!(
+                url_count = new_event_urls.len(),
+                target = %agg_target,
+                "newsroom: triggering aggregator with URLs"
+            );
+
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "urls": new_event_urls,
+                    "source_agent": "newsroom"
+                })
+                .to_string();
+
+                match agg_state
+                    .dispatch_to_agent(&agg_target, "aggregate", &payload, &agg_channel, None)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(e) if e.code == crate::supervisor::bus::ERR_METHOD_NOT_FOUND => {
+                        tracing::debug!(target = %agg_target, "newsroom: aggregator plugin not enabled — KG will not be updated");
+                    }
+                    Err(e) => {
+                        error!(
+                            error = ?e,
+                            target = %agg_target,
+                            "newsroom: aggregator dispatch FAILED — knowledge graph will NOT be updated"
+                        );
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        error = ?e,
-                        "newsroom: news_aggregator aggregate FAILED — knowledge graph will NOT be updated"
-                    );
-                }
-            }
-        });
+            });
+        }
     }
 
     let _ = reply_tx.send(Ok(BusPayload::CommsMessage {

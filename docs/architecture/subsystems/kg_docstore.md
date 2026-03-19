@@ -97,7 +97,7 @@ Serialised to `kg/graph.json` after every `rebuild_kg` call.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `min_entity_mentions` | `usize` | `2` | Discard entities with fewer total mentions across all chunks. |
+| `min_entity_mentions` | `usize` | `2` | Discard entities with fewer total mentions across all chunks. Set to `1` for small corpora (< 10 documents) to avoid an empty graph — entities are unlikely to repeat when there are only a few articles. |
 | `bfs_max_depth` | `usize` | `2` | BFS hop limit from seed entities. |
 | `edge_weight_threshold` | `f32` | `0.15` | Edges below this weight are not followed during BFS. |
 | `max_chunks` | `usize` | `8` | Total chunk budget in the assembled context. |

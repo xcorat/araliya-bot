@@ -1,22 +1,27 @@
 //! News aggregator sub-agent plugin.
 //!
-//! Reads source URLs from the newsroom agent's SQLite events database,
+//! Accepts batches of article URLs from source agents (e.g. newsroom, news),
 //! fetches each article, summarises it via the instruction LLM, and stores
-//! the summary as a document in an [`IKGDocStore`] rooted at the **newsroom
-//! agent's own identity directory**.  The knowledge graph is rebuilt after
-//! each successful aggregation run.
+//! the summary as a document in an [`IKGDocStore`] rooted at the aggregator's
+//! own identity directory.  The knowledge graph is rebuilt after each
+//! successful aggregation run.
 //!
-//! The IKGDocStore is shared with — and lives inside — the newsroom agent's
-//! identity folder (`{newsroom_identity_dir}/kgdocstore/`), so there is no
-//! separate subagent identity required.
+//! The aggregator owns its own identity directory and KGDocStore, independent
+//! of source agents.  This makes it reusable across multiple sources and
+//! independently inspectable via the KG inspector UI.
 //!
 //! ## Actions
 //!
 //! | Action | Effect |
 //! |--------|--------|
-//! | `aggregate` | Fetch new articles, summarise, add to KG |
+//! | `aggregate` | Fetch URLs from payload, summarise, add to KG |
 //! | `status` | Return doc/entity/relation counts as JSON |
-//! | `search <query>` | KG-RAG search over aggregated articles |
+//! | `search <query>` | KG-RAG search over aggregated articles
+//!
+//! ## Payload Format for `aggregate`
+//!
+//! Expects JSON: `{"urls": ["...", "..."], "source_agent": "newsroom"}`
+//! Empty/legacy calls (empty string) are no-ops. |
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -27,7 +32,6 @@ use tracing::{error, info, warn};
 
 use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 use crate::subsystems::memory::stores::sqlite_core::Document;
-use crate::subsystems::memory::stores::sqlite_store::SqlValue;
 use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::{Agent, AgentsState};
@@ -43,6 +47,34 @@ const ARTICLE_SYSTEM: &str =
      Summarize the given article in 2-3 short paragraphs covering: \
      who is involved, what happened, where, when, and why it matters. \
      Be factual and neutral. Do not include URLs or source attribution.";
+
+// ── Payload ────────────────────────────────────────────────────────────────────
+
+/// Request payload for the `aggregate` action.
+///
+/// Sent as a JSON string in the `content` field of the bus message.
+/// An empty or non-JSON payload is treated as a legacy no-op call.
+#[derive(Debug, serde::Deserialize, Default)]
+struct AggregateRequest {
+    /// URLs to fetch, summarise, and add to the aggregator's KGDocStore.
+    #[serde(default)]
+    urls: Vec<String>,
+    /// Informational tag identifying the source agent (e.g. "newsroom", "news").
+    /// Logged but not acted upon; helps with debugging.
+    #[serde(default)]
+    source_agent: String,
+}
+
+impl AggregateRequest {
+    /// Parse from raw content string. Returns `None` for empty/legacy calls.
+    fn parse(content: &str) -> Option<Self> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        serde_json::from_str(trimmed).ok()
+    }
+}
 
 // ── Agent ─────────────────────────────────────────────────────────────────────
 
@@ -76,7 +108,7 @@ impl Agent for NewsAggregatorAgent {
 
         tokio::spawn(async move {
             match effective.as_str() {
-                "aggregate" => handle_aggregate(channel_id, session_id, state, reply_tx).await,
+                "aggregate" => handle_aggregate(channel_id, content, session_id, state, reply_tx).await,
                 "status" => handle_status(channel_id, session_id, state, reply_tx).await,
                 "search" => handle_search(content, channel_id, session_id, state, reply_tx).await,
                 _ => {
@@ -92,99 +124,22 @@ impl Agent for NewsAggregatorAgent {
 
 // ── aggregate ─────────────────────────────────────────────────────────────────
 
-/// Core aggregation logic — shared between the explicit `aggregate` action and
-/// the background trigger invoked automatically by the newsroom agent after each
-/// successful summary update.
+/// Core aggregation logic — accepts URLs directly from the request payload.
 ///
 /// Returns a human-readable result string (for logging or direct reply).
-async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
-    // ── 1. Resolve newsroom identity dir ────────────────────────────────────
-    let newsroom_dir = match state.agent_identities.get("newsroom") {
+async fn do_aggregate(channel_id: String, urls: Vec<String>, state: Arc<AgentsState>) -> String {
+    // ── 1. Resolve aggregator identity dir ──────────────────────────────────
+    let agg_dir = match state.agent_identities.get("news_aggregator") {
         Some(id) => id.identity_dir.clone(),
         None => {
-            return "news_aggregator: newsroom agent not found — enable plugin-newsroom-agent"
-                .to_string();
+            return "news_aggregator: no identity dir — agent not registered".to_string();
         }
     };
 
-    // ── 2. Load source URLs from newsroom events DB using a forward cursor ──
-    //
-    // We persist `last_processed_id` in an `agg_state` table inside the
-    // newsroom events DB.  Each cycle reads events with `id > cursor` in
-    // ascending order, then advances the cursor to the highest id seen.
-    // This ensures every event is eventually processed and dead/transient
-    // URLs never block the queue indefinitely.
-    let state_db = state.clone();
-    let urls_result = tokio::task::spawn_blocking(move || {
-        let store = state_db
-            .open_sqlite_store("newsroom", "events")
-            .map_err(|e| format!("news_aggregator: open events db: {e}"))?;
-
-        // Ensure the cursor state table exists.
-        store
-            .execute_ddl(
-                "CREATE TABLE IF NOT EXISTS agg_state \
-                 (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-            )
-            .map_err(|e| format!("news_aggregator: create agg_state table: {e}"))?;
-
-        // Read the cursor (defaults to 0 so all existing events are eligible).
-        let cursor_rows = store
-            .query_rows(
-                "SELECT value FROM agg_state WHERE key = 'last_processed_id'",
-                &[],
-            )
-            .map_err(|e| format!("news_aggregator: read cursor: {e}"))?;
-        let cursor: i64 = cursor_rows
-            .first()
-            .and_then(|r| r.get("value"))
-            .and_then(|v| {
-                if let SqlValue::Text(s) = v {
-                    s.parse().ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(0);
-
-        // Fetch the next batch of events after the cursor, oldest-first.
-        let rows = store
-            .query_rows(
-                "SELECT id, source_url FROM events \
-                 WHERE id > ?1 ORDER BY id ASC LIMIT ?2",
-                &[SqlValue::Integer(cursor), SqlValue::Integer(BATCH_LIMIT)],
-            )
-            .map_err(|e| format!("news_aggregator: query events: {e}"))?;
-
-        let pairs: Vec<(i64, String)> = rows
-            .into_iter()
-            .filter_map(|r| {
-                let id = match r.get("id") {
-                    Some(SqlValue::Integer(i)) => *i,
-                    _ => return None,
-                };
-                let url = match r.get("source_url") {
-                    Some(SqlValue::Text(s)) => s.clone(),
-                    _ => return None,
-                };
-                Some((id, url))
-            })
-            .collect();
-
-        Ok::<(i64, Vec<(i64, String)>), String>((cursor, pairs))
-    })
-    .await
-    .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking urls: {e}")));
-
-    let (cursor, event_pairs) = match urls_result {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-
-    // ── 3. Find already-aggregated URLs from KGDocStore ─────────────────────
-    let dir2 = newsroom_dir.clone();
+    // ── 2. Find already-aggregated URLs from KGDocStore ────────────────────
+    let dir_known = agg_dir.clone();
     let known_result = tokio::task::spawn_blocking(move || {
-        let store = IKGDocStore::open(&dir2)
+        let store = IKGDocStore::open(&dir_known)
             .map_err(|e| format!("news_aggregator: open kgdocstore: {e}"))?;
         let known: HashSet<String> = store
             .list_documents()
@@ -202,38 +157,17 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         Err(e) => return e,
     };
 
-    // Capture the highest event id in the full batch BEFORE filtering — this
-    // is used to advance the cursor even when all URLs are already known.
-    let max_id_in_batch: Option<i64> = event_pairs.iter().map(|(id, _)| *id).max();
-
     // Filter to genuinely new URLs.
-    let new_urls: Vec<String> = event_pairs
+    let new_urls: Vec<String> = urls
         .into_iter()
-        .filter(|(_, u)| !u.is_empty() && !known_urls.contains(u))
-        .map(|(_, u)| u)
+        .filter(|u| !u.is_empty() && !known_urls.contains(u))
         .collect();
 
     if new_urls.is_empty() {
         info!(
-            cursor,
             known = known_urls.len(),
             "news_aggregator: no new articles to aggregate"
         );
-        // Still advance the cursor so future cycles see events beyond this batch.
-        if let Some(new_cursor) = max_id_in_batch {
-            let state_adv = state.clone();
-            tokio::task::spawn_blocking(move || {
-                if let Ok(store) = state_adv.open_sqlite_store("newsroom", "events") {
-                    let _ = store.execute(
-                        "INSERT INTO agg_state (key, value) VALUES ('last_processed_id', ?1) \
-                         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                        &[SqlValue::Text(new_cursor.to_string())],
-                    );
-                }
-            })
-            .await
-            .ok();
-        }
         return "No new articles to aggregate.".to_string();
     }
 
@@ -307,7 +241,7 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         };
 
         // d) Store in KGDocStore (blocking)
-        let dir = newsroom_dir.clone();
+        let dir = agg_dir.clone();
         let url_c = url.clone();
         let summary_c = summary.clone();
         let store_result = tokio::task::spawn_blocking(move || {
@@ -350,12 +284,12 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         }
     }
 
-    // ── 5. Rebuild KG ────────────────────────────────────────────────────────
+    // ── 3. Rebuild KG ───────────────────────────────────────────────────────
     // Use min_entity_mentions=1 so small corpora (few articles) still produce
     // a non-empty graph.  The default of 2 filters out almost everything when
     // the corpus has fewer than ~10 documents.
     if processed > 0 {
-        let dir = newsroom_dir.clone();
+        let dir = agg_dir.clone();
         let doc_count = processed + known_urls.len();
         let cfg = KgConfig {
             min_entity_mentions: if doc_count < 10 { 1 } else { 2 },
@@ -374,38 +308,6 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
         }
     }
 
-    // ── 6. Advance the cursor ────────────────────────────────────────────────
-    // Advance even when some URLs were skipped/failed, so transient errors
-    // don't block the queue indefinitely.  A retry mechanism can be layered
-    // on top later by tracking failed URLs separately.
-    if let Some(new_cursor) = max_id_in_batch {
-        let state_adv = state.clone();
-        let adv_result = tokio::task::spawn_blocking(move || {
-            let store = state_adv
-                .open_sqlite_store("newsroom", "events")
-                .map_err(|e| format!("news_aggregator: open events db (cursor advance): {e}"))?;
-            store
-                .execute(
-                    "INSERT INTO agg_state (key, value) VALUES ('last_processed_id', ?1) \
-                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    &[SqlValue::Text(new_cursor.to_string())],
-                )
-                .map_err(|e| format!("news_aggregator: advance cursor: {e}"))?;
-            Ok::<(), String>(())
-        })
-        .await
-        .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking cursor: {e}")));
-
-        match adv_result {
-            Ok(()) => info!(
-                old_cursor = cursor,
-                new_cursor,
-                "news_aggregator: cursor advanced"
-            ),
-            Err(e) => error!(error = %e, "news_aggregator: failed to advance cursor"),
-        }
-    }
-
     let total_in_kg = processed + known_urls.len();
     info!(
         processed,
@@ -421,16 +323,49 @@ async fn do_aggregate(channel_id: String, state: Arc<AgentsState>) -> String {
 
 async fn handle_aggregate(
     channel_id: String,
+    content: String,
     session_id: Option<String>,
     state: Arc<AgentsState>,
     reply_tx: oneshot::Sender<BusResult>,
 ) {
-    // Respond immediately so the bus doesn't time out.
-    // The actual aggregation happens in the background.
+    // Parse payload — empty string / non-JSON = legacy no-op.
+    let request = match AggregateRequest::parse(&content) {
+        Some(req) => req,
+        None => {
+            // Legacy call with empty payload — return status immediately.
+            let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                channel_id,
+                content: "news_aggregator: no URLs provided (legacy call).".to_string(),
+                session_id,
+                usage: None,
+                timing: None,
+                thinking: None,
+            }));
+            return;
+        }
+    };
+
+    if request.urls.is_empty() {
+        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+            channel_id,
+            content: "news_aggregator: empty URL list — nothing to do.".to_string(),
+            session_id,
+            usage: None,
+            timing: None,
+            thinking: None,
+        }));
+        return;
+    }
+
+    // Ack immediately with summary of what we'll do.
     if reply_tx
         .send(Ok(BusPayload::CommsMessage {
             channel_id: channel_id.clone(),
-            content: "Aggregation started in background.".to_string(),
+            content: format!(
+                "Aggregation started for {} URL(s) from {}.",
+                request.urls.len(),
+                request.source_agent
+            ),
             session_id,
             usage: None,
             timing: None,
@@ -438,17 +373,13 @@ async fn handle_aggregate(
         }))
         .is_err()
     {
-        warn!("news_aggregator: caller dropped reply receiver before aggregate ack — proceeding anyway");
+        warn!("news_aggregator: caller dropped reply_tx before ack — proceeding anyway");
     }
 
     // Spawn the long-running aggregation as a background task.
     tokio::spawn(async move {
-        let result = do_aggregate(channel_id, state).await;
-        if result.starts_with("news_aggregator:") || result.starts_with("No new") {
-            tracing::info!(result = %result, "news_aggregator: background aggregation complete");
-        } else {
-            tracing::info!(result = %result, "news_aggregator: background aggregation complete");
-        }
+        let result = do_aggregate(channel_id, request.urls, state).await;
+        tracing::info!(result = %result, "news_aggregator: background aggregation complete");
     });
 }
 
@@ -460,19 +391,19 @@ async fn handle_status(
     state: Arc<AgentsState>,
     reply_tx: oneshot::Sender<BusResult>,
 ) {
-    let newsroom_dir = match state.agent_identities.get("newsroom") {
+    let agg_dir = match state.agent_identities.get("news_aggregator") {
         Some(id) => id.identity_dir.clone(),
         None => {
             let _ = reply_tx.send(Err(BusError::new(
                 -32000,
-                "news_aggregator: newsroom agent not found".to_string(),
+                "news_aggregator: no identity dir — agent not registered".to_string(),
             )));
             return;
         }
     };
 
     let result = tokio::task::spawn_blocking(move || {
-        let store = IKGDocStore::open(&newsroom_dir)
+        let store = IKGDocStore::open(&agg_dir)
             .map_err(|e| format!("news_aggregator: open kgdocstore: {e}"))?;
         let doc_count = store
             .list_documents()
@@ -480,7 +411,7 @@ async fn handle_status(
             .len();
 
         // Count entities and relations from the KG graph file.
-        let graph_path = newsroom_dir.join("kgdocstore").join("kg").join("graph.json");
+        let graph_path = agg_dir.join("kgdocstore").join("kg").join("graph.json");
         let (entity_count, relation_count) = if graph_path.exists() {
             match std::fs::read_to_string(&graph_path) {
                 Ok(s) => {
@@ -553,19 +484,19 @@ async fn handle_search(
         return;
     }
 
-    let newsroom_dir = match state.agent_identities.get("newsroom") {
+    let agg_dir = match state.agent_identities.get("news_aggregator") {
         Some(id) => id.identity_dir.clone(),
         None => {
             let _ = reply_tx.send(Err(BusError::new(
                 -32000,
-                "news_aggregator: newsroom agent not found".to_string(),
+                "news_aggregator: no identity dir — agent not registered".to_string(),
             )));
             return;
         }
     };
 
     let result = tokio::task::spawn_blocking(move || {
-        let store = IKGDocStore::open(&newsroom_dir)
+        let store = IKGDocStore::open(&agg_dir)
             .map_err(|e| format!("news_aggregator: open kgdocstore: {e}"))?;
         let kg_result = store
             .search_with_kg(&query, &KgConfig::default())

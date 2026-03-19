@@ -332,6 +332,9 @@ pub struct AgentsConfig {
     /// Whether the `uniweb` agent routes its instruction pass through
     /// `llm/instruct`.  Defaults to `false`.
     pub uniweb_use_instruction_llm: bool,
+    /// Source-agent → aggregator-agent mapping (e.g. "newsroom" → "news_aggregator").
+    /// Used by source agents to dispatch article URLs to an aggregator for KG processing.
+    pub agent_aggregation_targets: HashMap<String, String>,
     // TODO(PR2): static_agents: Vec<StaticAgentConfig>,
 }
 

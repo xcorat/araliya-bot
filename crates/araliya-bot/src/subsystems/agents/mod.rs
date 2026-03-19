@@ -97,6 +97,9 @@ pub struct AgentsState {
     /// Per-agent bus-tool allowlists: agent_id → tool names.
     /// Each agent only sees tools declared in its `skills` config.
     pub agent_skills: HashMap<String, Vec<String>>,
+    /// Source-agent → aggregator-agent mapping: agent_id → target aggregator agent.
+    /// Used by source agents (e.g. newsroom) to dispatch URLs to an aggregator.
+    pub agent_aggregation_targets: HashMap<String, String>,
     /// Enable per-turn debug logging to session KV store.
     pub debug_logging: bool,
 }
@@ -112,6 +115,7 @@ impl AgentsState {
         newsroom_query_args_json: String,
         agent_docs: HashMap<String, DocsAgentConfig>,
         agent_skills: HashMap<String, Vec<String>>,
+        agent_aggregation_targets: HashMap<String, String>,
         debug_logging: bool,
     ) -> Self {
         Self {
@@ -125,6 +129,7 @@ impl AgentsState {
             newsroom_query_args_json,
             agent_docs,
             agent_skills,
+            agent_aggregation_targets,
             debug_logging,
         }
     }
@@ -825,6 +830,7 @@ impl AgentsSubsystem {
                 newsroom_query_args_json,
                 agent_docs,
                 agent_skills,
+                config.agent_aggregation_targets,
                 config.debug_logging,
             )),
             agents,

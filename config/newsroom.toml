@@ -19,6 +19,7 @@ default = "newsroom"
 [agents.newsroom]
 enabled = true
 memory = ["basic_session"]
+target_agent = "news_aggregator"
 
 [agents.newsroom.gdelt_query]
 lookback_minutes = 600

@@ -120,6 +120,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 enabled: HashSet::from(["basic_chat".to_string()]),
                 agent_memory: HashMap::new(),
                 agent_skills: HashMap::new(),
+                agent_aggregation_targets: HashMap::new(),
                 news_query: None,
                 gdelt_query: None,
                 newsroom_query: None,
@@ -414,6 +415,12 @@ pub fn load_from(
                 .iter()
                 .filter(|(_, e)| !e.skills.is_empty())
                 .map(|(id, e)| (id.clone(), e.skills.clone()))
+                .collect(),
+            agent_aggregation_targets: parsed
+                .agents
+                .entries
+                .iter()
+                .filter_map(|(id, e)| e.target_agent.as_ref().map(|t| (id.clone(), t.clone())))
                 .collect(),
             news_query,
             gdelt_query,
