@@ -59,6 +59,8 @@ mod gdelt_news;
 mod newsroom;
 #[cfg(feature = "plugin-news-aggregator")]
 mod news_aggregator;
+#[cfg(feature = "plugin-test-rssnews")]
+mod test_rssnews;
 #[cfg(feature = "plugin-runtime-cmd")]
 mod runtime_cmd;
 #[cfg(feature = "plugin-uniweb")]
@@ -735,6 +737,15 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-news-aggregator")]
         {
             let agent: Box<dyn Agent> = Box::new(news_aggregator::NewsAggregatorAgent);
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-test-rssnews")]
+        {
+            let agent: Box<dyn Agent> = Box::new(test_rssnews::TestRssNewsAgent);
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Specialized, agent),
@@ -2042,6 +2053,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2089,6 +2102,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2133,6 +2148,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2174,6 +2191,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2222,6 +2241,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2294,6 +2315,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2399,6 +2422,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2467,6 +2492,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2515,6 +2542,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2636,6 +2665,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Populate the docs docstore before handling any queries.
@@ -2685,6 +2716,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         // Do NOT call init_docs — docstore stays empty.
@@ -2726,6 +2759,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2763,6 +2798,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2790,6 +2827,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2888,6 +2927,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -2977,6 +3018,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -3085,6 +3128,8 @@ mod tests {
             debug_logging: true,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -3177,6 +3222,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -3233,6 +3280,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3263,6 +3312,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3293,6 +3344,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3323,6 +3376,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3353,6 +3408,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3383,6 +3440,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
         let reg = subsystem
@@ -3414,6 +3473,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let subsystem = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 
@@ -3491,6 +3552,8 @@ mod tests {
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
+            newsroom_query: None,
+            agent_aggregation_targets: std::collections::HashMap::new(),
         };
         let agents = AgentsSubsystem::new(cfg, handle, memory).unwrap();
 

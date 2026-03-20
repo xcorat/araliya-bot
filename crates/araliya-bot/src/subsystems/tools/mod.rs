@@ -12,6 +12,8 @@ mod gmail;
 mod newsmail_aggregator;
 #[cfg(feature = "plugin-gdelt-tool")]
 mod gdelt_bigquery;
+#[cfg(feature = "plugin-rss-fetch-tool")]
+mod rss_fetch;
 
 pub struct ToolsSubsystem {
     newsmail_defaults: NewsmailAggregatorConfig,
@@ -104,6 +106,10 @@ impl BusHandler for ToolsSubsystem {
             #[cfg(feature = "plugin-gdelt-tool")]
             {
                 available_tools.push("gdelt_bigquery");
+            }
+            #[cfg(feature = "plugin-rss-fetch-tool")]
+            {
+                available_tools.push("rss_fetch");
             }
             let available_tools: Vec<String> =
                 available_tools.iter().map(|s| s.to_string()).collect();
@@ -273,6 +279,66 @@ impl BusHandler for ToolsSubsystem {
                     return;
                 }
 
+                #[cfg(feature = "plugin-rss-fetch-tool")]
+                if tool == "rss_fetch" && action == "fetch" {
+                    tokio::spawn(async move {
+                        let args: rss_fetch::RssFetchArgs =
+                            serde_json::from_str(&args_json).unwrap_or_default();
+                        match rss_fetch::fetch(args).await {
+                            Ok(items) => {
+                                let data_json = serde_json::to_string(&items)
+                                    .unwrap_or_else(|_| "[]".to_string());
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "rss_fetch".to_string(),
+                                    action: "fetch".to_string(),
+                                    ok: true,
+                                    data_json: Some(data_json),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "rss_fetch".to_string(),
+                                    action: "fetch".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                #[cfg(feature = "plugin-rss-fetch-tool")]
+                if tool == "rss_fetch" && action == "healthcheck" {
+                    tokio::spawn(async move {
+                        match rss_fetch::healthcheck().await {
+                            Ok(msg) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "rss_fetch".to_string(),
+                                    action: "healthcheck".to_string(),
+                                    ok: true,
+                                    data_json: Some(
+                                        serde_json::json!({"status": msg}).to_string(),
+                                    ),
+                                    error: None,
+                                }));
+                            }
+                            Err(e) => {
+                                let _ = reply_tx.send(Ok(BusPayload::ToolResponse {
+                                    tool: "rss_fetch".to_string(),
+                                    action: "healthcheck".to_string(),
+                                    ok: false,
+                                    data_json: None,
+                                    error: Some(e),
+                                }));
+                            }
+                        }
+                    });
+                    return;
+                }
+
                 #[cfg(feature = "plugin-gdelt-tool")]
                 if tool == "gdelt_bigquery" && action == "healthcheck" {
                     tokio::spawn(async move {
@@ -324,6 +390,10 @@ impl BusHandler for ToolsSubsystem {
         #[cfg(feature = "plugin-gdelt-tool")]
         {
             children.push(ComponentInfo::leaf("gdelt_bigquery", "GDELT BigQuery"));
+        }
+        #[cfg(feature = "plugin-rss-fetch-tool")]
+        {
+            children.push(ComponentInfo::leaf("rss_fetch", "RSS Fetch"));
         }
         children.sort_by(|a, b| a.id.cmp(&b.id));
         ComponentInfo::running("tools", "Tools", children)

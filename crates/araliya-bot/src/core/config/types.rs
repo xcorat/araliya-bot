@@ -338,6 +338,29 @@ pub struct AgentsConfig {
     // TODO(PR2): static_agents: Vec<StaticAgentConfig>,
 }
 
+impl Default for AgentsConfig {
+    fn default() -> Self {
+        Self {
+            default_agent: "echo".to_string(),
+            channel_map: HashMap::new(),
+            enabled: HashSet::new(),
+            agent_memory: HashMap::new(),
+            news_query: None,
+            gdelt_query: None,
+            newsroom_query: None,
+            agent_docs: HashMap::new(),
+            agentic_chat: None,
+            runtime_cmd: None,
+            webbuilder: None,
+            agent_skills: HashMap::new(),
+            debug_logging: false,
+            uniweb_session_id: None,
+            uniweb_use_instruction_llm: false,
+            agent_aggregation_targets: HashMap::new(),
+        }
+    }
+}
+
 // ── Config (root) ────────────────────────────────────────────────────────────
 
 /// Fully-resolved supervisor configuration.

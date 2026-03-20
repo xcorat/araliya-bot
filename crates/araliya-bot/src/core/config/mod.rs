@@ -48,6 +48,8 @@ impl Config {
                 agent_skills: std::collections::HashMap::new(),
                 news_query: None,
                 gdelt_query: None,
+                newsroom_query: None,
+                agent_aggregation_targets: std::collections::HashMap::new(),
                 agent_docs: std::collections::HashMap::new(),
                 agentic_chat: None,
                 runtime_cmd: None,

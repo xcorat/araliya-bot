@@ -37,6 +37,7 @@ chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
 jsonwebtoken = { version = "9", optional = true }
+feed-rs = { version = "2", optional = true }
 htmd = "0.5"
 
 [features]
@@ -58,6 +59,7 @@ default = [
     "plugin-runtime-cmd",
     "plugin-webbuilder",
     "plugin-newsroom-agent",
+    "plugin-test-rssnews",
     "subsystem-runtimes",
     "channel-pty",
     "channel-axum",
@@ -116,6 +118,8 @@ plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
 plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm"]
+plugin-rss-fetch-tool = ["subsystem-tools", "dep:feed-rs"]
+plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool"]
 
 # Comms Channels
 channel-pty = ["subsystem-comms"]
