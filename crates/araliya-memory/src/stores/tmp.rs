@@ -1,24 +1,24 @@
 //! `tmp` store — ephemeral, typed in-memory store.
 //!
 //! Each [`TmpStore`] instance owns a single [`Store`] (the `RwLock`-backed
-//! collection map from [`store`](super::super::store)).  Two lifecycles:
+//! collection map from [`store`](crate::store)).  Two lifecycles:
 //!
-//! **Standalone** — obtained via [`MemorySystem::create_tmp_store`].  Use
-//! [`doc`](TmpStore::doc) / [`block`](TmpStore::block) to read/write
+//! **Standalone** — obtained via [`MemorySystem::create_tmp_store`](crate::MemorySystem::create_tmp_store).
+//! Use [`doc`](TmpStore::doc) / [`block`](TmpStore::block) to read/write
 //! the pre-populated collections directly.
 //!
 //! **Session-backed** — the shared instance registered in
-//! [`MemorySystem`](super::super::MemorySystem) under store type `"tmp"`.
+//! [`MemorySystem`](crate::MemorySystem) under store type `"tmp"`.
 //! [`SessionStore::init`] creates per-session namespaced collections
 //! (`"{dir}:doc"`, `"{dir}:block"`), keeping sessions isolated while sharing
 //! one backing [`Store`].  K-V operations delegate to the `"doc"` collection.
 
 use std::path::Path;
 
-use super::super::collections::{Block, Collection, Doc};
-use super::super::store::{SessionStore, Store};
-use super::super::types::PrimaryValue;
-use crate::error::AppError;
+use crate::collections::{Block, Collection, Doc};
+use crate::store::{SessionStore, Store};
+use crate::types::PrimaryValue;
+use araliya_core::error::AppError;
 
 /// Ephemeral, typed in-memory store backed by a [`Store`].
 ///
@@ -30,10 +30,6 @@ pub struct TmpStore {
 
 impl TmpStore {
     /// Create a new `TmpStore` with empty `"doc"` and `"block"` collections.
-    ///
-    /// The pre-populated collections are used in standalone mode.  When
-    /// registered in `MemorySystem`, per-session collections are created by
-    /// [`SessionStore::init`] and namespaced by session directory.
     pub fn new() -> Self {
         let store = Store::new();
         store
@@ -48,9 +44,6 @@ impl TmpStore {
     // ── Standalone convenience methods ────────────────────────────────
 
     /// Return a snapshot clone of the `"doc"` collection.
-    ///
-    /// Mutations to the returned value are not automatically persisted.
-    /// Call [`set_doc`](Self::set_doc) to write changes back.
     pub fn doc(&self) -> Result<Doc, AppError> {
         self.store
             .get_collection("doc")?
@@ -59,8 +52,6 @@ impl TmpStore {
     }
 
     /// Return a snapshot clone of the `"block"` collection.
-    ///
-    /// Call [`set_block`](Self::set_block) to write changes back.
     pub fn block(&self) -> Result<Block, AppError> {
         self.store
             .get_collection("block")?
@@ -160,7 +151,7 @@ impl SessionStore for TmpStore {
     }
 
     /// Return the session's k-v doc collection directly (zero-copy clone).
-    fn read_kv_doc(&self, session_dir: &Path) -> Result<super::super::collections::Doc, AppError> {
+    fn read_kv_doc(&self, session_dir: &Path) -> Result<crate::collections::Doc, AppError> {
         self.store
             .get_collection(&Self::doc_label(session_dir))?
             .and_then(|c| c.into_doc())

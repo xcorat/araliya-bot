@@ -1,18 +1,18 @@
 //! Session-scoped read/write operations shared by handle-like frontends.
 //!
 //! `SessionRw` centralizes store selection, blocking I/O dispatch, and tmp-store
-//! typed collection access. [`SessionHandle`](super::handle::SessionHandle)
+//! typed collection access. [`SessionHandle`](crate::handle::SessionHandle)
 //! delegates all data operations to this struct.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
-use super::collections::{Block, Collection, Doc};
-use super::store::{SessionStore, TranscriptEntry};
-use super::stores::tmp::TmpStore;
+use crate::collections::{Block, Collection, Doc};
+use crate::store::{SessionStore, TranscriptEntry};
+use crate::stores::tmp::TmpStore;
 
 #[derive(Debug, Clone)]
 pub struct SessionFileInfo {

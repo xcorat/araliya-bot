@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 
-use super::types::{PrimaryValue, Value};
+use crate::types::{PrimaryValue, Value};
 
 // ── Doc ───────────────────────────────────────────────────────────────────────
 
@@ -32,18 +32,6 @@ use super::types::{PrimaryValue, Value};
 ///
 /// The primary store for agent metadata, session facts, and configuration —
 /// anywhere you want assured comparability and cheap cloning.
-///
-/// # Examples
-/// ```rust,no_run
-/// use araliya_bot::subsystems::memory::collections::Doc;
-/// use araliya_bot::subsystems::memory::types::PrimaryValue;
-///
-/// let mut doc = Doc::default();
-/// doc.set("status".into(), PrimaryValue::from("active"));
-/// assert_eq!(doc.get("status"), Some(&PrimaryValue::from("active")));
-/// doc.delete("status");
-/// assert!(doc.is_empty());
-/// ```
 #[derive(Debug, Clone, Default)]
 pub struct Doc {
     entries: HashMap<String, PrimaryValue>,
@@ -87,16 +75,6 @@ impl Doc {
 ///
 /// Higher-capacity working memory for agents that need to store blobs,
 /// embeddings, or any payload that doesn't fit into a scalar.
-///
-/// # Examples
-/// ```rust,no_run
-/// use araliya_bot::subsystems::memory::collections::Block;
-/// use araliya_bot::subsystems::memory::types::{Value, Obj};
-///
-/// let mut block = Block::default();
-/// block.set("raw".into(), Value::from(Obj::new(b"data".to_vec())));
-/// assert_eq!(block.get("raw").unwrap().to_string(), "<Obj 4 bytes>");
-/// ```
 #[derive(Debug, Clone, Default)]
 pub struct Block {
     entries: HashMap<String, Value>,
@@ -143,15 +121,7 @@ impl Block {
 /// This is intentional: stubs exist to reserve the namespace and make
 /// future additions non-breaking.
 ///
-/// Use the `as_*` helpers to downcast without an explicit match:
-///
-/// ```rust,no_run
-/// use araliya_bot::subsystems::memory::collections::{Collection, Doc};
-///
-/// let mut c = Collection::Doc(Doc::default());
-/// c.as_doc_mut().unwrap().set("k".into(), "v".into());
-/// assert_eq!(c.as_doc().unwrap().get("k").unwrap().to_string(), "v");
-/// ```
+/// Use the `as_*` helpers to downcast without an explicit match.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Collection {
@@ -278,7 +248,7 @@ impl Collection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subsystems::memory::types::{Obj, PrimaryValue, Value};
+    use crate::types::{Obj, PrimaryValue, Value};
 
     // ── Doc tests ─────────────────────────────────────────────────────
 

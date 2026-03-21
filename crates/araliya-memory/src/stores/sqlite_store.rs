@@ -1,8 +1,7 @@
 //! `SqliteStore` — general-purpose agent-scoped SQLite database.
 //!
 //! Agents can bootstrap a named SQLite database, run schema migrations, and
-//! execute arbitrary SQL queries through a simple typed API.  Multiple named
-//! databases per agent are supported.
+//! execute arbitrary SQL queries through a simple typed API.
 //!
 //! ## Storage layout
 //! ```text
@@ -22,7 +21,7 @@ use rusqlite::types::ValueRef;
 use rusqlite::{OptionalExtension, ToSql};
 
 use super::sqlite_core::open_conn;
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -55,17 +54,12 @@ pub type Row = HashMap<String, SqlValue>;
 // ── SqliteStore ───────────────────────────────────────────────────────────────
 
 /// General-purpose agent-scoped SQLite database.
-///
-/// See the [module-level docs](self) for usage and storage layout.
 pub struct SqliteStore {
     db_path: PathBuf,
 }
 
 impl SqliteStore {
     /// Open (or create) `{agent_identity_dir}/sqlite/{db_name}.db`.
-    ///
-    /// Creates the `sqlite/` sub-directory if it does not exist.
-    /// Applies WAL + FK + busy-timeout pragmas.
     pub fn open(agent_identity_dir: &Path, db_name: &str) -> Result<Self, AppError> {
         let dir = agent_identity_dir.join("sqlite");
         fs::create_dir_all(&dir).map_err(|e| {
@@ -75,16 +69,11 @@ impl SqliteStore {
             ))
         })?;
         let db_path = dir.join(format!("{db_name}.db"));
-        // Open once to apply pragmas and verify the path is writable.
         open_conn(&db_path)?;
         Ok(Self { db_path })
     }
 
-    // ── Setup ─────────────────────────────────────────────────────────────────
-
-    /// Execute arbitrary DDL (e.g. `CREATE TABLE`, `CREATE INDEX`, `DROP TABLE`).
-    ///
-    /// Returns the number of rows changed — usually 0 for DDL statements.
+    /// Execute arbitrary DDL.
     pub fn execute_ddl(&self, sql: &str) -> Result<usize, AppError> {
         let conn = open_conn(&self.db_path)?;
         conn.execute_batch(sql)
@@ -93,13 +82,6 @@ impl SqliteStore {
     }
 
     /// Conditionally apply a migration.
-    ///
-    /// Reads `PRAGMA user_version`.  If it is less than `target_version`,
-    /// executes `ddl` inside a transaction and then sets
-    /// `PRAGMA user_version = target_version`.
-    ///
-    /// Returns `true` if the migration was applied, `false` if the database
-    /// was already at or beyond `target_version`.
     pub fn migrate(&self, target_version: u32, ddl: &str) -> Result<bool, AppError> {
         let conn = open_conn(&self.db_path)?;
         let current: u32 = conn
@@ -117,9 +99,7 @@ impl SqliteStore {
         Ok(true)
     }
 
-    // ── Inspection ────────────────────────────────────────────────────────────
-
-    /// Return the names of all user-created tables (excludes sqlite_* internals).
+    /// Return the names of all user-created tables.
     pub fn tables(&self) -> Result<Vec<String>, AppError> {
         let conn = open_conn(&self.db_path)?;
         let mut stmt = conn
@@ -135,7 +115,7 @@ impl SqliteStore {
         Ok(names)
     }
 
-    /// Return the `CREATE TABLE` SQL for `table_name`, or `None` if it does not exist.
+    /// Return the `CREATE TABLE` SQL for `table_name`, or `None`.
     pub fn table_schema(&self, table_name: &str) -> Result<Option<String>, AppError> {
         let conn = open_conn(&self.db_path)?;
         let mut stmt = conn
@@ -156,12 +136,7 @@ impl SqliteStore {
             .map_err(|e| AppError::Memory(format!("sqlite_store: read user_version: {e}")))
     }
 
-    // ── Query pipeline ────────────────────────────────────────────────────────
-
     /// Execute a DML statement (`INSERT`, `UPDATE`, `DELETE`).
-    ///
-    /// `params` are bound positionally to `?1`, `?2`, … placeholders.
-    /// Returns the number of rows affected.
     pub fn execute(&self, sql: &str, params: &[SqlValue]) -> Result<usize, AppError> {
         let conn = open_conn(&self.db_path)?;
         let params_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
@@ -170,8 +145,6 @@ impl SqliteStore {
     }
 
     /// Run a `SELECT` and return all matching rows.
-    ///
-    /// Each row is a `HashMap<column_name, SqlValue>`.
     pub fn query_rows(&self, sql: &str, params: &[SqlValue]) -> Result<Vec<Row>, AppError> {
         let conn = open_conn(&self.db_path)?;
         let params_refs: Vec<&dyn ToSql> = params.iter().map(|v| v as &dyn ToSql).collect();
@@ -298,7 +271,6 @@ mod tests {
         assert!(applied);
         assert_eq!(store.schema_version().unwrap(), 1);
 
-        // Second call at same version is a no-op.
         let applied_again = store
             .migrate(1, "CREATE TABLE v1 (id INTEGER PRIMARY KEY);")
             .unwrap();
@@ -347,7 +319,6 @@ mod tests {
         let s1 = SqliteStore::open(dir.path(), "alpha").unwrap();
         let s2 = SqliteStore::open(dir.path(), "beta").unwrap();
         s1.execute_ddl("CREATE TABLE t (x TEXT);").unwrap();
-        // "beta" should not have table "t".
         assert!(s2.tables().unwrap().is_empty());
     }
 }

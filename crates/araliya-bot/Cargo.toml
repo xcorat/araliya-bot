@@ -11,6 +11,7 @@ araliya-core = { path = "../araliya-core" }
 araliya-supervisor = { path = "../araliya-supervisor" }
 araliya-llm = { path = "../araliya-llm" }
 araliya-comms = { path = "../araliya-comms" }
+araliya-memory = { path = "../araliya-memory" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
@@ -94,9 +95,9 @@ gmail-app = []
 # Subsystems
 subsystem-agents = ["subsystem-memory"]
 subsystem-memory = []
-isqlite = ["dep:rusqlite"]
-idocstore = ["isqlite", "dep:text-splitter"]
-ikgdocstore = ["isqlite", "dep:text-splitter"]
+isqlite = ["dep:rusqlite", "araliya-memory/isqlite"]
+idocstore = ["isqlite", "dep:text-splitter", "araliya-memory/idocstore"]
+ikgdocstore = ["isqlite", "dep:text-splitter", "araliya-memory/ikgdocstore"]
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = ["araliya-comms/subsystem-ui"]

@@ -7,7 +7,7 @@ pub mod docstore;
 #[cfg(feature = "ikgdocstore")]
 pub mod kg_docstore;
 #[cfg(any(feature = "isqlite", feature = "idocstore", feature = "ikgdocstore"))]
-pub(crate) mod sqlite_core;
+pub mod sqlite_core;
 #[cfg(feature = "isqlite")]
 pub mod sqlite_store;
 pub mod tmp;

@@ -1,9 +1,8 @@
-//! `sqlite_core` — shared SQLite helpers used by all stores.
+//! `sqlite_core` — shared SQLite helpers used by all document stores.
 //!
 //! [`IDocStore`](super::docstore::IDocStore),
 //! [`IKGDocStore`](super::kg_docstore::IKGDocStore), and
 //! [`SqliteStore`](super::sqlite_store::SqliteStore) all rely on this module.
-//! Nothing here is public API; types are re-exported by each consumer module.
 //!
 //! ## What lives here
 //! - **Schema constants** — `DB_FILENAME`, `SCHEMA_VERSION`, `init_schema` (docstore-specific).
@@ -18,26 +17,18 @@ use chrono::{SecondsFormat, Utc};
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 /// SQLite database file name used by all document stores.
-pub(crate) const DB_FILENAME: &str = "chunks.db";
+pub const DB_FILENAME: &str = "chunks.db";
 
 /// Schema version stored in `PRAGMA user_version`.
-/// Increment when the DDL changes; add a migration path in `init_db`.
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 1;
 
 /// Execute the v1 schema DDL on a freshly-opened SQLite connection.
-///
-/// Creates two objects:
-/// - `doc_metadata` — one row per document (title, source, content hash, timestamps).
-/// - `chunks` — FTS5 virtual table; `id` and `doc_id` are `UNINDEXED` (stored
-///   but not tokenized), while `text` is the searchable column.
-///
-/// Sets `PRAGMA user_version = 1` so `init_db` can skip the DDL on re-open.
-pub(crate) fn init_schema(conn: &Connection) -> Result<(), AppError> {
+pub fn init_schema(conn: &Connection) -> Result<(), AppError> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS doc_metadata (
@@ -67,12 +58,7 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<(), AppError> {
 // ── Connection helper ─────────────────────────────────────────────────────────
 
 /// Open a SQLite connection to `db_path` and apply recommended pragmas.
-///
-/// Pragmas applied:
-/// - `journal_mode = WAL` — allows concurrent readers alongside a writer.
-/// - `foreign_keys = ON` — enforce FK constraints (not yet used, but good default).
-/// - `busy_timeout = 5000` — wait up to 5 s before returning `SQLITE_BUSY`.
-pub(crate) fn open_conn(db_path: &Path) -> Result<Connection, AppError> {
+pub fn open_conn(db_path: &Path) -> Result<Connection, AppError> {
     let conn = Connection::open(db_path)
         .map_err(|e| AppError::Memory(format!("docstore: open {}: {e}", db_path.display())))?;
 
@@ -89,29 +75,19 @@ pub(crate) fn open_conn(db_path: &Path) -> Result<Connection, AppError> {
 // ── Utility functions ─────────────────────────────────────────────────────────
 
 /// Return the lowercase hex-encoded SHA-256 digest of `content`.
-/// Used as a stable, collision-resistant content fingerprint for deduplication.
-pub(crate) fn sha256_hex(content: &str) -> String {
+pub fn sha256_hex(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
 }
 
-/// Return the current UTC time as an RFC 3339 string with second precision, e.g.
-/// `"2025-04-01T12:00:00Z"`.  Used for `created_at`/`updated_at` timestamps.
-pub(crate) fn now_iso8601() -> String {
+/// Return the current UTC time as an RFC 3339 string with second precision.
+pub fn now_iso8601() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 /// Escape a user-supplied string for use in an FTS5 `MATCH` query.
-///
-/// FTS5 parses the argument to `MATCH` with its own mini-language, so
-/// characters like `?`, `"`, `(`, etc. are significant.  Simple parameter
-/// binding does **not** quote the content; binding only protects against SQL
-/// injection, not FTS syntax errors.  We perform a lightweight token-based
-/// quoting here: whitespace splits the query, and any token containing a
-/// non-alphanumeric character is wrapped in double-quotes with internal
-/// quotes doubled.
-pub(crate) fn escape_fts5_query(query: &str) -> String {
+pub fn escape_fts5_query(query: &str) -> String {
     query
         .split_whitespace()
         .map(|tok| {
@@ -129,9 +105,6 @@ pub(crate) fn escape_fts5_query(query: &str) -> String {
 // ── Shared public types ───────────────────────────────────────────────────────
 
 /// A document as stored and retrieved by the document store.
-///
-/// `content` holds the raw text; `content_hash` (SHA-256 hex) is used for
-/// deduplication so re-importing the same file is a no-op.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Document {
     /// Unique document identifier (UUID v7).
@@ -150,8 +123,6 @@ pub struct Document {
 }
 
 /// Lightweight document descriptor stored in `doc_metadata` (no `content`).
-///
-/// Returned by `list_documents` and embedded in `SearchResult`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DocMetadata {
     pub doc_id: String,
@@ -165,9 +136,6 @@ pub struct DocMetadata {
 }
 
 /// A single text chunk produced by the Markdown splitter.
-///
-/// Chunks are the unit of FTS indexing and KG entity extraction.
-/// `position` is the byte offset of the chunk within its source document.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Chunk {
     /// Unique chunk identifier (UUID v7).
@@ -184,9 +152,6 @@ pub struct Chunk {
 
 /// A single FTS result: the matched chunk, its relevance score, and its parent
 /// document metadata.
-///
-/// `score` is derived from the BM25 rank returned by FTS5 (negated so that
-/// higher is better).
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     pub chunk: Chunk,

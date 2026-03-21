@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::RwLock;
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
 /// A parsed transcript entry.
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ pub struct TranscriptEntry {
 /// Pluggable session-backed memory store.
 ///
 /// Implementations are `Send + Sync` and operate on a session directory via
-/// blocking file I/O.  The [`SessionHandle`](super::handle::SessionHandle)
+/// blocking file I/O.  The [`SessionHandle`](crate::handle::SessionHandle)
 /// wraps these calls in `spawn_blocking`.
 ///
 /// This trait is intentionally named `SessionStore` to distinguish it from
@@ -87,28 +87,19 @@ pub trait SessionStore: Send + Sync {
 
     // ── Typed Collection views ────────────────────────────────────────
 
-    /// Return the current k-v store as a [`Doc`] collection.
-    ///
-    /// Default implementation returns an error; override in stores that
-    /// have a doc-backed k-v layer (e.g. `BasicSessionStore`).
-    fn read_kv_doc(&self, _session_dir: &Path) -> Result<super::collections::Doc, AppError> {
+    /// Return the current k-v store as a [`Doc`](crate::collections::Doc) collection.
+    fn read_kv_doc(&self, _session_dir: &Path) -> Result<crate::collections::Doc, AppError> {
         Err(AppError::Memory(format!(
             "store '{}' does not support read_kv_doc",
             self.store_type()
         )))
     }
 
-    /// Return all transcript entries as a [`Block`] collection.
-    ///
-    /// Each entry is keyed by its zero-padded position.  The value is a
-    /// `Value::Obj` with `data = content bytes` and metadata `{ role, ts }`.
-    ///
-    /// Default implementation returns an error; override in stores that
-    /// manage a structured transcript.
+    /// Return all transcript entries as a [`Block`](crate::collections::Block) collection.
     fn read_transcript_block(
         &self,
         _session_dir: &Path,
-    ) -> Result<super::collections::Block, AppError> {
+    ) -> Result<crate::collections::Block, AppError> {
         Err(AppError::Memory(format!(
             "store '{}' does not support read_transcript_block",
             self.store_type()
@@ -121,24 +112,14 @@ pub trait SessionStore: Send + Sync {
 /// An in-process collection map: a labelled set of [`Collection`] values
 /// protected by an `RwLock`.
 ///
-/// This is the new core memory abstraction for agents that want typed,
+/// This is the core memory abstraction for agents that want typed,
 /// in-memory storage.  It is distinct from the [`SessionStore`] trait used
 /// by disk-backed session backends.
 ///
 /// All operations acquire the lock internally, so the struct itself requires
 /// only a shared reference (`&self`) for both reads and writes.
-///
-/// # Example
-/// ```rust,no_run
-/// use araliya_bot::subsystems::memory::store::Store;
-/// use araliya_bot::subsystems::memory::collections::{Collection, Doc};
-///
-/// let store = Store::new();
-/// store.insert_collection("meta".into(), Collection::Doc(Doc::default())).unwrap();
-/// assert!(store.labels().unwrap().contains(&"meta".to_string()));
-/// ```
 pub struct Store {
-    collections: RwLock<HashMap<String, super::collections::Collection>>,
+    collections: RwLock<HashMap<String, crate::collections::Collection>>,
 }
 
 impl Store {
@@ -150,14 +131,10 @@ impl Store {
     }
 
     /// Retrieve a *clone* of the collection stored under `label`, or `None`.
-    ///
-    /// Clones are returned rather than references because the `RwLock` guard
-    /// cannot be held across `await` points and leaking it would couple the
-    /// caller to the lock lifetime.
     pub fn get_collection(
         &self,
         label: &str,
-    ) -> Result<Option<super::collections::Collection>, AppError> {
+    ) -> Result<Option<crate::collections::Collection>, AppError> {
         let guard = self
             .collections
             .read()
@@ -169,7 +146,7 @@ impl Store {
     pub fn insert_collection(
         &self,
         label: String,
-        collection: super::collections::Collection,
+        collection: crate::collections::Collection,
     ) -> Result<(), AppError> {
         let mut guard = self
             .collections
@@ -223,8 +200,8 @@ impl Default for Store {
 
 #[cfg(test)]
 mod tests {
-    use super::super::collections::{Block, Collection, Doc};
-    use super::super::types::PrimaryValue;
+    use crate::collections::{Block, Collection, Doc};
+    use crate::types::PrimaryValue;
     use super::*;
 
     #[test]

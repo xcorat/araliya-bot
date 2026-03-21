@@ -25,16 +25,16 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
-use super::stores::docstore::IDocStore;
+use crate::stores::docstore::IDocStore;
 
 const SCAN_INTERVAL_SECS: u64 = 86_400; // 24 hours
 const DEFAULT_CHUNK_SIZE: usize = 2048;
 
 // ── Command channel ───────────────────────────────────────────────────────────
 
-pub(super) enum ManagerCmd {
+pub(crate) enum ManagerCmd {
     /// Request immediate index+cleanup for a single agent identity dir.
     IndexNow { agent_identity_dir: PathBuf },
 }
@@ -44,8 +44,8 @@ pub(super) enum ManagerCmd {
 /// Handle to the background docstore manager task.
 ///
 /// Only accessible inside the `memory` module hierarchy
-/// (`pub(super)` visibility).
-pub(super) struct DocstoreManager {
+/// (`pub(crate)` visibility).
+pub(crate) struct DocstoreManager {
     cmd_tx: mpsc::Sender<ManagerCmd>,
 }
 
@@ -54,7 +54,7 @@ impl DocstoreManager {
     ///
     /// `agent_dirs_root` should be `{memory_root}/agents/` — the parent of all
     /// per-agent identity directories.
-    pub(super) fn spawn(agent_dirs_root: PathBuf, shutdown: CancellationToken) -> Self {
+    pub(crate) fn spawn(agent_dirs_root: PathBuf, shutdown: CancellationToken) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(32);
         tokio::spawn(
             ManagerService {
@@ -70,7 +70,7 @@ impl DocstoreManager {
     /// Schedule immediate index+cleanup for one agent identity directory.
     ///
     /// Non-blocking — the work is queued and processed in the background task.
-    pub(super) fn schedule_index(&self, agent_identity_dir: PathBuf) {
+    pub(crate) fn schedule_index(&self, agent_identity_dir: PathBuf) {
         let _ = self
             .cmd_tx
             .try_send(ManagerCmd::IndexNow { agent_identity_dir });
@@ -246,13 +246,13 @@ fn cleanup_orphans(store: &IDocStore) -> Result<usize, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::AGENTS_DIRNAME;
+    use crate::AGENTS_DIRNAME;
     use super::*;
     use std::collections::HashMap;
     use std::fs;
     use tempfile::TempDir;
 
-    use super::super::stores::docstore::{Document, IDocStore};
+    use crate::stores::docstore::{Document, IDocStore};
 
     fn make_store() -> (TempDir, IDocStore) {
         let temp = TempDir::new().unwrap();

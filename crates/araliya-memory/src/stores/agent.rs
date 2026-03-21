@@ -7,20 +7,16 @@
 //!
 //! Unlike session stores, an `AgentStore` is agent-scoped and persistent
 //! across restarts; it is not namespaced by session ID.
-//!
-//! ## Future session hook
-//! Agent-scoped sessions (rooted under the agent dir rather than the global
-//! sessions dir) can be wired in later without changing this API.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::super::collections::Doc;
-use super::super::handle::SessionHandle;
-use super::super::types::PrimaryValue;
-use super::super::{MemorySystem, SessionInfo};
-use crate::error::AppError;
+use crate::collections::Doc;
+use crate::handle::SessionHandle;
+use crate::types::PrimaryValue;
+use crate::{MemorySystem, SessionInfo};
+use araliya_core::error::AppError;
 
 const KV_FILENAME: &str = "kv.json";
 const TEXTS_FILENAME: &str = "texts.json";
@@ -263,9 +259,6 @@ impl AgentStore {
     }
 
     /// Write raw UTF-8 content to `store/raw/{name}`.
-    ///
-    /// The `raw/` directory is created on first use.  Overwrites any
-    /// existing file with the same name.
     pub fn write_raw(&self, name: &str, content: &str) -> Result<(), AppError> {
         let dir = self.raw_dir();
         fs::create_dir_all(&dir)
@@ -302,12 +295,6 @@ impl AgentStore {
     }
 
     /// Get the active session for this agent, creating one on first use.
-    ///
-    /// The session ID is persisted in the agent KV store under
-    /// `active_session_id` so the same rolling transcript is reused across
-    /// restarts.  The session lives at `{identity_dir}/sessions/{uuid}/`.
-    ///
-    /// `agent_id` is written as `last_agent` in the session index (e.g. `"docs"`, `"news"`).
     pub fn get_or_create_session(
         &self,
         memory: &MemorySystem,
@@ -323,7 +310,6 @@ impl AgentStore {
             match memory.load_session_in(&sessions_root, &index_path, &sid, Some(agent_id)) {
                 Ok(handle) => return Ok(handle),
                 Err(_) => {
-                    // Session missing from index or dir — create a fresh one.
                     let _ = self.kv_delete("active_session_id");
                 }
             }
@@ -382,7 +368,7 @@ impl AgentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subsystems::memory::MemoryConfig;
+    use crate::MemoryConfig;
     use tempfile::TempDir;
 
     fn open_tmp() -> (TempDir, AgentStore) {

@@ -8,14 +8,13 @@ use rusqlite::params;
 use text_splitter::MarkdownSplitter;
 use tracing::warn;
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
 use super::sqlite_core::{
     DB_FILENAME, SCHEMA_VERSION, escape_fts5_query, init_schema, now_iso8601, open_conn, sha256_hex,
 };
 
-// Re-export shared types so external callers see them under this module path
-// (no breaking change for existing imports like `docstore::Document`).
+// Re-export shared types so external callers see them under this module path.
 pub use super::sqlite_core::{Chunk, DocMetadata, Document, SearchResult};
 
 const DOCSTORE_DIR: &str = "docstore";
@@ -424,7 +423,7 @@ impl IDocStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subsystems::memory::AGENTS_DIRNAME;
+    use crate::AGENTS_DIRNAME;
     use tempfile::TempDir;
 
     fn make_store() -> (TempDir, IDocStore) {

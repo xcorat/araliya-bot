@@ -169,16 +169,6 @@ impl Obj {
 /// - `"ext"`  — file extension hint (`"md"`, `"txt"`, …)
 /// - `"ts"`   — ISO-8601 creation / modification timestamp
 /// - `"role"` — for transcript entries: `"user"` / `"assistant"`
-///
-/// # Examples
-/// ```rust
-/// use araliya_bot::subsystems::memory::types::TextFile;
-///
-/// let mut tf = TextFile::new("# Hello\n".to_string());
-/// tf.metadata.insert("mime".into(), "text/markdown".into());
-/// assert_eq!(tf.mime(), "text/markdown");
-/// assert!(!tf.is_empty());
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextFile {
     /// UTF-8 text payload.

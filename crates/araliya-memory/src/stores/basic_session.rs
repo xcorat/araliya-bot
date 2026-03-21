@@ -20,10 +20,10 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-use super::super::collections::{Block, Doc};
-use super::super::store::{SessionStore, TranscriptEntry};
-use super::super::types::{PrimaryValue, TextFile, Value};
-use crate::error::AppError;
+use crate::collections::{Block, Doc};
+use crate::store::{SessionStore, TranscriptEntry};
+use crate::types::{PrimaryValue, TextFile, Value};
+use araliya_core::error::AppError;
 
 //  TODO: these  should be const  definied top or config.
 /// Default maximum number of k-v entries before FIFO eviction.
@@ -191,20 +191,11 @@ impl BasicSessionStore {
     // ── Typed Collection views ────────────────────────────────────────
 
     /// Return the current k-v store as a [`Doc`] collection.
-    ///
-    /// All values are `PrimaryValue::Str`.  Changes to the returned [`Doc`] are
-    /// not automatically persisted — call [`kv_set`](SessionStore::kv_set) as
-    /// normal to write mutations back.
     pub fn read_kv_doc(&self, session_dir: &Path) -> Result<Doc, AppError> {
         Ok(Self::read_kv(session_dir)?.to_doc())
     }
 
     /// Return all transcript entries as a [`Block`] collection.
-    ///
-    /// Each entry is keyed by its zero-padded position (`"000000"`, `"000001"`,…).
-    /// The value is a [`Value::Text`] where:
-    /// - `content` = the entry text,
-    /// - `metadata` = `{ "role": ..., "ts": ..., "mime": "text/plain" }`.
     pub fn read_transcript_block(&self, session_dir: &Path) -> Result<Block, AppError> {
         let path = Self::transcript_path(session_dir);
         let text = fs::read_to_string(&path).unwrap_or_default();
@@ -299,14 +290,14 @@ impl SessionStore for BasicSessionStore {
         Ok(entries[start..].to_vec())
     }
 
-    fn read_kv_doc(&self, session_dir: &Path) -> Result<super::super::collections::Doc, AppError> {
+    fn read_kv_doc(&self, session_dir: &Path) -> Result<crate::collections::Doc, AppError> {
         self.read_kv_doc(session_dir)
     }
 
     fn read_transcript_block(
         &self,
         session_dir: &Path,
-    ) -> Result<super::super::collections::Block, AppError> {
+    ) -> Result<crate::collections::Block, AppError> {
         self.read_transcript_block(session_dir)
     }
 }
