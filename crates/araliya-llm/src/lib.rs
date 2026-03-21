@@ -125,6 +125,38 @@ impl LlmProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use providers::dummy::DummyProvider;
+
+    // ── LlmProvider enum dispatch ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn dummy_provider_complete_via_enum() {
+        let p = LlmProvider::Dummy(DummyProvider);
+        let res = p.complete("hi", None, None).await.unwrap();
+        assert_eq!(res.text, "[echo] hi");
+        assert!(res.usage.is_none());
+        assert!(res.timing.is_none());
+    }
+
+    #[tokio::test]
+    async fn dummy_provider_stream_via_enum() {
+        let p = LlmProvider::Dummy(DummyProvider);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        p.complete_stream("world", None, tx, None).await.unwrap();
+        let first = rx.recv().await.unwrap();
+        assert!(matches!(first, StreamChunk::Content(s) if s == "[echo] world"));
+        let second = rx.recv().await.unwrap();
+        assert!(matches!(second, StreamChunk::Done { .. }));
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn dummy_provider_ping_ok() {
+        let p = LlmProvider::Dummy(DummyProvider);
+        assert!(p.ping().await.is_ok());
+    }
+
+    // ── LlmUsage cost_usd ─────────────────────────────────────────────────────
 
     #[test]
     fn cost_usd_zero_usage() {

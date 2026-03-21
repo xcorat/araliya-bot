@@ -17,6 +17,10 @@ cargo build --all-features           # Full feature set
 ./target/release/araliya-bot         # Daemon mode
 ./target/release/araliya-bot -i      # Interactive mode
 
+# Minimal + dummy LLM (no API key needed — for local bus round-trip testing)
+cargo build -p araliya-bot --no-default-features --features minimal
+./target/debug/araliya-bot -i --config config/dummy.toml
+
 # Management CLI (requires --features cli)
 ./target/debug/araliya-ctl status
 ./target/debug/araliya-ctl health
@@ -35,9 +39,11 @@ docker-compose up --build
 
 ```bash
 # Workspace-wide
-cargo test --workspace               # All tests across all crates
+cargo test --workspace               # All tests across all crates (~311 tests)
 cargo test -p araliya-core           # Core foundation tests (44 tests)
 cargo test -p araliya-supervisor     # Supervisor tests (6 tests)
+cargo test -p araliya-llm            # LLM provider tests (10 tests — includes dummy dispatch)
+cargo test -p araliya-comms          # Comms state tests (4 tests)
 cargo test -p araliya-bot            # Bot subsystem tests
 
 # Feature-gated tests

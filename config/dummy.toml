@@ -1,0 +1,9 @@
+# Dummy-LLM overlay — extends minimal.toml for no-API-key testing.
+# Builds with: cargo build -p araliya-bot --no-default-features --features minimal
+# Runs with:   ./target/debug/araliya-bot -i --config config/dummy.toml
+
+[meta]
+base = "minimal.toml"
+
+[llm]
+default = "dummy"

@@ -221,7 +221,26 @@ cargo run -- -vvv
 ## Run Tests
 
 ```bash
-cargo test
+# All crates
+cargo test --workspace        # ~318 tests
+
+# Per-crate
+cargo test -p araliya-core
+cargo test -p araliya-supervisor
+cargo test -p araliya-llm
+cargo test -p araliya-comms
+cargo test -p araliya-bot
 ```
 
-All 41 tests should pass. Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.
+Tests use `tempfile` for filesystem isolation — they do not touch `~/.araliya`.
+
+## Local Testing Without an API Key
+
+The `dummy` LLM provider echoes input back as `[echo] {input}`. Combined with the `minimal` feature set and `basic_chat` agent it gives a full bus round-trip with zero external dependencies:
+
+```bash
+cargo build -p araliya-bot --no-default-features --features minimal
+./target/debug/araliya-bot -i --config config/dummy.toml
+```
+
+Type any message at the prompt — the reply will be `[echo] <your message>`.

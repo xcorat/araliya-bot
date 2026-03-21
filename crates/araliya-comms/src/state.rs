@@ -426,3 +426,56 @@ impl CommsState {
         }
     }
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comms_reply_fields_accessible() {
+        let r = CommsReply {
+            reply: "hi".to_string(),
+            session_id: Some("s1".to_string()),
+            thinking: None,
+            usage: None,
+            timing: None,
+        };
+        assert_eq!(r.reply, "hi");
+        assert_eq!(r.session_id.as_deref(), Some("s1"));
+        assert!(r.thinking.is_none());
+    }
+
+    #[test]
+    fn comms_event_channel_shutdown_variant() {
+        let ev = CommsEvent::ChannelShutdown {
+            channel_id: "pty0".to_string(),
+        };
+        assert!(matches!(ev, CommsEvent::ChannelShutdown { channel_id } if channel_id == "pty0"));
+    }
+
+    #[test]
+    fn comms_event_session_started_variant() {
+        let ev = CommsEvent::SessionStarted {
+            channel_id: "axum0".to_string(),
+        };
+        assert!(
+            matches!(ev, CommsEvent::SessionStarted { channel_id } if channel_id == "axum0")
+        );
+    }
+
+    #[test]
+    fn report_event_drops_gracefully_when_channel_closed() {
+        let sbus = araliya_core::bus::SupervisorBus::new(1);
+        let bus = sbus.handle;
+        let (ev_tx, ev_rx) = tokio::sync::mpsc::channel(1);
+        let state = CommsState::new(bus, ev_tx);
+        // Drop the receiver so the channel is closed.
+        drop(ev_rx);
+        // Should not panic.
+        state.report_event(CommsEvent::ChannelShutdown {
+            channel_id: "pty0".to_string(),
+        });
+    }
+}
