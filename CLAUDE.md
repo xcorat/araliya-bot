@@ -46,6 +46,7 @@ cargo test -p araliya-llm            # LLM provider tests (10 tests — includes
 cargo test -p araliya-comms          # Comms state tests (4 tests)
 cargo test -p araliya-memory         # Memory subsystem tests (64 base, 91 with features)
 cargo test -p araliya-cron           # Cron service tests (4 tests)
+cargo test -p araliya-agents         # Agents subsystem tests
 cargo test -p araliya-bot            # Bot subsystem tests
 
 # Feature-gated tests
@@ -66,6 +67,7 @@ cargo clippy -p araliya-llm -- -D warnings
 cargo clippy -p araliya-comms --all-features -- -D warnings
 cargo clippy -p araliya-tools -- -D warnings
 cargo clippy -p araliya-cron -- -D warnings
+cargo clippy -p araliya-agents -- -D warnings
 cargo fmt --check
 
 # Frontend type checking
@@ -99,7 +101,7 @@ Feature-gated code uses `#[cfg(feature = "feature-name")]` throughout.
 
 ## Architecture
 
-**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, LLM providers in `araliya-llm`, I/O channels in `araliya-comms`, session management in `araliya-memory`, and remaining subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
+**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, LLM providers in `araliya-llm`, I/O channels in `araliya-comms`, session management in `araliya-memory`, agents in `araliya-agents`, and the binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
 
 **Crate dependency DAG:**
 ```
@@ -110,7 +112,8 @@ araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on co
 araliya-memory        ← session management, stores (doc, KG, SQL); bus handler (depends on core)
 araliya-tools         ← external tool integrations: Gmail, GDELT BigQuery, RSS (depends on core)
 araliya-cron          ← timer-based event scheduling; BusHandler for cron/* (depends on core)
-araliya-bot           ← binary + remaining subsystems (depends on all above)
+araliya-agents        ← Agent trait, AgentsSubsystem, all built-in agent plugins (depends on core, memory, llm)
+araliya-bot           ← binary wiring: main.rs + LLM/runtimes/UI subsystems (depends on all above)
 ```
 
 **Bus routing** (method prefix → subsystem):
@@ -126,53 +129,58 @@ araliya-bot           ← binary + remaining subsystems (depends on all above)
 Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded immediately to the handler, which resolves it synchronously or from a spawned task.
 
 **Subsystems** (`crates/araliya-bot/src/subsystems/`):
-- `comms/` — shim re-exporting from `araliya-comms` (PTY, Telegram, HTTP, Axum channels)
-- `agents/` — agent routing + registration; loads system agents from `config/agents/` and user agents from `~/.araliya/agents/`; built-in agents: `echo`, `basic-chat`, `chat`, `agentic-chat`, `docs`, `uniweb`, `gmail`, `news`, `gdelt_news`, `newsroom`, `news_aggregator`, `test_rssnews`, `webbuilder`, `runtime_cmd`, `docs_agent`
-- `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
-- `memory/` — shim re-exporting from `araliya-memory` (session lifecycle, stores, bus handler)
-- `cron/` — shim re-exporting from `araliya-cron`
-- `tools/` — shim re-exporting from `araliya-tools` (Gmail, GDELT BigQuery, RSS)
+- `llm/` — LLM bus handler routing `llm/*` requests to providers in `araliya-llm`
+- `runtimes/` — script execution in external runtimes (node, python3)
 - `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
 
-**Key traits** (defined in `araliya-core`, re-exported through shims in `araliya-bot`):
+All other subsystems (agents, memory, tools, cron, comms) live in their own crates and are wired directly from `main.rs`.
+
+**Key traits** (defined in `araliya-core`):
 - `Component` — pluggable subsystem lifecycle (`araliya_core::runtime`)
 - `BusHandler` — standardized request handling (`araliya_core::bus`)
-- `Agent` — pluggable agent interface (`crates/araliya-bot/src/subsystems/agents/`)
+- `Agent` — pluggable agent interface (`araliya-agents/src/lib.rs`)
 
 **Bot identity** — persistent ed25519 keypair at `~/.araliya/bot-pkey{bot_id}/`; `bot_id` = first 8 hex chars of SHA256(verifying_key). Stable across restarts.
 
-## Modularization Plan
+## Modularization Plan (complete)
 
 **Phase 5 (complete): Memory subsystem extraction** — `araliya-memory` crate.
 - `MemorySystem` lifecycle: `new()`, `create_session()`, `load_session()`, `list_sessions()`
-- `SessionStore` trait with 5 implementations: `BasicSessionStore`, `TmpStore`, `AgentStore`, `SqliteStore`, `IDocStore`, `IKGDocStore`
+- `SessionStore` trait with implementations: `BasicSessionStore`, `TmpStore`, `AgentStore`, `SqliteStore`, `IDocStore`, `IKGDocStore`
 - `MemoryBusHandler` for `memory/kg_graph` and `memory/status` (management plane, read-only)
 - Feature-gated document stores: `idocstore` (BM25 FTS), `ikgdocstore` (KG extraction + BFS)
 - Background `DocstoreManager` for auto-indexing and orphan cleanup
-- Shim re-exports in `araliya-bot/subsystems/memory/` preserve all `use crate::subsystems::memory::*` call sites
 
 **Phase 6 (complete): Agent definitions** — agent identity, manifests, and prompt co-location.
 - `AgentDefinition` type in `araliya-core/src/config/agent_def.rs` with TOML parsing and directory scanning
 - `config/agents/` directory with 15 agent definitions + `_shared/` prompt layers
 - Unix-like directory layering: system agents (`config/agents/`) vs user agents (`~/.araliya/agents/`)
 - `PromptBuilder.agent_layer()` method resolves prompts with user override support
-- Core agents: echo, basic-chat, chat, agentic-chat, docs, uniweb
-- Plugin agents: gmail, news, gdelt_news, newsroom, news_aggregator, test_rssnews, webbuilder, runtime_cmd, docs_agent
-
-**Phase 8 (complete): Cron subsystem extraction** — `araliya-cron` crate.
-- `CronSubsystem` (BusHandler) + `CronService` (background timer loop) moved to `araliya-cron`
-- Zero-polling BTreeMap priority queue; `cron/schedule`, `cron/cancel`, `cron/list` bus methods
-- 4 timer service tests migrated with the crate
-- Shim re-export in `araliya-bot/subsystems/cron/mod.rs`
 
 **Phase 7 (complete): Tools subsystem extraction** — `araliya-tools` crate.
-- `ToolsSubsystem` struct + `BusHandler` impl moved to `araliya-tools/src/dispatcher.rs`
-- Tool implementations moved: `gmail.rs`, `newsmail_aggregator.rs`, `gdelt_bigquery.rs`, `rss_fetch.rs`
-- Features forwarded from `araliya-bot`: `plugin-gmail-tool`, `plugin-gdelt-tool`, `plugin-rss-fetch-tool`
-- Shim re-export in `araliya-bot/subsystems/tools/mod.rs` preserves all call sites
+- `ToolsSubsystem` struct + `BusHandler` impl in `araliya-tools/src/dispatcher.rs`
+- Tool implementations: `gmail.rs`, `newsmail_aggregator.rs`, `gdelt_bigquery.rs`, `rss_fetch.rs`
+- Features: `plugin-gmail-tool`, `plugin-gdelt-tool`, `plugin-rss-fetch-tool`
 
-**Future phases:**
-- Phase 9: Agents extraction — deferred; requires plugin-registration refactor to avoid circular deps
+**Phase 8 (complete): Cron subsystem extraction** — `araliya-cron` crate.
+- `CronSubsystem` (BusHandler) + `CronService` (background timer loop)
+- Zero-polling BTreeMap priority queue; `cron/schedule`, `cron/cancel`, `cron/list` bus methods
+- 4 timer service tests
+
+**Phase 9 (complete): Remove all shim re-exports** — all import sites updated directly.
+
+**Phase 10 (complete): Agents extraction** — `araliya-agents` crate.
+- `AgentsSubsystem` (BusHandler for `agents/*`) + `Agent` trait + all 15 built-in agent plugins
+- `AgentsState` — capability surface passed to plugins (bus handle, memory, identity, config)
+- `ChatCore`, `AgenticLoop` — shared chat/agentic composition layer
+- Features: `plugin-echo`, `plugin-basic-chat`, `plugin-chat`, `plugin-agentic-chat`, `plugin-docs`, `plugin-docs-agent`, `plugin-gmail-agent`, `plugin-news-agent`, `plugin-gdelt-news-agent`, `plugin-newsroom-agent`, `plugin-news-aggregator`, `plugin-test-rssnews`, `plugin-runtime-cmd`, `plugin-uniweb`, `plugin-webbuilder`
+- `araliya-bot/main.rs` wires `AgentsSubsystem` directly from `araliya_agents::AgentsSubsystem`
+
+**Phase 11 (complete): Cargo.toml cleanup.**
+- Removed orphaned deps from `araliya-bot`: `axum`, `teloxide`, `ed25519-dalek`, `rand_core`, `hex`, `thiserror`, `text-splitter`, `chrono` (non-gpui), `htmd`, `toml`, `futures-util`
+- `channel-axum`/`channel-telegram` features now forward only to `araliya-comms` (no `dep:` redeclarations)
+- `idocstore`/`ikgdocstore` features no longer redeclare `dep:text-splitter` (handled in `araliya-memory`)
+- Removed stale TODO comments in `main.rs`
 
 ## Configuration
 
@@ -230,6 +238,24 @@ crates/
 │   ├── newsmail_aggregator.rs # Gmail filtering/aggregation (feature: plugin-gmail-tool)
 │   ├── gdelt_bigquery.rs    # GDELT v2 BigQuery API (feature: plugin-gdelt-tool)
 │   └── rss_fetch.rs         # RSS/Atom feed parser (feature: plugin-rss-fetch-tool)
+├── araliya-agents/src/      # Agents subsystem (Agent trait, routing, all plugins)
+│   ├── lib.rs               # AgentsSubsystem, AgentsState, Agent trait, AgentRegistration
+│   ├── core/                # AgentRuntimeClass, PromptBuilder, AgenticLoop, LocalTool
+│   ├── chat/                # ChatCore, BasicChat, SessionChat
+│   ├── agentic_chat.rs      # Agentic chat plugin (feature: plugin-agentic-chat)
+│   ├── docs.rs              # Docs RAG plugin (feature: plugin-docs)
+│   ├── docs_agent.rs        # Docs agent plugin (feature: plugin-docs-agent)
+│   ├── docs_import.rs       # Document import helpers
+│   ├── gmail.rs             # Gmail agent plugin (feature: plugin-gmail-agent)
+│   ├── news.rs              # News agent plugin (feature: plugin-news-agent)
+│   ├── news_aggregator.rs   # News aggregator plugin (feature: plugin-news-aggregator)
+│   ├── newsroom.rs          # Newsroom agent plugin (feature: plugin-newsroom-agent)
+│   ├── gdelt_news.rs        # GDELT news plugin (feature: plugin-gdelt-news-agent)
+│   ├── runtime_cmd.rs       # Runtime command plugin (feature: plugin-runtime-cmd)
+│   ├── sqlite_tool.rs       # SQLite tool (feature: isqlite)
+│   ├── test_rssnews.rs      # RSS news test plugin (feature: plugin-test-rssnews)
+│   ├── uniweb/              # Uniweb plugin (feature: plugin-uniweb)
+│   └── webbuilder/          # Webbuilder plugin (feature: plugin-webbuilder)
 ├── araliya-memory/src/      # Memory subsystem (session management, stores, bus handler)
 │   ├── lib.rs               # MemorySystem, SessionInfo, SessionSpend, MemoryConfig
 │   ├── bus.rs               # MemoryBusHandler (management plane, read-only kg_graph queries)
@@ -247,23 +273,16 @@ crates/
 │       ├── sqlite_store.rs  # General-purpose typed SQL (feature: isqlite)
 │       ├── docstore.rs      # FTS5 document index (feature: idocstore)
 │       └── kg_docstore.rs   # Document store + knowledge graph (feature: ikgdocstore)
-└── araliya-bot/src/         # Binary + remaining subsystems
-    ├── main.rs              # Entry point, CLI parsing
+└── araliya-bot/src/         # Binary + thin remaining subsystems
+    ├── main.rs              # Entry point, CLI parsing, subsystem wiring
     ├── lib.rs               # Library exports
     ├── bootstrap/           # Re-exports from araliya-core (identity, logger)
     ├── core/                # Re-exports from araliya-core (config, error)
     ├── supervisor/          # Re-exports from araliya-core + araliya-supervisor
-    ├── llm/                 # Shim re-exporting from araliya-llm
     ├── subsystems/
-    │   ├── runtime.rs       # Re-exports from araliya-core
-    │   ├── agents/          # Agent routing + all agent plugins
-    │   ├── comms/           # Shim re-exporting from araliya-comms
-    │   ├── llm/             # LLM bus handler
-    │   ├── memory/          # Shim re-exporting from araliya-memory
-    │   ├── memory_bus/      # Shim re-exporting MemoryBusHandler
-    │   ├── cron/            # Scheduler
-    │   ├── tools/           # Tool execution
-    │   └── ui/              # UI backends (UiServe trait in araliya-core)
+    │   ├── llm/             # LLM bus handler (routes llm/* to araliya-llm providers)
+    │   ├── runtimes/        # Script execution subsystem (node, python3)
+    │   └── ui/              # UI backends (svui, gpui, beacon)
     └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
 
 frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)

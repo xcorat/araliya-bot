@@ -12,6 +12,7 @@ araliya-supervisor = { path = "../araliya-supervisor" }
 araliya-llm = { path = "../araliya-llm" }
 araliya-comms = { path = "../araliya-comms" }
 araliya-memory = { path = "../araliya-memory" }
+araliya-agents = { path = "../araliya-agents", optional = true }
 araliya-tools = { path = "../araliya-tools", optional = true }
 araliya-cron = { path = "../araliya-cron", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
@@ -19,31 +20,21 @@ tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking", "stream"] }
-futures-util = "0.3"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
-toml = "0.8"
-ed25519-dalek = { version = "2", default-features = false, features = ["rand_core"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
 base64 = "0.22"
-hex = "0.4"
 dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-thiserror = "2"
 dotenvy = "0.15"
-teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
-axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
+chrono = { version = "0.4", optional = true }
 gpui = { version = "0.2.2", optional = true }
 gpui-component = { version = "0.5.1", optional = true }
 winit = { version = "0.30", optional = true }
 vello = { version = "0.4", optional = true }
 wgpu = { version = "23", optional = true }
 pollster = { version = "0.3", optional = true }
-chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
-text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
-htmd = "0.5"
 
 [features]
 default = [
@@ -93,11 +84,11 @@ gmail-app = []
 
 
 # Subsystems
-subsystem-agents = ["subsystem-memory"]
+subsystem-agents = ["dep:araliya-agents", "araliya-agents/subsystem-agents"]
 subsystem-memory = []
 isqlite = ["dep:rusqlite", "araliya-memory/isqlite"]
-idocstore = ["isqlite", "dep:text-splitter", "araliya-memory/idocstore"]
-ikgdocstore = ["isqlite", "dep:text-splitter", "araliya-memory/ikgdocstore"]
+idocstore = ["isqlite", "araliya-memory/idocstore"]
+ikgdocstore = ["isqlite", "araliya-memory/ikgdocstore"]
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = ["araliya-comms/subsystem-ui"]
@@ -106,35 +97,35 @@ subsystem-cron = ["dep:araliya-cron", "araliya-cron/subsystem-cron"]
 subsystem-runtimes = []
 
 # Agent Plugins
-plugin-echo = ["subsystem-agents"]
-plugin-docs = ["subsystem-agents", "idocstore"]
-plugin-docs-kg = ["subsystem-agents", "ikgdocstore"]
-plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
-plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
-plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
+plugin-echo = ["subsystem-agents", "araliya-agents/plugin-echo"]
+plugin-docs = ["subsystem-agents", "idocstore", "araliya-agents/plugin-docs"]
+plugin-docs-kg = ["subsystem-agents", "ikgdocstore", "araliya-agents/plugin-docs-kg"]
+plugin-basic-chat = ["subsystem-agents", "subsystem-llm", "araliya-agents/plugin-basic-chat"]
+plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm", "araliya-agents/plugin-chat"]
+plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm", "araliya-agents/plugin-agentic-chat"]
 plugin-gmail-tool = ["subsystem-tools", "araliya-tools/plugin-gmail-tool"]
-plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
-plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
+plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool", "araliya-agents/plugin-gmail-agent"]
+plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool", "araliya-agents/plugin-news-agent"]
 plugin-gdelt-tool = ["subsystem-tools", "araliya-tools/plugin-gdelt-tool"]
-plugin-gdelt-news-agent = ["plugin-gdelt-tool", "subsystem-agents"]
-plugin-newsroom-agent = ["plugin-gdelt-tool", "subsystem-agents", "isqlite"]
-plugin-news-aggregator = ["plugin-newsroom-agent", "ikgdocstore"]
-plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
-plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
-plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
-plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-webbuilder"]
+plugin-gdelt-news-agent = ["plugin-gdelt-tool", "subsystem-agents", "araliya-agents/plugin-gdelt-news-agent"]
+plugin-newsroom-agent = ["plugin-gdelt-tool", "subsystem-agents", "isqlite", "araliya-agents/plugin-newsroom-agent"]
+plugin-news-aggregator = ["plugin-newsroom-agent", "ikgdocstore", "araliya-agents/plugin-news-aggregator"]
+plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm", "araliya-agents/plugin-uniweb"]
+plugin-docs-agent = ["subsystem-agents", "plugin-docs", "araliya-agents/plugin-docs-agent"]
+plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes", "araliya-agents/plugin-runtime-cmd"]
+plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-webbuilder", "araliya-agents/plugin-webbuilder"]
 plugin-rss-fetch-tool = ["subsystem-tools", "araliya-tools/plugin-rss-fetch-tool"]
-plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool"]
+plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool", "araliya-agents/plugin-test-rssnews"]
 
 # Comms Channels
 channel-pty = ["subsystem-comms", "araliya-comms/channel-pty"]
-channel-telegram = ["subsystem-comms", "dep:teloxide", "araliya-comms/channel-telegram"]
+channel-telegram = ["subsystem-comms", "araliya-comms/channel-telegram"]
 channel-http = ["subsystem-comms", "araliya-comms/channel-http"]
-channel-axum = ["subsystem-comms", "dep:axum", "araliya-comms/channel-axum"]
+channel-axum = ["subsystem-comms", "araliya-comms/channel-axum"]
 
 # UI Backends
 ui-svui = ["subsystem-ui"]
-ui-gpui = ["dep:gpui", "dep:gpui-component"]
+ui-gpui = ["dep:gpui", "dep:gpui-component", "dep:chrono"]
 ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster"]
 
 [dev-dependencies]

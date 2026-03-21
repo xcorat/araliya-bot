@@ -1,0 +1,50 @@
+[package]
+name = "araliya-agents"
+version = "0.2.6"
+edition = "2024"
+license = "GPL-3.0-only"
+
+[dependencies]
+araliya-core = { path = "../araliya-core" }
+araliya-memory = { path = "../araliya-memory" }
+araliya-llm = { path = "../araliya-llm" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "process", "fs", "io-util"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+futures-util = "0.3"
+chrono = { version = "0.4", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+htmd = { version = "0.5", optional = true }
+sha2 = { version = "0.10", optional = true }
+uuid = { version = "1", features = ["v4", "v7", "serde"], optional = true }
+dirs = { version = "5", optional = true }
+toml = { version = "0.8", optional = true }
+
+[features]
+default = []
+subsystem-agents = []
+plugin-echo = ["subsystem-agents"]
+plugin-basic-chat = ["subsystem-agents"]
+plugin-chat = ["subsystem-agents"]
+plugin-agentic-chat = ["subsystem-agents"]
+plugin-docs = ["subsystem-agents"]
+plugin-docs-kg = ["subsystem-agents"]
+plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
+plugin-gmail-agent = ["subsystem-agents"]
+plugin-news-agent = ["subsystem-agents", "dep:chrono"]
+plugin-gdelt-news-agent = ["subsystem-agents", "dep:chrono"]
+plugin-newsroom-agent = ["subsystem-agents", "dep:chrono", "isqlite"]
+plugin-news-aggregator = ["subsystem-agents", "dep:chrono", "dep:reqwest", "dep:htmd", "isqlite"]
+plugin-test-rssnews = ["subsystem-agents"]
+plugin-runtime-cmd = ["subsystem-agents"]
+plugin-uniweb = ["subsystem-agents", "dep:sha2", "dep:uuid", "dep:dirs", "dep:toml"]
+plugin-webbuilder = ["subsystem-agents"]
+isqlite = ["araliya-memory/isqlite"]
+idocstore = ["araliya-memory/idocstore"]
+ikgdocstore = ["araliya-memory/ikgdocstore"]
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }

@@ -1,4 +1,3 @@
-// TODO: move the core functionality to a `core` crate/folder
 //! Araliya Bot — supervisor entry point.
 //!
 //! Startup sequence:
@@ -29,7 +28,7 @@ use araliya_core::bus::health::HealthRegistry;
 use araliya_core::{config, error, identity, logger};
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
 #[cfg(feature = "subsystem-agents")]
-use subsystems::agents::AgentsSubsystem;
+use araliya_agents::AgentsSubsystem;
 
 #[cfg(feature = "subsystem-llm")]
 use subsystems::llm::LlmSubsystem;
@@ -150,7 +149,6 @@ async fn run() -> Result<(), error::AppError> {
     handlers.push(Box::new(ManagementSubsystem::new(
         control_handle.clone(),
         bus_handle.clone(),
-        // TODO: IMPORTANT: we shouldn't add the llm provider here. let the subsystem handle it.
         ManagementInfo {
             bot_id: identity.public_id.clone(),
             llm_provider: config.llm.provider.clone(),

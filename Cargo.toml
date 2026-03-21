@@ -6,6 +6,7 @@ members = [
     "crates/araliya-llm",
     "crates/araliya-comms",
     "crates/araliya-memory",
+    "crates/araliya-agents",
     "crates/araliya-tools",
     "crates/araliya-cron",
     "crates/araliya-bot",
