@@ -80,12 +80,12 @@ impl UniwebAgent {
         AgenticLoop::new(
             "uniweb",
             self.use_instruction_llm,
-            "agentic_instruct.txt",
-            "agentic_context.txt",
+            "instruct.md",
+            "context.md",
             vec![],
             memory_tools,
             allowed_tools,
-            "config/prompts",
+            &state.agents_dir,
             state.debug_logging,
         )
     }

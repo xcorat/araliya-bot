@@ -12,10 +12,12 @@
 //! - **load** — Loading logic: `merge_toml`, `load_raw_merged`, `load`,
 //!   `load_from`, `expand_home`.
 
+pub mod agent_def;
 mod load;
 mod raw;
 mod types;
 
+pub use agent_def::{AgentDefinition, resolve_agent_definitions, scan_agent_definitions};
 pub use load::{expand_home, load, load_from};
 pub use types::*;
 

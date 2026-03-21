@@ -1,17 +1,21 @@
 //! Layered prompt builder for agent plugins.
 //!
-//! Prompts for agents are assembled from a stack of plain-text template
-//! fragments stored under `config/prompts/`.  Each layer is appended in
-//! order; missing files are silently skipped so layers can be optional.
+//! Prompts are assembled from template files in two locations:
+//!
+//! 1. **Agent definition directory** (`config/agents/<agent-id>/`) — agent-specific
+//!    prompts co-located with the agent's `agent.toml` manifest.
+//! 2. **Shared layers** (`config/agents/_shared/`) — identity and common prompts
+//!    shared across all agents.
 //!
 //! ## Layer ordering convention
 //!
 //! ```text
-//! 0. id.md               — bot identity / persona (who it is)
-//! 1. agent.md            — agent-level instructions (what it does)
-//! 2. memory_and_tools.md — memory access & tool guidance; {{tools}} placeholder
-//! 3. subagent.md         — (optional) subagent delegation constraints
-//! 4. <agent body>        — agent-specific template with task variables
+//! 0. _shared/id.md               — bot identity / persona (who it is)
+//! 1. _shared/agent.md            — agent-level instructions (what it does)
+//! 2. _shared/memory_and_tools.md — memory access & tool guidance; {{tools}} placeholder
+//! 3. _shared/subagent.md         — (optional) subagent delegation constraints
+//! 4. <agent-id>/instruct.md      — agent-specific instruction template
+//! 5. <agent-id>/context.md       — agent-specific context/response template
 //! ```
 //!
 //! Variable substitution uses `{{key}}` syntax and is applied once at
@@ -24,19 +28,6 @@ use std::path::{Path, PathBuf};
 const SEPARATOR: &str = "\n\n";
 
 /// Fluent builder that assembles a layered prompt from template files.
-///
-/// ```rust
-/// use std::collections::HashMap;
-/// // (in production code, call inside an agent handler)
-/// // let prompt = PromptBuilder::new("config/prompts")
-/// //     .layer("id.md")
-/// //     .layer("agent.md")
-/// //     .layer("memory_and_tools.md")
-/// //     .with_tools(&["newsmail_aggregator".to_string()])
-/// //     .append("Summarize: {{items}}")
-/// //     .with_vars([("items", "item 1\nitem 2")])
-/// //     .build();
-/// ```
 pub struct PromptBuilder {
     prompts_dir: PathBuf,
     parts: Vec<String>,
@@ -44,7 +35,10 @@ pub struct PromptBuilder {
 }
 
 impl PromptBuilder {
-    /// Create a builder rooted at `prompts_dir` (e.g. `"config/prompts"`).
+    /// Create a builder rooted at `prompts_dir`.
+    ///
+    /// For shared layers this is `config/agents/_shared/`.
+    /// For agent-specific layers, use [`agent_layer()`](Self::agent_layer).
     pub fn new(prompts_dir: impl Into<PathBuf>) -> Self {
         Self {
             prompts_dir: prompts_dir.into(),
@@ -66,6 +60,67 @@ impl PromptBuilder {
             }
             Err(_) => {
                 tracing::debug!("prompt: layer '{}' not found — skipped", path.display());
+            }
+        }
+        self
+    }
+
+    /// Load a prompt from an agent's definition directory.
+    ///
+    /// Resolution order:
+    /// 1. `{user_agents_dir}/{agent_id}/{filename}` — user override (if provided)
+    /// 2. `{agents_dir}/{agent_id}/{filename}` — system agent-specific prompt
+    /// 3. `{agents_dir}/_shared/{filename}` — shared fallback
+    ///
+    /// Silently skips if no location has the file.
+    pub fn agent_layer(self, agents_dir: &Path, agent_id: &str, filename: &str) -> Self {
+        self.agent_layer_with_user(agents_dir, agent_id, filename, None)
+    }
+
+    /// Like [`agent_layer`](Self::agent_layer) but checks an optional user
+    /// agents directory first for overrides.
+    pub fn agent_layer_with_user(
+        mut self,
+        agents_dir: &Path,
+        agent_id: &str,
+        filename: &str,
+        user_agents_dir: Option<&Path>,
+    ) -> Self {
+        // 1. Check user override
+        if let Some(uad) = user_agents_dir {
+            let user_path = uad.join(agent_id).join(filename);
+            if let Ok(text) = fs::read_to_string(&user_path) {
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    self.parts.push(trimmed);
+                }
+                return self;
+            }
+        }
+        // 2. Check system agent dir
+        let agent_path = agents_dir.join(agent_id).join(filename);
+        if let Ok(text) = fs::read_to_string(&agent_path) {
+            let trimmed = text.trim().to_string();
+            if !trimmed.is_empty() {
+                self.parts.push(trimmed);
+            }
+            return self;
+        }
+        // 3. Fall back to _shared/
+        let shared_path = agents_dir.join("_shared").join(filename);
+        match fs::read_to_string(&shared_path) {
+            Ok(text) => {
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    self.parts.push(trimmed);
+                }
+            }
+            Err(_) => {
+                tracing::debug!(
+                    "prompt: agent_layer '{}/{}' not found in user, agent, or _shared — skipped",
+                    agent_id,
+                    filename
+                );
             }
         }
         self
@@ -135,13 +190,11 @@ impl PromptBuilder {
     }
 }
 
-/// Convenience: build the standard identity + agent + memory/tools preamble.
-///
-/// This is the common prefix shared by every agent.  Call `.append()` and
-/// `.with_vars()` on `PromptBuilder::preamble()` to add the agent-specific
-/// body before calling `.build()`.
-pub fn preamble(prompts_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder {
-    PromptBuilder::new(prompts_dir.as_ref())
+/// Convenience: build the standard identity + agent + memory/tools preamble
+/// from the `_shared/` directory inside `agents_dir`.
+pub fn preamble(agents_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder {
+    let shared = agents_dir.as_ref().join("_shared");
+    PromptBuilder::new(&shared)
         .layer("id.md")
         .layer("agent.md")
         .layer("memory_and_tools.md")
@@ -149,21 +202,27 @@ pub fn preamble(prompts_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilde
 }
 
 /// Convenience: build the standard preamble and append a subagent layer.
-pub fn subagent_preamble(prompts_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder {
-    preamble(prompts_dir, tools).layer("subagent.md")
+pub fn subagent_preamble(agents_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder {
+    preamble(agents_dir, tools).layer("subagent.md")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn agents_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/agents")
+    }
+
+    // Backward compat — tests also work with old prompts_dir
     fn prompts_dir() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/prompts")
     }
 
     #[test]
     fn builder_assembles_layers_in_order() {
-        let result = PromptBuilder::new(prompts_dir())
+        let shared = agents_dir().join("_shared");
+        let result = PromptBuilder::new(&shared)
             .layer("id.md")
             .layer("agent.md")
             .build();
@@ -197,7 +256,8 @@ mod tests {
     #[test]
     fn builder_with_tools_rendered() {
         let tools = vec!["newsmail_aggregator".to_string(), "gmail".to_string()];
-        let result = PromptBuilder::new(prompts_dir()).with_tools(&tools).build();
+        let shared = agents_dir().join("_shared");
+        let result = PromptBuilder::new(&shared).with_tools(&tools).build();
         assert!(result.contains("newsmail_aggregator"));
         assert!(result.contains("gmail"));
         assert!(!result.contains("{{tools}}"));
@@ -205,22 +265,55 @@ mod tests {
 
     #[test]
     fn builder_with_empty_tools_renders_none() {
-        let result = PromptBuilder::new(prompts_dir()).with_tools(&[]).build();
+        let shared = agents_dir().join("_shared");
+        let result = PromptBuilder::new(&shared).with_tools(&[]).build();
         assert!(result.contains("none"));
     }
 
     #[test]
     fn preamble_contains_standard_layers() {
         let tools = vec!["some_tool".to_string()];
-        let result = preamble(prompts_dir(), &tools).build();
+        let result = preamble(agents_dir(), &tools).build();
         assert!(result.contains("some_tool"));
     }
 
     #[test]
     fn subagent_preamble_contains_subagent_layer() {
-        let result = subagent_preamble(prompts_dir(), &[])
+        let result = subagent_preamble(agents_dir(), &[])
             .var("subagent_role", "fetch and summarise news")
             .build();
         assert!(result.contains("fetch and summarise news"));
+    }
+
+    #[test]
+    fn agent_layer_loads_from_agent_dir() {
+        let ad = agents_dir();
+        let result = PromptBuilder::new(ad.join("_shared"))
+            .agent_layer(&ad, "docs", "instruct.md")
+            .build();
+        // docs/instruct.md should exist and have content
+        assert!(!result.trim().is_empty());
+    }
+
+    #[test]
+    fn agent_layer_falls_back_to_shared() {
+        let ad = agents_dir();
+        // echo has no instruct.md — should fall back to _shared (which also
+        // doesn't have instruct.md, so it should be skipped silently)
+        let result = PromptBuilder::new(ad.join("_shared"))
+            .agent_layer(&ad, "echo", "id.md")
+            .build();
+        // id.md exists in _shared, so echo gets it via fallback
+        assert!(!result.trim().is_empty());
+    }
+
+    #[test]
+    fn agent_layer_skips_missing() {
+        let ad = agents_dir();
+        let result = PromptBuilder::new(ad.join("_shared"))
+            .agent_layer(&ad, "echo", "nonexistent_xyz.md")
+            .append("fallback")
+            .build();
+        assert_eq!(result.trim(), "fallback");
     }
 }

@@ -169,7 +169,7 @@ impl Agent for NewsAgentPlugin {
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
             let news_skills = state.agent_skills.get("news").cloned().unwrap_or_default();
-            let (system, user_prompt) = build_summary_prompt(&items, &news_skills);
+            let (system, user_prompt) = build_summary_prompt(&items, &news_skills, &state.agents_dir);
             let llm_result = state
                 .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
                 .await;
@@ -260,7 +260,7 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
 ///
 /// Returns `(system, user)`: the preamble layers as the system message and the
 /// task-specific body as the user message.
-fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String) {
+fn build_summary_prompt(items: &[TextItem], tools: &[String], agents_dir: &str) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let subject = item
@@ -279,11 +279,12 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String
         ));
     }
 
-    let system = super::core::prompt::preamble("config/prompts", tools).build();
+    let system = super::core::prompt::preamble(agents_dir, tools).build();
 
-    let body = std::fs::read_to_string("config/prompts/news_summary.txt")
+    let agents_path = std::path::Path::new(agents_dir);
+    let body = std::fs::read_to_string(agents_path.join("news").join("summary.md"))
         .unwrap_or_else(|_| "Summarize the following news items:\n\n{{items}}".to_string());
-    let user = PromptBuilder::new("config/prompts")
+    let user = PromptBuilder::new(agents_path.join("_shared"))
         .append(body)
         .var("items", &items_str)
         .build();

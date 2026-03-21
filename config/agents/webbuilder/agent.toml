@@ -1,0 +1,6 @@
+[agent]
+enabled = false
+
+[webbuilder]
+max_iterations = 12
+scaffold = "vite-svelte"

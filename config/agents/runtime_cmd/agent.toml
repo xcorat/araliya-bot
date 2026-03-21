@@ -1,0 +1,6 @@
+[agent]
+enabled = false
+
+[runtime]
+name = "node"
+command = "node"

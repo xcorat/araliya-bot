@@ -1,0 +1,5 @@
+[agent]
+enabled = false
+
+[memory]
+stores = ["basic_session"]

@@ -517,7 +517,7 @@ async fn handle_read(
         .get("newsroom")
         .cloned()
         .unwrap_or_default();
-    let (system, user_prompt) = build_summary_prompt(&new_events, &skills);
+    let (system, user_prompt) = build_summary_prompt(&new_events, &skills, &state.agents_dir);
 
     let llm_result = state
         .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
@@ -950,7 +950,7 @@ fn extract_root_domain(domain: &str) -> String {
     parts[parts.len() - 2..].join(".")
 }
 
-fn build_summary_prompt(events: &[GdeltRow], tools: &[String]) -> (String, String) {
+fn build_summary_prompt(events: &[GdeltRow], tools: &[String], agents_dir: &str) -> (String, String) {
     let mut items_str = String::new();
     for (i, ev) in events.iter().enumerate() {
         items_str.push_str(&format!(
@@ -966,12 +966,13 @@ fn build_summary_prompt(events: &[GdeltRow], tools: &[String]) -> (String, Strin
         ));
     }
 
-    let system = super::core::prompt::preamble("config/prompts", tools).build();
-    let body = std::fs::read_to_string("config/prompts/newsroom_summary.txt")
+    let system = super::core::prompt::preamble(agents_dir, tools).build();
+    let agents_path = std::path::Path::new(agents_dir);
+    let body = std::fs::read_to_string(agents_path.join("newsroom").join("summary.md"))
         .unwrap_or_else(|_| {
             "Summarize the following newly detected GDELT events:\n\n{{items}}".to_string()
         });
-    let user = PromptBuilder::new("config/prompts")
+    let user = PromptBuilder::new(agents_path.join("_shared"))
         .append(body)
         .var("items", &items_str)
         .build();

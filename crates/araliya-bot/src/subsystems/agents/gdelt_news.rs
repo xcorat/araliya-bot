@@ -177,7 +177,7 @@ impl Agent for GdeltNewsAgent {
                 .get("gdelt_news")
                 .cloned()
                 .unwrap_or_default();
-            let (system, user_prompt) = build_summary_prompt(&items, &skills);
+            let (system, user_prompt) = build_summary_prompt(&items, &skills, &state.agents_dir);
             let llm_result = state
                 .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
                 .await;
@@ -253,7 +253,7 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
     .ok();
 }
 
-fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String) {
+fn build_summary_prompt(items: &[TextItem], tools: &[String], agents_dir: &str) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let actor1 = item.metadata.get("actor1").map(|s| s.as_str()).unwrap_or("");
@@ -296,11 +296,12 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String]) -> (String, String
         ));
     }
 
-    let system = super::core::prompt::preamble("config/prompts", tools).build();
+    let system = super::core::prompt::preamble(agents_dir, tools).build();
 
-    let body = std::fs::read_to_string("config/prompts/gdelt_news_summary.txt")
+    let agents_path = std::path::Path::new(agents_dir);
+    let body = std::fs::read_to_string(agents_path.join("gdelt_news").join("summary.md"))
         .unwrap_or_else(|_| "Summarize the following GDELT global news events:\n\n{{items}}".to_string());
-    let user = PromptBuilder::new("config/prompts")
+    let user = PromptBuilder::new(agents_path.join("_shared"))
         .append(body)
         .var("items", &items_str)
         .build();

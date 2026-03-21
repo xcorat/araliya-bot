@@ -1,4 +1,4 @@
-//! Tests for agent prompt loading from config/prompts
+//! Tests for agent prompt loading from config/agents and config/prompts (legacy).
 
 use std::fs;
 use std::path::Path;
@@ -7,6 +7,10 @@ use std::path::Path;
 /// (`crates/araliya-bot/../../` → workspace root).
 fn prompts_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/prompts")
+}
+
+fn agents_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/agents")
 }
 
 fn prompt_path(name: &str) -> std::path::PathBuf {
@@ -103,5 +107,74 @@ fn test_subagent_template_vars() {
     assert!(
         text.contains("{{subagent_role}}"),
         "subagent.md should contain {{subagent_role}} variable"
+    );
+}
+
+// ── Agent definition directory tests ─────────────────────────────────────
+
+#[test]
+fn test_shared_prompts_exist_in_agents_dir() {
+    let shared = agents_dir().join("_shared");
+    assert!(shared.join("id.md").exists(), "_shared/id.md missing");
+    assert!(shared.join("agent.md").exists(), "_shared/agent.md missing");
+    assert!(
+        shared.join("memory_and_tools.md").exists(),
+        "_shared/memory_and_tools.md missing"
+    );
+    assert!(
+        shared.join("subagent.md").exists(),
+        "_shared/subagent.md missing"
+    );
+    assert!(shared.join("tools.ms").exists(), "_shared/tools.ms missing");
+}
+
+#[test]
+fn test_agent_manifests_exist() {
+    let ad = agents_dir();
+    for agent in &[
+        "echo",
+        "basic-chat",
+        "chat",
+        "agentic-chat",
+        "docs",
+        "docs_agent",
+        "uniweb",
+        "gmail",
+        "news",
+        "gdelt_news",
+        "newsroom",
+        "news_aggregator",
+        "test_rssnews",
+        "runtime_cmd",
+        "webbuilder",
+    ] {
+        assert!(
+            ad.join(agent).join("agent.toml").exists(),
+            "agent.toml missing for {}",
+            agent
+        );
+    }
+}
+
+#[test]
+fn test_agent_prompts_co_located() {
+    let ad = agents_dir();
+    // Agents with co-located prompts
+    assert!(ad.join("agentic-chat").join("instruct.md").exists());
+    assert!(ad.join("agentic-chat").join("context.md").exists());
+    assert!(ad.join("docs").join("instruct.md").exists());
+    assert!(ad.join("docs").join("context.md").exists());
+    assert!(ad.join("chat").join("context.md").exists());
+    assert!(ad.join("news").join("summary.md").exists());
+    assert!(ad.join("gdelt_news").join("summary.md").exists());
+    assert!(ad.join("newsroom").join("summary.md").exists());
+}
+
+#[test]
+fn test_docs_agent_extends() {
+    let manifest = fs::read_to_string(agents_dir().join("docs_agent").join("agent.toml")).unwrap();
+    assert!(
+        manifest.contains(r#"extends = "docs""#),
+        "docs_agent should extend docs"
     );
 }

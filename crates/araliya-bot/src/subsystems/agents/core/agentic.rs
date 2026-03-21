@@ -126,7 +126,7 @@ pub(crate) struct AgenticLoop {
     /// Bus tools this agent is allowed to invoke (from config `skills`).
     /// Only these appear in the instruction-pass tool manifest.
     allowed_tools: Vec<String>,
-    prompts_dir: String,
+    agents_dir: String,
     /// When `true`, each turn writes intermediate data to the session KV store
     /// under `debug:turn:{n}:*` keys.  Writes are fire-and-forget.
     debug_logging: bool,
@@ -141,7 +141,7 @@ impl AgenticLoop {
         local_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
         memory_tools: Vec<Arc<dyn LocalTool + Send + Sync>>,
         allowed_tools: Vec<String>,
-        prompts_dir: impl Into<String>,
+        agents_dir: impl Into<String>,
         debug_logging: bool,
     ) -> Self {
         Self {
@@ -152,7 +152,7 @@ impl AgenticLoop {
             local_tools,
             memory_tools,
             allowed_tools,
-            prompts_dir: prompts_dir.into(),
+            agents_dir: agents_dir.into(),
             debug_logging,
         }
     }
@@ -352,8 +352,9 @@ impl AgenticLoop {
         let tool_manifest = self.build_tool_manifest(&self.allowed_tools);
         let memory_manifest = self.build_memory_manifest();
 
-        let instruct_prompt = PromptBuilder::new(&self.prompts_dir)
-            .layer(&self.instruct_prompt_file)
+        let agents_path = std::path::Path::new(&self.agents_dir);
+        let instruct_prompt = PromptBuilder::new(agents_path.join("_shared"))
+            .agent_layer(agents_path, &self.agent_id, &self.instruct_prompt_file)
             .var("tools", &tool_manifest)
             .var("memory", &memory_manifest)
             .var("user_input", &content)
@@ -576,7 +577,7 @@ impl AgenticLoop {
         }
 
         // ── Build response-pass prompt ────────────────────────────────
-        let system = preamble(&self.prompts_dir, &self.allowed_tools).build();
+        let system = preamble(&self.agents_dir, &self.allowed_tools).build();
 
         let context_ref = if context.is_empty() {
             "(no context retrieved)"
@@ -584,8 +585,8 @@ impl AgenticLoop {
             &context
         };
 
-        let response_prompt = PromptBuilder::new(&self.prompts_dir)
-            .layer(&self.context_prompt_file)
+        let response_prompt = PromptBuilder::new(agents_path.join("_shared"))
+            .agent_layer(agents_path, &self.agent_id, &self.context_prompt_file)
             .var("context", context_ref)
             .var("history", &history)
             .var("user_input", &content)

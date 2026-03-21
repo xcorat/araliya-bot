@@ -1,0 +1,3 @@
+[agent]
+extends = "docs"
+enabled = false

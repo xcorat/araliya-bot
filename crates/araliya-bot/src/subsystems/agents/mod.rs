@@ -104,6 +104,11 @@ pub struct AgentsState {
     pub agent_aggregation_targets: HashMap<String, String>,
     /// Enable per-turn debug logging to session KV store.
     pub debug_logging: bool,
+    /// Root directory for system agent definitions (`config/agents/`).
+    pub agents_dir: String,
+    /// Optional user agent definitions directory (`~/.araliya/agents/`).
+    /// When present, user definitions override system ones by agent ID.
+    pub user_agents_dir: Option<String>,
 }
 
 impl AgentsState {
@@ -119,6 +124,8 @@ impl AgentsState {
         agent_skills: HashMap<String, Vec<String>>,
         agent_aggregation_targets: HashMap<String, String>,
         debug_logging: bool,
+        agents_dir: String,
+        user_agents_dir: Option<String>,
     ) -> Self {
         Self {
             bus,
@@ -133,6 +140,8 @@ impl AgentsState {
             agent_skills,
             agent_aggregation_targets,
             debug_logging,
+            agents_dir,
+            user_agents_dir,
         }
     }
 
@@ -830,6 +839,40 @@ impl AgentsSubsystem {
             agent_identities.insert(agent_id.clone(), identity);
         }
 
+        // User agents directory: {work_dir}/agents/ (Unix-like overlay)
+        let user_agents_dir = {
+            let uad = memory.memory_root().join("agents");
+            if uad.is_dir() {
+                tracing::info!(path = %uad.display(), "user agents directory found");
+                Some(uad.to_string_lossy().to_string())
+            } else {
+                tracing::debug!(path = %uad.display(), "no user agents directory");
+                None
+            }
+        };
+
+        // Log discovered agent definitions from system + user dirs.
+        {
+            use araliya_core::config::agent_def::scan_agent_definitions;
+            let system_dir = std::path::Path::new("config/agents");
+            let system_defs = scan_agent_definitions(system_dir);
+            let mut all_ids: Vec<&str> = system_defs.keys().map(|s| s.as_str()).collect();
+            if let Some(ref uad) = user_agents_dir {
+                let user_defs = scan_agent_definitions(std::path::Path::new(uad));
+                for id in user_defs.keys() {
+                    if !system_defs.contains_key(id) {
+                        // Can't push a reference to user_defs into all_ids after this block,
+                        // so just log user-only agents separately.
+                        tracing::info!(agent_id = %id, "user agent definition (override/custom)");
+                    } else {
+                        tracing::info!(agent_id = %id, "user agent overrides system definition");
+                    }
+                }
+            }
+            all_ids.sort();
+            tracing::info!(agents = ?all_ids, "discovered agent definitions");
+        }
+
         Ok(Self {
             state: Arc::new(AgentsState::new(
                 bus,
@@ -843,6 +886,8 @@ impl AgentsSubsystem {
                 agent_skills,
                 config.agent_aggregation_targets,
                 config.debug_logging,
+                "config/agents".to_string(),
+                user_agents_dir,
             )),
             agents,
             default_agent,

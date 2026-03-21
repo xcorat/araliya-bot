@@ -211,12 +211,12 @@ fn prepare_docs_loop(
     let loop_ = AgenticLoop::new(
         "docs",
         false,
-        "docs_instruct.txt",
-        "docs_context.txt",
+        "instruct.md",
+        "context.md",
         vec![],
         vec![rag_tool],
         allowed_tools,
-        "config/prompts",
+        &state.agents_dir,
         state.debug_logging,
     );
 

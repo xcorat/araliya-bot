@@ -1,0 +1,8 @@
+[agent]
+enabled = false
+
+[memory]
+stores = ["basic_session"]
+
+[llm]
+use_instruction_llm = false

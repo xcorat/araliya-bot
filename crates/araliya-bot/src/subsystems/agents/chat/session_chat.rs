@@ -133,13 +133,17 @@ async fn handle_with_memory(
 
     // Build system preamble (identity layers) and user message separately.
     let chat_skills = state.agent_skills.get("chat").cloned().unwrap_or_default();
+    let agents_dir = std::path::Path::new(&state.agents_dir);
     let system =
-        crate::subsystems::agents::core::prompt::preamble("config/prompts", &chat_skills).build();
+        crate::subsystems::agents::core::prompt::preamble(&state.agents_dir, &chat_skills).build();
 
-    let body = std::fs::read_to_string("config/prompts/chat_context.txt").unwrap_or_else(|_| {
-        "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
-    });
-    let prompt = PromptBuilder::new("config/prompts")
+    let body = {
+        let agent_path = agents_dir.join("chat").join("context.md");
+        std::fs::read_to_string(&agent_path).unwrap_or_else(|_| {
+            "Conversation history:\n{{history}}\nUser: {{user_input}}\nAI:".to_string()
+        })
+    };
+    let prompt = PromptBuilder::new(agents_dir.join("_shared"))
         .append(body)
         .var("history", &context)
         .var("user_input", content)
