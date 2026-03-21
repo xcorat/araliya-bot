@@ -7,6 +7,8 @@ license = "GPL-3.0-only"
 default-run = "araliya-bot"
 
 [dependencies]
+araliya-core = { path = "../araliya-core" }
+araliya-supervisor = { path = "../araliya-supervisor" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }

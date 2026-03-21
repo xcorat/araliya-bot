@@ -1,7 +1,4 @@
-//! Bootstrap layer — modules that run before subsystems start.
-//!
-//! - **identity** — ed25519 keypair generation and persistence.
-//! - **logger** — tracing-subscriber initialisation.
+//! Bootstrap layer — re-exported from `araliya-core`.
 
-pub mod identity;
-pub mod logger;
+pub use araliya_core::identity;
+pub use araliya_core::logger;

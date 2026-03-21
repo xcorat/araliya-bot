@@ -30,6 +30,7 @@ pub struct Identity {
     /// Path to the identity directory (`work_dir/bot-pkey{public_id}/`).
     pub identity_dir: PathBuf,
     verifying_key: [u8; 32],
+    #[allow(dead_code)]
     signing_key_seed: [u8; 32],
 }
 
@@ -147,7 +148,7 @@ pub fn setup_named_identity(base_dir: &Path, prefix: &str) -> Result<Identity, A
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
-// TODO: would it be better if these were in a seperate utils file?
+
 /// Generate a new ed25519 keypair. Returns `(signing_key_seed, verifying_key_bytes)`.
 fn generate_keypair() -> ([u8; 32], [u8; 32]) {
     let signing_key = SigningKey::generate(&mut OsRng);

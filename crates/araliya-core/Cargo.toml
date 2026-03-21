@@ -1,0 +1,27 @@
+[package]
+name = "araliya-core"
+version = "0.2.6"
+edition = "2024"
+description = "Araliya core — shared types, config, identity, bus protocol, and subsystem contracts"
+license = "GPL-3.0-only"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "fs"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+toml = "0.8"
+ed25519-dalek = { version = "2", default-features = false, features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
+hex = "0.4"
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+thiserror = "2"
+dotenvy = "0.15"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }

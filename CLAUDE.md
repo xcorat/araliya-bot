@@ -34,13 +34,25 @@ docker-compose up --build
 ## Testing & Linting
 
 ```bash
-cargo test                           # All tests
+# Workspace-wide
+cargo test --workspace               # All tests across all crates
+cargo test -p araliya-core           # Core foundation tests (44 tests)
+cargo test -p araliya-supervisor     # Supervisor tests (6 tests)
+cargo test -p araliya-bot            # Bot subsystem tests
+
+# Feature-gated tests
 cargo test --features idocstore      # Include doc store tests
 cargo test --features ikgdocstore    # Include knowledge graph tests
 
+# Build all tiers
+cargo build -p araliya-bot                                      # Default features
+cargo build -p araliya-bot --no-default-features --features minimal
+cargo build -p araliya-bot --all-features
+
 # Linting/formatting
-cargo check
-cargo clippy -- -D warnings
+cargo check --workspace
+cargo clippy -p araliya-core -- -D warnings
+cargo clippy -p araliya-supervisor -- -D warnings
 cargo fmt --check
 
 # Frontend type checking
@@ -50,6 +62,7 @@ cd frontend/svui && pnpm check
 To run a single test:
 ```bash
 cargo test test_name
+cargo test -p araliya-core test_name
 cargo test module::path::test_name
 ```
 
@@ -73,7 +86,14 @@ Feature-gated code uses `#[cfg(feature = "feature-name")]` throughout.
 
 ## Architecture
 
-**Single-process supervisor** — all subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
+**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, and subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
+
+**Crate dependency DAG:**
+```
+araliya-core          ← foundation: config, error, identity, bus protocol, traits
+araliya-supervisor    ← dispatch loop, control plane, management, adapters (depends on core)
+araliya-bot           ← binary + all subsystems (depends on core + supervisor)
+```
 
 **Bus routing** (method prefix → subsystem):
 ```
@@ -96,10 +116,10 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - `tools/` — external actions (Gmail MVP)
 - `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
 
-**Key traits** (`src/subsystems/runtime.rs`):
-- `Component` — pluggable subsystem lifecycle
-- `BusHandler` — standardized request handling
-- `Agent` — pluggable agent interface
+**Key traits** (defined in `araliya-core`, re-exported through shims in `araliya-bot`):
+- `Component` — pluggable subsystem lifecycle (`araliya_core::runtime`)
+- `BusHandler` — standardized request handling (`araliya_core::bus`)
+- `Agent` — pluggable agent interface (`crates/araliya-bot/src/subsystems/agents/`)
 
 **Bot identity** — persistent ed25519 keypair at `~/.araliya/bot-pkey{bot_id}/`; `bot_id` = first 8 hex chars of SHA256(verifying_key). Stable across restarts.
 
@@ -124,27 +144,41 @@ See `.env.example` for full list. Config format documented in `docs/configuratio
 ## Code Layout
 
 ```
-crates/araliya-bot/src/
-├── main.rs              # Entry point, CLI parsing
-├── lib.rs               # Library exports
-├── bootstrap/           # Identity & logger init
-├── core/                # Config loading, error types
-├── llm/                 # LLM provider abstraction
-├── supervisor/          # Bus router, dispatch loop
-├── subsystems/
-│   ├── runtime.rs       # Component/BusHandler/Agent traits
-│   ├── agents/          # Agent routing + all agent plugins
-│   ├── comms/           # Channel plugins
-│   ├── llm/             # LLM handler
-│   ├── memory/          # Session & transcript stores
-│   ├── cron/            # Scheduler
-│   ├── tools/           # Tool execution
-│   └── ui/              # UI backends
-└── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
+crates/
+├── araliya-core/src/        # Shared foundation (config, error, identity, bus protocol, traits)
+│   ├── config/              # Config types, TOML loading, env overrides
+│   ├── bus/                 # BusMessage, BusPayload, BusHandler, HealthRegistry, ComponentInfo
+│   ├── runtime.rs           # Component trait, SubsystemHandle
+│   ├── types/llm.rs         # StreamChunk, LlmUsage, LlmTiming, ModelRates
+│   ├── identity.rs          # Ed25519 keypair management
+│   ├── logger.rs            # Tracing logger init
+│   └── error.rs             # AppError enum
+├── araliya-supervisor/src/  # Runtime orchestrator
+│   ├── run.rs               # Supervisor dispatch loop
+│   ├── control.rs           # ControlCommand, ControlHandle, SupervisorControl
+│   ├── management.rs        # ManagementSubsystem (manage/* bus handler)
+│   └── adapters/            # stdio REPL, Unix domain socket
+└── araliya-bot/src/         # Binary + all subsystems
+    ├── main.rs              # Entry point, CLI parsing
+    ├── lib.rs               # Library exports
+    ├── bootstrap/           # Re-exports from araliya-core (identity, logger)
+    ├── core/                # Re-exports from araliya-core (config, error)
+    ├── supervisor/          # Re-exports from araliya-core + araliya-supervisor
+    ├── llm/                 # LLM provider abstraction (OpenAI-compatible, Qwen, dummy)
+    ├── subsystems/
+    │   ├── runtime.rs       # Re-exports from araliya-core
+    │   ├── agents/          # Agent routing + all agent plugins
+    │   ├── comms/           # Channel plugins (PTY, Telegram, HTTP, Axum)
+    │   ├── llm/             # LLM bus handler
+    │   ├── memory/          # Session & transcript stores
+    │   ├── cron/            # Scheduler
+    │   ├── tools/           # Tool execution
+    │   └── ui/              # UI backends
+    └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
 
-frontend/svui/           # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)
-config/                  # TOML config files + prompts/
-docs/                    # Architecture, operations, development docs
+frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)
+config/                      # TOML config files + prompts/
+docs/                        # Architecture, operations, development docs
 ```
 
 ## Testing Patterns

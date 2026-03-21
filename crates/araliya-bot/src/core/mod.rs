@@ -1,7 +1,4 @@
-//! Core infrastructure — shared foundation used across the whole crate.
-//!
-//! - **config** — configuration loading and resolved types.
-//! - **error** — application-wide error enum.
+//! Core infrastructure — re-exported from `araliya-core`.
 
-pub mod config;
-pub mod error;
+pub use araliya_core::config;
+pub use araliya_core::error;

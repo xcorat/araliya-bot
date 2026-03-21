@@ -9,9 +9,9 @@
 
 pub mod providers;
 
-pub use providers::openai_compatible::StreamChunk;
+// Re-export shared types from araliya-core so `use crate::llm::*` continues to work.
+pub use araliya_core::types::llm::{StreamChunk, LlmTiming, LlmUsage, ModelRates};
 
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 // ── Error ─────────────────────────────────────────────────────────────────────
@@ -22,52 +22,6 @@ pub enum ProviderError {
     UnknownProvider(String),
     #[error("provider request failed: {0}")]
     Request(String),
-}
-
-// ── Timing ────────────────────────────────────────────────────────────────────
-
-/// Wall-clock latency for a single LLM completion.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmTiming {
-    /// Milliseconds from the start of the HTTP request until the first content
-    /// token was received (streaming only; `None` for non-streaming completions).
-    pub ttft_ms: Option<u64>,
-    /// Total milliseconds from the start of the HTTP request until the last
-    /// byte was received (or the response was fully parsed for non-streaming).
-    pub total_ms: u64,
-}
-
-// ── Usage / cost ──────────────────────────────────────────────────────────────
-
-/// Token counts returned by the provider for a single completion.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct LlmUsage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    /// Tokens that matched the provider-side prompt cache (billed at a lower rate).
-    pub cached_input_tokens: u64,
-    /// Internal reasoning tokens consumed before producing the visible output
-    /// (OpenAI o-series only). Zero for models that expose reasoning via
-    /// `reasoning_content` instead (Qwen3, DeepSeek-R1).
-    #[serde(default)]
-    pub reasoning_tokens: u64,
-}
-
-/// Per-model pricing rates (USD per 1 million tokens).
-#[derive(Debug, Clone, Default)]
-pub struct ModelRates {
-    pub input_per_million_usd: f64,
-    pub output_per_million_usd: f64,
-    pub cached_input_per_million_usd: f64,
-}
-
-impl LlmUsage {
-    /// Compute the cost in USD for this usage given the model's rates.
-    pub fn cost_usd(&self, rates: &ModelRates) -> f64 {
-        (self.input_tokens as f64 / 1_000_000.0) * rates.input_per_million_usd
-            + (self.output_tokens as f64 / 1_000_000.0) * rates.output_per_million_usd
-            + (self.cached_input_tokens as f64 / 1_000_000.0) * rates.cached_input_per_million_usd
-    }
 }
 
 // ── Response ──────────────────────────────────────────────────────────────────

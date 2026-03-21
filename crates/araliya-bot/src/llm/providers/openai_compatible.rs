@@ -12,27 +12,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use crate::llm::{LlmResponse, LlmTiming, LlmUsage, ProviderError};
-
-// ── Stream chunk ──────────────────────────────────────────────────────────────
-
-/// A single chunk emitted during a streaming completion.
-///
-/// Chunks arrive in two phases: first all `Thinking` deltas (reasoning content),
-/// then all `Content` deltas (final answer), then one `Done` with usage totals.
-/// Providers that do not support streaming emit exactly one `Content` + one `Done`.
-#[derive(Debug, Clone)]
-pub enum StreamChunk {
-    /// A delta from the model's internal reasoning phase (`reasoning_content`).
-    Thinking(String),
-    /// A delta from the model's visible output (`content`).
-    Content(String),
-    /// End of stream; carries token usage and wall-clock timing if available.
-    Done {
-        usage: Option<LlmUsage>,
-        timing: Option<LlmTiming>,
-    },
-}
+use crate::llm::{LlmResponse, LlmTiming, LlmUsage, ProviderError, StreamChunk};
 
 // ── Public provider ───────────────────────────────────────────────────────────
 

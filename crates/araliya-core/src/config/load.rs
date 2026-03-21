@@ -493,15 +493,15 @@ pub fn load_from(
 /// Expand a leading `~` to the user's home directory.
 /// Absolute or relative paths without `~` are returned unchanged.
 pub fn expand_home(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
     }
-    if path == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
+    if path == "~"
+        && let Some(home) = dirs::home_dir()
+    {
+        return home;
     }
     PathBuf::from(path)
 }

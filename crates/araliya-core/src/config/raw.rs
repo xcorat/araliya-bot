@@ -58,7 +58,7 @@ pub(super) struct RawPty {
     pub enabled: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub(super) struct RawTelegram {
     #[serde(default = "default_false")]
     pub enabled: bool,
@@ -339,21 +339,12 @@ pub(super) struct RawUi {
     pub svui: RawSvui,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub(super) struct RawSvui {
     #[serde(default = "default_false")]
     pub enabled: bool,
     #[serde(default)]
     pub static_dir: Option<String>,
-}
-
-impl Default for RawSvui {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            static_dir: None,
-        }
-    }
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -415,11 +406,6 @@ impl Default for RawPty {
     }
 }
 
-impl Default for RawTelegram {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 impl Default for RawHttp {
     fn default() -> Self {
