@@ -39,14 +39,16 @@ docker-compose up --build
 
 ```bash
 # Workspace-wide
-cargo test --workspace               # All tests across all crates (~311 tests)
+cargo test --workspace               # All tests across all crates (~318 tests)
 cargo test -p araliya-core           # Core foundation tests (44 tests)
 cargo test -p araliya-supervisor     # Supervisor tests (6 tests)
 cargo test -p araliya-llm            # LLM provider tests (10 tests — includes dummy dispatch)
 cargo test -p araliya-comms          # Comms state tests (4 tests)
+cargo test -p araliya-memory         # Memory subsystem tests (64 base, 91 with features)
 cargo test -p araliya-bot            # Bot subsystem tests
 
 # Feature-gated tests
+cargo test -p araliya-memory --features "isqlite,idocstore,ikgdocstore"
 cargo test --features idocstore      # Include doc store tests
 cargo test --features ikgdocstore    # Include knowledge graph tests
 
@@ -94,7 +96,7 @@ Feature-gated code uses `#[cfg(feature = "feature-name")]` throughout.
 
 ## Architecture
 
-**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, LLM providers in `araliya-llm`, I/O channels in `araliya-comms`, and remaining subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
+**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, LLM providers in `araliya-llm`, I/O channels in `araliya-comms`, session management in `araliya-memory`, and remaining subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
 
 **Crate dependency DAG:**
 ```
@@ -102,6 +104,7 @@ araliya-core          ← foundation: config, error, identity, bus protocol, tra
 araliya-supervisor    ← dispatch loop, control plane, management, adapters (depends on core)
 araliya-llm           ← LLM provider abstraction: OpenAI-compatible, Qwen, dummy (depends on core)
 araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on core)
+araliya-memory        ← session management, stores (doc, KG, SQL); bus handler (depends on core)
 araliya-bot           ← binary + remaining subsystems (depends on all above)
 ```
 
@@ -121,7 +124,7 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - `comms/` — shim re-exporting from `araliya-comms` (PTY, Telegram, HTTP, Axum channels)
 - `agents/` — message routing with pluggable `Agent` trait; built-in agents: `echo`, `basic-chat`, `chat`, `gmail`, `news`, `docs`
 - `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
-- `memory/` — session + transcript store; optional SQLite-backed doc store (`idocstore`) and knowledge graph (`ikgdocstore`)
+- `memory/` — shim re-exporting from `araliya-memory` (session lifecycle, stores, bus handler)
 - `cron/` — timer-based event scheduling
 - `tools/` — external actions (Gmail MVP)
 - `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
@@ -132,6 +135,21 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - `Agent` — pluggable agent interface (`crates/araliya-bot/src/subsystems/agents/`)
 
 **Bot identity** — persistent ed25519 keypair at `~/.araliya/bot-pkey{bot_id}/`; `bot_id` = first 8 hex chars of SHA256(verifying_key). Stable across restarts.
+
+## Modularization Plan
+
+**Phase 5 (complete): Memory subsystem extraction** — `araliya-memory` crate.
+- `MemorySystem` lifecycle: `new()`, `create_session()`, `load_session()`, `list_sessions()`
+- `SessionStore` trait with 5 implementations: `BasicSessionStore`, `TmpStore`, `AgentStore`, `SqliteStore`, `IDocStore`, `IKGDocStore`
+- `MemoryBusHandler` for `memory/kg_graph` and `memory/status` (management plane, read-only)
+- Feature-gated document stores: `idocstore` (BM25 FTS), `ikgdocstore` (KG extraction + BFS)
+- Background `DocstoreManager` for auto-indexing and orphan cleanup
+- Shim re-exports in `araliya-bot/subsystems/memory/` preserve all `use crate::subsystems::memory::*` call sites
+
+**Future phases:**
+- Phase 6: Extract tools subsystem (`araliya-tools`)
+- Phase 7: Extract cron subsystem (`araliya-cron`)
+- Phase 8: Extract agents registry + routing (`araliya-agents`)
 
 ## Configuration
 
@@ -178,6 +196,23 @@ crates/
 │   ├── telegram.rs          # Telegram channel (cfg: channel-telegram)
 │   ├── http/                # HTTP channel (cfg: channel-http)
 │   └── axum_channel/        # Axum channel (cfg: channel-axum)
+├── araliya-memory/src/      # Memory subsystem (session management, stores, bus handler)
+│   ├── lib.rs               # MemorySystem, SessionInfo, SessionSpend, MemoryConfig
+│   ├── bus.rs               # MemoryBusHandler (management plane, read-only kg_graph queries)
+│   ├── handle.rs            # SessionHandle async API
+│   ├── rw.rs                # SessionRw blocking I/O dispatch
+│   ├── types.rs             # PrimaryValue, Obj, TextFile, Value
+│   ├── collections.rs       # Doc, Block, Collection
+│   ├── store.rs             # SessionStore trait + Store
+│   ├── docstore_manager.rs  # Background maintenance task (feature: idocstore)
+│   └── stores/              # Store implementations
+│       ├── basic_session.rs # Capped KV + transcript (in-memory)
+│       ├── tmp.rs           # Ephemeral typed collections
+│       ├── agent.rs         # Persistent agent-scoped sessions
+│       ├── sqlite_core.rs   # Shared SQLite helpers
+│       ├── sqlite_store.rs  # General-purpose typed SQL (feature: isqlite)
+│       ├── docstore.rs      # FTS5 document index (feature: idocstore)
+│       └── kg_docstore.rs   # Document store + knowledge graph (feature: ikgdocstore)
 └── araliya-bot/src/         # Binary + remaining subsystems
     ├── main.rs              # Entry point, CLI parsing
     ├── lib.rs               # Library exports
@@ -190,7 +225,8 @@ crates/
     │   ├── agents/          # Agent routing + all agent plugins
     │   ├── comms/           # Shim re-exporting from araliya-comms
     │   ├── llm/             # LLM bus handler
-    │   ├── memory/          # Session & transcript stores
+    │   ├── memory/          # Shim re-exporting from araliya-memory
+    │   ├── memory_bus/      # Shim re-exporting MemoryBusHandler
     │   ├── cron/            # Scheduler
     │   ├── tools/           # Tool execution
     │   └── ui/              # UI backends (UiServe trait in araliya-core)
