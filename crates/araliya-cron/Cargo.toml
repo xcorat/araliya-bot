@@ -1,0 +1,18 @@
+[package]
+name = "araliya-cron"
+version = "0.2.6"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+araliya-core = { path = "../araliya-core" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[features]
+default = []
+subsystem-cron = []

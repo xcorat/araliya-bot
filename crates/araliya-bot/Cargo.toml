@@ -13,6 +13,7 @@ araliya-llm = { path = "../araliya-llm" }
 araliya-comms = { path = "../araliya-comms" }
 araliya-memory = { path = "../araliya-memory" }
 araliya-tools = { path = "../araliya-tools", optional = true }
+araliya-cron = { path = "../araliya-cron", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
@@ -101,7 +102,7 @@ subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = ["araliya-comms/subsystem-ui"]
 subsystem-tools = ["dep:araliya-tools", "araliya-tools/subsystem-tools"]
-subsystem-cron = []
+subsystem-cron = ["dep:araliya-cron", "araliya-cron/subsystem-cron"]
 subsystem-runtimes = []
 
 # Agent Plugins

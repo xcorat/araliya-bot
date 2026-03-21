@@ -148,6 +148,7 @@ version = "0.2.6"
 dependencies = [
  "araliya-comms",
  "araliya-core",
+ "araliya-cron",
  "araliya-llm",
  "araliya-memory",
  "araliya-supervisor",
@@ -220,6 +221,19 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "araliya-cron"
+version = "0.2.6"
+dependencies = [
+ "araliya-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "uuid",
 ]
 

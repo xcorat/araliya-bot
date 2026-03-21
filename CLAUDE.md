@@ -45,6 +45,7 @@ cargo test -p araliya-supervisor     # Supervisor tests (6 tests)
 cargo test -p araliya-llm            # LLM provider tests (10 tests — includes dummy dispatch)
 cargo test -p araliya-comms          # Comms state tests (4 tests)
 cargo test -p araliya-memory         # Memory subsystem tests (64 base, 91 with features)
+cargo test -p araliya-cron           # Cron service tests (4 tests)
 cargo test -p araliya-bot            # Bot subsystem tests
 
 # Feature-gated tests
@@ -64,6 +65,7 @@ cargo clippy -p araliya-supervisor -- -D warnings
 cargo clippy -p araliya-llm -- -D warnings
 cargo clippy -p araliya-comms --all-features -- -D warnings
 cargo clippy -p araliya-tools -- -D warnings
+cargo clippy -p araliya-cron -- -D warnings
 cargo fmt --check
 
 # Frontend type checking
@@ -107,6 +109,7 @@ araliya-llm           ← LLM provider abstraction: OpenAI-compatible, Qwen, dum
 araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on core)
 araliya-memory        ← session management, stores (doc, KG, SQL); bus handler (depends on core)
 araliya-tools         ← external tool integrations: Gmail, GDELT BigQuery, RSS (depends on core)
+araliya-cron          ← timer-based event scheduling; BusHandler for cron/* (depends on core)
 araliya-bot           ← binary + remaining subsystems (depends on all above)
 ```
 
@@ -127,7 +130,7 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - `agents/` — agent routing + registration; loads system agents from `config/agents/` and user agents from `~/.araliya/agents/`; built-in agents: `echo`, `basic-chat`, `chat`, `agentic-chat`, `docs`, `uniweb`, `gmail`, `news`, `gdelt_news`, `newsroom`, `news_aggregator`, `test_rssnews`, `webbuilder`, `runtime_cmd`, `docs_agent`
 - `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
 - `memory/` — shim re-exporting from `araliya-memory` (session lifecycle, stores, bus handler)
-- `cron/` — timer-based event scheduling
+- `cron/` — shim re-exporting from `araliya-cron`
 - `tools/` — shim re-exporting from `araliya-tools` (Gmail, GDELT BigQuery, RSS)
 - `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
 
@@ -156,6 +159,12 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - Core agents: echo, basic-chat, chat, agentic-chat, docs, uniweb
 - Plugin agents: gmail, news, gdelt_news, newsroom, news_aggregator, test_rssnews, webbuilder, runtime_cmd, docs_agent
 
+**Phase 8 (complete): Cron subsystem extraction** — `araliya-cron` crate.
+- `CronSubsystem` (BusHandler) + `CronService` (background timer loop) moved to `araliya-cron`
+- Zero-polling BTreeMap priority queue; `cron/schedule`, `cron/cancel`, `cron/list` bus methods
+- 4 timer service tests migrated with the crate
+- Shim re-export in `araliya-bot/subsystems/cron/mod.rs`
+
 **Phase 7 (complete): Tools subsystem extraction** — `araliya-tools` crate.
 - `ToolsSubsystem` struct + `BusHandler` impl moved to `araliya-tools/src/dispatcher.rs`
 - Tool implementations moved: `gmail.rs`, `newsmail_aggregator.rs`, `gdelt_bigquery.rs`, `rss_fetch.rs`
@@ -163,8 +172,7 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - Shim re-export in `araliya-bot/subsystems/tools/mod.rs` preserves all call sites
 
 **Future phases:**
-- Phase 8: Extract cron subsystem (`araliya-cron`)
-- Phase 9: Extract agents registry + routing (`araliya-agents`)
+- Phase 9: Agents extraction — deferred; requires plugin-registration refactor to avoid circular deps
 
 ## Configuration
 
@@ -211,6 +219,10 @@ crates/
 │   ├── telegram.rs          # Telegram channel (cfg: channel-telegram)
 │   ├── http/                # HTTP channel (cfg: channel-http)
 │   └── axum_channel/        # Axum channel (cfg: channel-axum)
+├── araliya-cron/src/        # Cron subsystem (timer scheduling)
+│   ├── lib.rs               # pub use dispatcher::CronSubsystem
+│   ├── dispatcher.rs        # CronSubsystem + BusHandler impl
+│   └── service.rs           # CronService background timer loop (4 tests)
 ├── araliya-tools/src/       # Tools subsystem (external integrations)
 │   ├── lib.rs               # Public re-exports
 │   ├── dispatcher.rs        # ToolsSubsystem + BusHandler impl

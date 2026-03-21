@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
 
-use crate::supervisor::bus::{BusHandle, BusPayload, CronEntryInfo, CronScheduleSpec};
+use araliya_core::bus::{BusHandle, BusPayload, CronEntryInfo, CronScheduleSpec};
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -249,7 +249,7 @@ fn instant_to_unix_ms(instant: Instant) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::supervisor::bus::SupervisorBus;
+    use araliya_core::bus::SupervisorBus;
     use tokio::time;
 
     /// Helper: spawn a CronService and return its command sender + a bus receiver
@@ -257,7 +257,7 @@ mod tests {
     fn spawn_test_cron() -> (
         mpsc::Sender<CronCommand>,
         CancellationToken,
-        mpsc::Receiver<crate::supervisor::bus::BusMessage>,
+        mpsc::Receiver<araliya_core::bus::BusMessage>,
     ) {
         let bus = SupervisorBus::new(64);
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
@@ -372,7 +372,7 @@ mod tests {
             .expect("bus closed");
 
         match msg {
-            crate::supervisor::bus::BusMessage::Notification { method, .. } => {
+            araliya_core::bus::BusMessage::Notification { method, .. } => {
                 assert_eq!(method, "test/tick");
             }
             _ => panic!("expected Notification, got Request"),
@@ -408,7 +408,7 @@ mod tests {
             .expect("bus closed");
 
         match msg {
-            crate::supervisor::bus::BusMessage::Notification { method, .. } => {
+            araliya_core::bus::BusMessage::Notification { method, .. } => {
                 assert_eq!(method, "test/once");
             }
             _ => panic!("expected Notification"),
