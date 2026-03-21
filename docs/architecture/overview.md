@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Version:** v0.6 — runtime-classified agents · `AgentRuntimeClass` taxonomy · `AgentRegistration` model · `BusHandler` trait · concurrent channel tasks · `Component` trait · `Agent` trait · `OpenAiCompatibleProvider` · capability-scoped state · compile-time modularity via Cargo features · chat-family composition (`ChatCore`) · memory subsystem with pluggable stores · `MemoryBusHandler` (`memory/*` prefix) for read-only bus-mediated KG access · UI subsystem (`svui` backend) · cron subsystem · tools subsystem (Gmail MVP) · LLM token usage tracking and per-session cost accounting.
+**Version:** v0.7 — full multi-crate workspace · `araliya-agents` crate extraction complete · all 9 subsystems in dedicated crates · `araliya-bot` is pure binary wiring · no shim re-exports · orphaned deps purged.
 
 ---
 
@@ -12,6 +12,28 @@
 - **Non-blocking supervisor loop** — the supervisor is a pure router; it forwards `reply_tx` ownership to handlers and returns immediately.
 - **Split planes** — subsystem traffic uses the supervisor bus; supervisor management uses an internal control plane.
 - **Compile-time Modularity** — Subsystems and agents can be disabled via Cargo features to optimize binary size and memory footprint.
+
+---
+
+## Crate Workspace
+
+The codebase is a multi-crate Cargo workspace. Each crate is an independently compilable library; `araliya-bot` is the thin binary that wires them.
+
+```
+araliya-core          Tier 0 — config, error, identity, bus protocol, Component/BusHandler traits
+araliya-supervisor    Tier 1 — dispatch loop, control plane, management, stdio/UDS adapters
+araliya-llm           Tier 1 — LLM provider abstraction (OpenAI-compatible, Qwen, dummy)
+araliya-comms         Tier 1 — I/O channels: PTY, Axum, HTTP, Telegram (all feature-gated)
+araliya-memory        Tier 1 — session lifecycle, pluggable stores, bus handler
+araliya-tools         Tier 1 — external tools: Gmail, GDELT BigQuery, RSS
+araliya-cron          Tier 1 — timer-based scheduling, BusHandler for cron/*
+araliya-agents        Tier 2 — Agent trait, AgentsSubsystem, all 15 built-in agent plugins
+araliya-bot           Tier 3 — binary: main.rs + LLM/runtimes/UI subsystems
+```
+
+Each crate depends only on `araliya-core` plus the Tier 1 crates it needs. `araliya-agents` depends on `araliya-core`, `araliya-memory`, and `araliya-llm` (for `ModelRates`). No circular dependencies.
+
+Feature flags are per-crate. `araliya-bot` forwards plugin/channel flags to the appropriate crates via `araliya-agents/plugin-*`, `araliya-comms/channel-*`, etc.
 
 ---
 

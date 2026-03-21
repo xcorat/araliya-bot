@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use araliya_bot::subsystems::memory::stores::kg_docstore::{
+use araliya_memory::stores::kg_docstore::{
     Document, IKGDocStore, KgConfig, KgSearchResult,
 };
 use tempfile::TempDir;
@@ -274,7 +274,7 @@ fn search_with_kg_context_contains_kg_summary_section() {
 #[cfg(feature = "idocstore")]
 #[test]
 fn idocstore_and_ikgdocstore_coexist() {
-    use araliya_bot::subsystems::memory::stores::docstore::IDocStore;
+    use araliya_memory::stores::docstore::IDocStore;
 
     let temp = TempDir::new().expect("tempdir");
     let identity_dir = temp.path().join("agent");

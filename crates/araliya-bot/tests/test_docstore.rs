@@ -9,8 +9,8 @@ use std::fs;
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
-use araliya_bot::subsystems::memory::stores::docstore::{Document, IDocStore};
-use araliya_bot::subsystems::memory::{MemoryConfig, MemorySystem};
+use araliya_memory::stores::docstore::{Document, IDocStore};
+use araliya_memory::{MemoryConfig, MemorySystem};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
