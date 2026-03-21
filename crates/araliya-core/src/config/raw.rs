@@ -406,7 +406,6 @@ impl Default for RawPty {
     }
 }
 
-
 impl Default for RawHttp {
     fn default() -> Self {
         Self {

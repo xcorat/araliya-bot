@@ -163,6 +163,7 @@ impl PromptBuilder {
     }
 
     /// Register `{{key}}` → `value` substitution pairs applied at build time.
+    #[allow(dead_code)]
     pub fn with_vars<'a, I>(mut self, vars: I) -> Self
     where
         I: IntoIterator<Item = (&'a str, &'a str)>,
@@ -202,6 +203,7 @@ pub fn preamble(agents_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder
 }
 
 /// Convenience: build the standard preamble and append a subagent layer.
+#[allow(dead_code)]
 pub fn subagent_preamble(agents_dir: impl AsRef<Path>, tools: &[String]) -> PromptBuilder {
     preamble(agents_dir, tools).layer("subagent.md")
 }

@@ -213,7 +213,7 @@ fn epoch_to_iso8601(epoch_secs: u64) -> String {
 
     let mut yr = 1970u64;
     loop {
-        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) {
+        let ydays = if yr.is_multiple_of(4) && (!yr.is_multiple_of(100) || yr.is_multiple_of(400)) {
             366
         } else {
             365
@@ -225,7 +225,7 @@ fn epoch_to_iso8601(epoch_secs: u64) -> String {
         yr += 1;
     }
 
-    let leap = yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0);
+    let leap = yr.is_multiple_of(4) && (!yr.is_multiple_of(100) || yr.is_multiple_of(400));
     let mdays: [u64; 12] = [
         31,
         if leap { 29 } else { 28 },

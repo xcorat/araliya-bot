@@ -7,8 +7,8 @@ pub mod dummy;
 pub mod openai_compatible;
 pub mod qwen;
 
-use araliya_core::config::LlmConfig;
 use crate::{LlmProvider, ProviderError};
+use araliya_core::config::LlmConfig;
 
 /// Construct a `LlmProvider` from config and an optional API key.
 ///

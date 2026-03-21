@@ -41,7 +41,7 @@ const TRANSCRIPT_FILENAME: &str = "transcript.md";
 /// `order` records insertion order so FIFO eviction is deterministic.
 /// `values` is a plain string map — structurally identical to a serialised [`Doc`].
 #[derive(serde::Serialize, serde::Deserialize)]
-struct KvFile {
+pub(crate) struct KvFile {
     cap: usize,
     /// Insertion-ordered list of active keys.
     order: Vec<String>,
@@ -349,7 +349,7 @@ fn secs_to_utc(epoch_secs: u64) -> (u64, u64, u64, u64, u64, u64) {
 }
 
 fn is_leap(y: u64) -> bool {
-    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+    y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400))
 }
 
 #[cfg(test)]

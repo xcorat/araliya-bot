@@ -21,9 +21,9 @@ use tracing::warn;
 
 use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use araliya_core::config::DocsKgConfig;
 use araliya_memory::stores::docstore::IDocStore;
-use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 const ERR_INTERNAL: i32 = -32000;
 
@@ -135,6 +135,7 @@ struct DocsSetup {
 ///
 /// Returns `Err(BusResult)` on validation failures that should be sent back
 /// to the caller immediately.
+#[allow(clippy::result_large_err)]
 fn prepare_docs_loop(
     action: &str,
     content: String,

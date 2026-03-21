@@ -9,9 +9,9 @@ mod ui;
 use std::sync::Arc;
 
 use axum::{
-    Router,
     http::StatusCode,
     routing::{get, post},
+    Router,
 };
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -59,8 +59,7 @@ impl AxumChannel {
         bind_addr: impl Into<String>,
         state: Arc<CommsState>,
         ui_handle: OptionalUiHandle,
-        #[cfg(feature = "plugin-webbuilder")]
-        preview_root: Option<std::path::PathBuf>,
+        #[cfg(feature = "plugin-webbuilder")] preview_root: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
@@ -98,8 +97,7 @@ async fn run_axum(
     bind_addr: String,
     comms: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
-    #[cfg(feature = "plugin-webbuilder")]
-    preview_root: Option<std::path::PathBuf>,
+    #[cfg(feature = "plugin-webbuilder")] preview_root: Option<std::path::PathBuf>,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let axum_state = AxumState {

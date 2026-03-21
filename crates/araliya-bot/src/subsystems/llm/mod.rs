@@ -15,12 +15,12 @@ use araliya_llm::providers;
 use araliya_llm::{LlmProvider, ModelRates, ProviderError};
 use tokio::sync::mpsc;
 
-use araliya_core::bus::message::{
-    BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND, StreamReceiver,
-};
 use araliya_core::bus::component::{ComponentInfo, ComponentStatusResponse};
 use araliya_core::bus::dispatch::BusHandler;
 use araliya_core::bus::health::HealthReporter;
+use araliya_core::bus::message::{
+    BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND, StreamReceiver,
+};
 
 /// Interval between background provider reachability checks.
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
@@ -32,6 +32,7 @@ pub struct LlmSubsystem {
     /// Optional instruction-pass provider (`[llm.instruction]`).
     /// When present, `llm/instruct` requests are routed here instead of `provider`.
     instruction_provider: Option<LlmProvider>,
+    #[allow(dead_code)]
     rates: ModelRates,
     reporter: Option<HealthReporter>,
 }

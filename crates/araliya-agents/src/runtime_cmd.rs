@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 
-use araliya_core::config::RuntimeCmdAgentConfig;
 use araliya_core::bus::message::{BusPayload, BusResult};
+use araliya_core::config::RuntimeCmdAgentConfig;
 
 use super::{Agent, AgentsState};
 

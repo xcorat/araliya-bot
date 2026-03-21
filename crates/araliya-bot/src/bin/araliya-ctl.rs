@@ -142,9 +142,9 @@ fn resolve_socket_path(override_path: Option<String>) -> PathBuf {
         return PathBuf::from(p);
     }
     if let Ok(work_dir) = std::env::var("ARALIYA_WORK_DIR") {
-        let expanded = if work_dir.starts_with("~/") {
+        let expanded = if let Some(stripped) = work_dir.strip_prefix("~/") {
             if let Some(home) = home_dir() {
-                home.join(&work_dir[2..])
+                home.join(stripped)
             } else {
                 PathBuf::from(&work_dir)
             }
@@ -161,10 +161,10 @@ fn resolve_socket_path(override_path: Option<String>) -> PathBuf {
 
 fn home_dir() -> Option<PathBuf> {
     // Use $HOME env var first (works in most cases incl. sudo -u).
-    if let Ok(h) = std::env::var("HOME") {
-        if !h.is_empty() {
-            return Some(PathBuf::from(h));
-        }
+    if let Ok(h) = std::env::var("HOME")
+        && !h.is_empty()
+    {
+        return Some(PathBuf::from(h));
     }
     // fallback: dirs crate
     dirs::home_dir()

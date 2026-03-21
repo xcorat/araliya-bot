@@ -315,25 +315,23 @@ async fn ensure_access_token(
     fixed_port: Option<u16>,
     explicit_redirect_uri: Option<&str>,
 ) -> Result<String, String> {
-    if !force_auth {
-        if let Some(cache) = load_token_cache() {
-            let now = now_unix();
-            if cache.expires_at > now + 60 {
-                return Ok(cache.access_token);
-            }
+    if !force_auth && let Some(cache) = load_token_cache() {
+        let now = now_unix();
+        if cache.expires_at > now + 60 {
+            return Ok(cache.access_token);
+        }
 
-            if let Some(refresh) = cache.refresh_token.clone() {
-                let refreshed = refresh_token(client, client_id, client_secret, &refresh).await?;
-                let merged = TokenCache {
-                    access_token: refreshed.access_token,
-                    refresh_token: Some(refresh),
-                    expires_at: now_unix() + refreshed.expires_in.unwrap_or(3600),
-                    scope: refreshed.scope,
-                    token_type: refreshed.token_type,
-                };
-                save_token_cache(&merged)?;
-                return Ok(merged.access_token);
-            }
+        if let Some(refresh) = cache.refresh_token.clone() {
+            let refreshed = refresh_token(client, client_id, client_secret, &refresh).await?;
+            let merged = TokenCache {
+                access_token: refreshed.access_token,
+                refresh_token: Some(refresh),
+                expires_at: now_unix() + refreshed.expires_in.unwrap_or(3600),
+                scope: refreshed.scope,
+                token_type: refreshed.token_type,
+            };
+            save_token_cache(&merged)?;
+            return Ok(merged.access_token);
         }
     }
 

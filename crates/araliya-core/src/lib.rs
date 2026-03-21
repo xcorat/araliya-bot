@@ -9,11 +9,11 @@
 //! - **runtime** — generic subsystem component model
 //! - **types** — shared types (LLM usage, timing, streaming chunks)
 
+pub mod bus;
 pub mod config;
 pub mod error;
 pub mod identity;
 pub mod logger;
-pub mod bus;
 pub mod runtime;
 pub mod types;
 pub mod ui;

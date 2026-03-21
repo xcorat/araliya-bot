@@ -26,8 +26,8 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::warn;
 
-use araliya_llm::StreamChunk;
 use araliya_core::bus::message::{BusPayload, BusResult, StreamReceiver};
+use araliya_llm::StreamChunk;
 
 use super::super::AgentsState;
 use super::tools;
@@ -200,12 +200,12 @@ fn parse_llm_response(text: &str) -> Option<LlmResponse> {
     };
 
     // Try to find a JSON object in the text.
-    if let Some(start) = json_text.find('{') {
-        if let Some(end) = json_text.rfind('}') {
-            let slice = &json_text[start..=end];
-            if let Ok(resp) = serde_json::from_str::<LlmResponse>(slice) {
-                return Some(resp);
-            }
+    if let Some(start) = json_text.find('{')
+        && let Some(end) = json_text.rfind('}')
+    {
+        let slice = &json_text[start..=end];
+        if let Ok(resp) = serde_json::from_str::<LlmResponse>(slice) {
+            return Some(resp);
         }
     }
     None
@@ -242,7 +242,12 @@ Rules:
 }
 
 /// Build the per-turn context prompt.
-fn context_prompt(task: &str, file_tree: &[String], iteration: usize, history: &[String]) -> String {
+fn context_prompt(
+    task: &str,
+    file_tree: &[String],
+    iteration: usize,
+    history: &[String],
+) -> String {
     let tree_str = if file_tree.is_empty() {
         "(workspace is empty)".to_string()
     } else {
@@ -279,7 +284,12 @@ async fn run_loop(
                     serde_json::json!({"type": "error", "message": format!("session error: {e}")}),
                 )
                 .await;
-                let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+                let _ = tx
+                    .send(StreamChunk::Done {
+                        usage: None,
+                        timing: None,
+                    })
+                    .await;
                 return;
             }
         };
@@ -302,7 +312,12 @@ async fn run_loop(
                     serde_json::json!({"type": "error", "message": format!("session init failed: {e}")}),
                 )
                 .await;
-                let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+                let _ = tx
+                    .send(StreamChunk::Done {
+                        usage: None,
+                        timing: None,
+                    })
+                    .await;
                 return;
             }
         }
@@ -329,7 +344,12 @@ async fn run_loop(
                     serde_json::json!({"type": "error", "message": "workspace_dir missing from session"}),
                 )
                 .await;
-                let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+                let _ = tx
+                    .send(StreamChunk::Done {
+                        usage: None,
+                        timing: None,
+                    })
+                    .await;
                 return;
             }
         }
@@ -369,7 +389,12 @@ async fn run_loop(
                     serde_json::json!({"type": "error", "message": format!("workspace init failed: {e}")}),
                 )
                 .await;
-                let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+                let _ = tx
+                    .send(StreamChunk::Done {
+                        usage: None,
+                        timing: None,
+                    })
+                    .await;
                 return;
             }
         }
@@ -417,12 +442,12 @@ async fn run_loop(
 
         // Emit the LLM's message as plain content so the user can read the reasoning.
         let parsed = parse_llm_response(&response_text);
-        if let Some(ref resp) = parsed {
-            if !resp.message.is_empty() {
-                let _ = tx
-                    .send(StreamChunk::Content(format!("{}\n", resp.message)))
-                    .await;
-            }
+        if let Some(ref resp) = parsed
+            && !resp.message.is_empty()
+        {
+            let _ = tx
+                .send(StreamChunk::Content(format!("{}\n", resp.message)))
+                .await;
         }
 
         // Execute commands.
@@ -444,7 +469,10 @@ async fn run_loop(
 
         for cmd in cmds {
             match cmd {
-                WbCommand::WriteFile { path, content: file_content } => {
+                WbCommand::WriteFile {
+                    path,
+                    content: file_content,
+                } => {
                     emit_step(
                         &tx,
                         serde_json::json!({"type": "file_write", "path": &path}),
@@ -466,11 +494,7 @@ async fn run_loop(
                 }
 
                 WbCommand::RunCmd { command } => {
-                    emit_step(
-                        &tx,
-                        serde_json::json!({"type": "run_cmd", "cmd": &command}),
-                    )
-                    .await;
+                    emit_step(&tx, serde_json::json!({"type": "run_cmd", "cmd": &command})).await;
                     match tools::exec_cmd(
                         &state,
                         &channel_id,
@@ -497,10 +521,12 @@ async fn run_loop(
                             let status = if result.success { "ok" } else { "failed" };
                             step_summary.push_str(&format!(" cmd={command} status={status};"));
                             if !result.stdout.is_empty() {
-                                step_summary.push_str(&format!(" stdout={};", result.stdout.trim()));
+                                step_summary
+                                    .push_str(&format!(" stdout={};", result.stdout.trim()));
                             }
                             if !result.stderr.is_empty() {
-                                step_summary.push_str(&format!(" stderr={};", result.stderr.trim()));
+                                step_summary
+                                    .push_str(&format!(" stderr={};", result.stderr.trim()));
                             }
                         }
                         Err(e) => {

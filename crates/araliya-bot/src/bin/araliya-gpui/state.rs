@@ -187,10 +187,10 @@ pub fn save_layout_prefs(layout: &LayoutState) {
         return;
     };
 
-    if let Some(parent) = path.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return;
-        }
+    if let Some(parent) = path.parent()
+        && fs::create_dir_all(parent).is_err()
+    {
+        return;
     }
 
     let prefs = LayoutPrefs::from_layout(layout);

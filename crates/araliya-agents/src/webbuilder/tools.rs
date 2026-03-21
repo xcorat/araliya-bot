@@ -40,8 +40,7 @@ pub(crate) async fn init_workspace(
 
     match state.runtime_init(req).await {
         Ok(BusPayload::JsonResponse { data }) => {
-            let v: serde_json::Value =
-                serde_json::from_str(&data).map_err(|e| e.to_string())?;
+            let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
             let runtime_dir = v["runtime_dir"]
                 .as_str()
                 .ok_or_else(|| "runtimes/init: missing runtime_dir in response".to_string())?
@@ -77,8 +76,7 @@ pub(crate) async fn exec_cmd(
 
     match state.runtime_exec(req).await {
         Ok(BusPayload::JsonResponse { data }) => {
-            let v: serde_json::Value =
-                serde_json::from_str(&data).map_err(|e| e.to_string())?;
+            let v: serde_json::Value = serde_json::from_str(&data).map_err(|e| e.to_string())?;
             Ok(ExecResult {
                 success: v["success"].as_bool().unwrap_or(false),
                 stdout: v["stdout"].as_str().unwrap_or("").to_string(),

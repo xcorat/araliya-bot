@@ -27,6 +27,7 @@ use winit::window::{Window, WindowAttributes, WindowLevel};
 use scene::Hit;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum UiMessage {
     IpcResult(String),
 }
@@ -42,6 +43,7 @@ struct RenderState {
 struct BeaconApp {
     window: Option<Arc<Window>>,
     render: Option<RenderState>,
+    #[allow(dead_code)]
     proxy: EventLoopProxy<UiMessage>,
 
     status_text: Option<String>,
@@ -60,6 +62,7 @@ struct BeaconApp {
     press_pos: Option<(f64, f64)>,
 
     gpui_child: Option<std::process::Child>,
+    #[allow(dead_code)]
     rt: tokio::runtime::Runtime,
 }
 
@@ -155,6 +158,7 @@ impl BeaconApp {
 
     // ── IPC ────────────────────────────────────────────────────────────────
 
+    #[allow(dead_code)]
     fn ping_status(&self) {
         let proxy = self.proxy.clone();
         self.rt.spawn(async move {
@@ -348,16 +352,16 @@ impl ApplicationHandler<UiMessage> for BeaconApp {
                 }
 
                 // Drag threshold.
-                if self.mouse_pressed && !self.is_dragging {
-                    if let Some((px, py)) = self.press_pos {
-                        if (lx - px).powi(2) + (ly - py).powi(2) > 25.0 {
-                            eprintln!("[beacon] drag");
-                            self.is_dragging = true;
-                            self.extras_pinned = false; // clear pin on drag
-                            if let Some(w) = &self.window {
-                                let _ = w.drag_window();
-                            }
-                        }
+                if self.mouse_pressed
+                    && !self.is_dragging
+                    && let Some((px, py)) = self.press_pos
+                    && (lx - px).powi(2) + (ly - py).powi(2) > 25.0
+                {
+                    eprintln!("[beacon] drag");
+                    self.is_dragging = true;
+                    self.extras_pinned = false; // clear pin on drag
+                    if let Some(w) = &self.window {
+                        let _ = w.drag_window();
                     }
                 }
             }

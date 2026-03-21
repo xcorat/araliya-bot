@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::warn;
 
-use araliya_memory::stores::agent::TextItem;
 use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_memory::stores::agent::TextItem;
 
 use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
@@ -169,7 +169,8 @@ impl Agent for NewsAgentPlugin {
 
             // ── 6. Ask LLM to summarise ─────────────────────────────────
             let news_skills = state.agent_skills.get("news").cloned().unwrap_or_default();
-            let (system, user_prompt) = build_summary_prompt(&items, &news_skills, &state.agents_dir);
+            let (system, user_prompt) =
+                build_summary_prompt(&items, &news_skills, &state.agents_dir);
             let llm_result = state
                 .complete_via_llm_with_system(&channel_id, &user_prompt, Some(&system))
                 .await;
@@ -260,7 +261,11 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
 ///
 /// Returns `(system, user)`: the preamble layers as the system message and the
 /// task-specific body as the user message.
-fn build_summary_prompt(items: &[TextItem], tools: &[String], agents_dir: &str) -> (String, String) {
+fn build_summary_prompt(
+    items: &[TextItem],
+    tools: &[String],
+    agents_dir: &str,
+) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
         let subject = item

@@ -145,7 +145,11 @@ pub async fn fetch(args: RssFetchArgs) -> Result<Vec<RssItem>, String> {
 
     // Sort newest first, then cap
     all.sort_by(|a, b| b.0.cmp(&a.0));
-    let items: Vec<RssItem> = all.into_iter().take(max_items).map(|(_, item)| item).collect();
+    let items: Vec<RssItem> = all
+        .into_iter()
+        .take(max_items)
+        .map(|(_, item)| item)
+        .collect();
 
     debug!(count = items.len(), "rss_fetch: done");
     Ok(items)
@@ -159,7 +163,10 @@ pub async fn healthcheck() -> Result<String, String> {
         max_items: Some(5),
     };
     match fetch(args).await {
-        Ok(items) => Ok(format!("rss_fetch ok — BBC feed returned {} items", items.len())),
+        Ok(items) => Ok(format!(
+            "rss_fetch ok — BBC feed returned {} items",
+            items.len()
+        )),
         Err(e) => Err(e),
     }
 }

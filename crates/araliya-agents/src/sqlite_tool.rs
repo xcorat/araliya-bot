@@ -136,10 +136,7 @@ impl LocalTool for SqliteExecuteTool {
             .and_then(|s| s.as_str())
             .ok_or_else(|| "sqlite_execute: missing \"sql\" field".to_string())?;
         let bind = parse_params(params);
-        let n = self
-            .store
-            .execute(sql, &bind)
-            .map_err(|e| e.to_string())?;
+        let n = self.store.execute(sql, &bind).map_err(|e| e.to_string())?;
         Ok(format!("{{\"rows_affected\":{n}}}"))
     }
 }

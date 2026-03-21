@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
+use araliya_core::bus::message::{BusPayload, BusResult, StreamReceiver};
 use araliya_core::config::WebBuilderAgentConfig;
 use araliya_llm::StreamChunk;
-use araliya_core::bus::message::{BusPayload, BusResult, StreamReceiver};
 
 use super::{Agent, AgentsState};
 
@@ -59,7 +59,9 @@ impl Agent for WebBuilderAgent {
 
             // Drain the stream to collect the final content.
             let buffered = match stream_result {
-                Ok(BusPayload::LlmStreamResult { rx: StreamReceiver(mut rx) }) => {
+                Ok(BusPayload::LlmStreamResult {
+                    rx: StreamReceiver(mut rx),
+                }) => {
                     let mut buf = String::new();
                     while let Some(chunk) = rx.recv().await {
                         match chunk {

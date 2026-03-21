@@ -322,6 +322,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn float_display_and_eq() {
         let a: PrimaryValue = 3.14f64.into();
         let b: PrimaryValue = 3.14f64.into();

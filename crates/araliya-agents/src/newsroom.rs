@@ -22,9 +22,9 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::{error, warn};
 
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use araliya_memory::stores::sqlite_core::now_iso8601;
 use araliya_memory::stores::sqlite_store::{SqlValue, SqliteStore};
-use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
@@ -75,9 +75,15 @@ const SOURCES_DDL: &str = "
 ";
 
 fn ensure_schema(store: &SqliteStore) -> Result<(), String> {
-    store.migrate(1, EVENTS_DDL).map_err(|e| format!("newsroom: migrate v1: {e}"))?;
-    store.migrate(2, SUMMARIES_DDL).map_err(|e| format!("newsroom: migrate v2: {e}"))?;
-    store.migrate(3, SOURCES_DDL).map_err(|e| format!("newsroom: migrate v3: {e}"))?;
+    store
+        .migrate(1, EVENTS_DDL)
+        .map_err(|e| format!("newsroom: migrate v1: {e}"))?;
+    store
+        .migrate(2, SUMMARIES_DDL)
+        .map_err(|e| format!("newsroom: migrate v2: {e}"))?;
+    store
+        .migrate(3, SOURCES_DDL)
+        .map_err(|e| format!("newsroom: migrate v3: {e}"))?;
     Ok(())
 }
 
@@ -143,9 +149,16 @@ async fn handle_health(
         .await;
 
     let content = match result {
-        Ok(BusPayload::ToolResponse { ok: true, .. }) => "newsroom: gdelt_bigquery reachable".to_string(),
-        Ok(BusPayload::ToolResponse { ok: false, error, .. }) => {
-            format!("newsroom: gdelt_bigquery error: {}", error.unwrap_or_default())
+        Ok(BusPayload::ToolResponse { ok: true, .. }) => {
+            "newsroom: gdelt_bigquery reachable".to_string()
+        }
+        Ok(BusPayload::ToolResponse {
+            ok: false, error, ..
+        }) => {
+            format!(
+                "newsroom: gdelt_bigquery error: {}",
+                error.unwrap_or_default()
+            )
         }
         Ok(other) => format!("newsroom: unexpected health reply: {other:?}"),
         Err(e) => format!("newsroom: health error: {e:?}"),
@@ -398,10 +411,9 @@ async fn handle_read(
             if let Ok(Some(row)) = store.query_one(
                 "SELECT rank FROM sources WHERE domain = ?1",
                 &[SqlValue::Text(domain.clone())],
-            ) {
-                if let Some(SqlValue::Real(r)) = row.get("rank") {
-                    rank_map.insert(domain.clone(), *r);
-                }
+            ) && let Some(SqlValue::Real(r)) = row.get("rank")
+            {
+                rank_map.insert(domain.clone(), *r);
             }
         }
         new_events.sort_by(|a, b| {
@@ -657,9 +669,9 @@ async fn handle_latest(
     reply_tx: oneshot::Sender<BusResult>,
 ) {
     let content = tokio::task::spawn_blocking(move || {
-        let store = state.open_sqlite_store("newsroom", "events").map_err(|e| {
-            format!("newsroom: open store: {e}")
-        })?;
+        let store = state
+            .open_sqlite_store("newsroom", "events")
+            .map_err(|e| format!("newsroom: open store: {e}"))?;
         ensure_schema(&store)?;
 
         let row = store
@@ -852,21 +864,31 @@ fn sync_root_rank(
     }
 
     // Aggregate across siblings.
-    let total_fetch: i64 = rows.iter().map(|r| match r.get("fetch_count") {
-        Some(SqlValue::Integer(n)) => *n,
-        _ => 0,
-    }).sum();
+    let total_fetch: i64 = rows
+        .iter()
+        .map(|r| match r.get("fetch_count") {
+            Some(SqlValue::Integer(n)) => *n,
+            _ => 0,
+        })
+        .sum();
 
     let avg_tone: f64 = {
-        let sum: f64 = rows.iter().map(|r| match r.get("avg_tone") {
-            Some(SqlValue::Real(f)) => *f,
-            _ => 0.0,
-        }).sum();
+        let sum: f64 = rows
+            .iter()
+            .map(|r| match r.get("avg_tone") {
+                Some(SqlValue::Real(f)) => *f,
+                _ => 0.0,
+            })
+            .sum();
         sum / rows.len() as f64
     };
 
-    let most_recent = rows.iter()
-        .filter_map(|r| match r.get("last_seen") { Some(SqlValue::Text(s)) => Some(s.as_str()), _ => None })
+    let most_recent = rows
+        .iter()
+        .filter_map(|r| match r.get("last_seen") {
+            Some(SqlValue::Text(s)) => Some(s.as_str()),
+            _ => None,
+        })
         .max()
         .unwrap_or(now);
 
@@ -928,7 +950,11 @@ fn compute_rank(fetch_count: i64, avg_tone: f64, last_seen_iso: &str) -> f64 {
 fn extract_domain(url: &str) -> String {
     let after_scheme = url.find("://").map(|i| &url[i + 3..]).unwrap_or(url);
     let host_port = after_scheme.split('/').next().unwrap_or(after_scheme);
-    let host = host_port.split(':').next().unwrap_or(host_port).to_lowercase();
+    let host = host_port
+        .split(':')
+        .next()
+        .unwrap_or(host_port)
+        .to_lowercase();
     host.strip_prefix("www.").unwrap_or(&host).to_string()
 }
 
@@ -950,7 +976,11 @@ fn extract_root_domain(domain: &str) -> String {
     parts[parts.len() - 2..].join(".")
 }
 
-fn build_summary_prompt(events: &[GdeltRow], tools: &[String], agents_dir: &str) -> (String, String) {
+fn build_summary_prompt(
+    events: &[GdeltRow],
+    tools: &[String],
+    agents_dir: &str,
+) -> (String, String) {
     let mut items_str = String::new();
     for (i, ev) in events.iter().enumerate() {
         items_str.push_str(&format!(
@@ -1009,16 +1039,10 @@ fn parse_gdelt_events(json: &str) -> Vec<GdeltRow> {
                     None => String::new(),
                 }
             };
-            let f64_field = |key: &str| -> f64 {
-                obj.get(key)
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0)
-            };
-            let u64_field = |key: &str| -> u64 {
-                obj.get(key)
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0)
-            };
+            let f64_field =
+                |key: &str| -> f64 { obj.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0) };
+            let u64_field =
+                |key: &str| -> u64 { obj.get(key).and_then(|v| v.as_u64()).unwrap_or(0) };
             Some(GdeltRow {
                 date: str_field("date"),
                 actor1: str_field("actor1"),

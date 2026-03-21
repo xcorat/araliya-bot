@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 use tokio_util::sync::CancellationToken;
 
-use araliya_core::bus::BusHandle;
 use crate::control::ControlHandle;
+use araliya_core::bus::BusHandle;
 
 /// Start supervisor-owned transport adapters.
 pub fn start(

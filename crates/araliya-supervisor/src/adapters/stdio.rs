@@ -5,8 +5,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use araliya_core::bus::{BusHandle, BusPayload};
 use crate::control::{ControlCommand, ControlHandle, ControlResponse};
+use araliya_core::bus::{BusHandle, BusPayload};
 
 const VIRTUAL_PTY_CHANNEL_ID: &str = "pty0";
 
@@ -278,7 +278,7 @@ fn print_control_response(response: ControlResponse) {
 
 #[cfg(test)]
 mod tests {
-    use super::{StdioFrame, parse_tty_protocol};
+    use super::{parse_tty_protocol, StdioFrame};
 
     #[test]
     fn parse_chat_command() {

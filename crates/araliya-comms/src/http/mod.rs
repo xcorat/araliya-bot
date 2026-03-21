@@ -163,13 +163,8 @@ async fn handle_connection(
             api::handle_agent_kg(&mut socket, &state, &channel_id, agent_kg.unwrap()).await
         }
         ("GET", _) if memory_agent_kg.is_some() => {
-            api::handle_memory_agent_kg(
-                &mut socket,
-                &state,
-                &channel_id,
-                memory_agent_kg.unwrap(),
-            )
-            .await
+            api::handle_memory_agent_kg(&mut socket, &state, &channel_id, memory_agent_kg.unwrap())
+                .await
         }
         ("GET", p) if p.starts_with("/api/session/") => {
             let session_id = &p["/api/session/".len()..];

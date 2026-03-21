@@ -3,6 +3,8 @@
 //! All types are inlined so this binary has no dependency on internal crate
 //! modules. Must stay in sync with `supervisor::control` serde representations.
 
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

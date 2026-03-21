@@ -63,10 +63,7 @@ impl SqliteStore {
     pub fn open(agent_identity_dir: &Path, db_name: &str) -> Result<Self, AppError> {
         let dir = agent_identity_dir.join("sqlite");
         fs::create_dir_all(&dir).map_err(|e| {
-            AppError::Memory(format!(
-                "sqlite_store: create dir {}: {e}",
-                dir.display()
-            ))
+            AppError::Memory(format!("sqlite_store: create dir {}: {e}", dir.display()))
         })?;
         let db_path = dir.join(format!("{db_name}.db"));
         open_conn(&db_path)?;
@@ -90,11 +87,14 @@ impl SqliteStore {
         if current >= target_version {
             return Ok(false);
         }
-        conn.execute_batch(ddl)
-            .map_err(|e| AppError::Memory(format!("sqlite_store: migrate v{target_version}: {e}")))?;
+        conn.execute_batch(ddl).map_err(|e| {
+            AppError::Memory(format!("sqlite_store: migrate v{target_version}: {e}"))
+        })?;
         conn.pragma_update(None, "user_version", target_version)
             .map_err(|e| {
-                AppError::Memory(format!("sqlite_store: set user_version {target_version}: {e}"))
+                AppError::Memory(format!(
+                    "sqlite_store: set user_version {target_version}: {e}"
+                ))
             })?;
         Ok(true)
     }
@@ -225,12 +225,13 @@ mod tests {
         store
             .execute(
                 "INSERT INTO kv (key, value) VALUES (?1, ?2)",
-                &[SqlValue::Text("hello".into()), SqlValue::Text("world".into())],
+                &[
+                    SqlValue::Text("hello".into()),
+                    SqlValue::Text("world".into()),
+                ],
             )
             .unwrap();
-        let rows = store
-            .query_rows("SELECT key, value FROM kv", &[])
-            .unwrap();
+        let rows = store.query_rows("SELECT key, value FROM kv", &[]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].get("key"), Some(&SqlValue::Text("hello".into())));
         assert_eq!(rows[0].get("value"), Some(&SqlValue::Text("world".into())));
@@ -239,9 +240,7 @@ mod tests {
     #[test]
     fn query_one_returns_first_row() {
         let (_dir, store) = tmp();
-        store
-            .execute_ddl("CREATE TABLE nums (n INTEGER);")
-            .unwrap();
+        store.execute_ddl("CREATE TABLE nums (n INTEGER);").unwrap();
         store
             .execute("INSERT INTO nums VALUES (?1)", &[SqlValue::Integer(42)])
             .unwrap();

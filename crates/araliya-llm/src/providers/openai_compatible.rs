@@ -310,10 +310,10 @@ impl OpenAiCompatibleProvider {
                         cached_input_tokens: usage_val["prompt_tokens_details"]["cached_tokens"]
                             .as_u64()
                             .unwrap_or(0),
-                        reasoning_tokens:
-                            usage_val["completion_tokens_details"]["reasoning_tokens"]
-                                .as_u64()
-                                .unwrap_or(0),
+                        reasoning_tokens: usage_val["completion_tokens_details"]
+                            ["reasoning_tokens"]
+                            .as_u64()
+                            .unwrap_or(0),
                     };
                     let _ = tx
                         .send(StreamChunk::Done {

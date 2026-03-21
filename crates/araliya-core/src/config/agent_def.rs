@@ -119,11 +119,7 @@ impl AgentDefinition {
     /// Returns `Some(path)` if the file exists, `None` otherwise.
     pub fn prompt_path(&self, filename: &str) -> Option<PathBuf> {
         let path = self.dir.join(filename);
-        if path.exists() {
-            Some(path)
-        } else {
-            None
-        }
+        if path.exists() { Some(path) } else { None }
     }
 }
 

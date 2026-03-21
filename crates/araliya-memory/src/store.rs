@@ -200,9 +200,9 @@ impl Default for Store {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::collections::{Block, Collection, Doc};
     use crate::types::PrimaryValue;
-    use super::*;
 
     #[test]
     fn insert_and_get() {

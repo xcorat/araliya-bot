@@ -6,12 +6,12 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 
-use araliya_core::bus::{
-    BusError, BusHandler, BusMessage, ComponentInfo, ComponentStatus, ERR_METHOD_NOT_FOUND,
-    SupervisorBus,
-};
 use crate::control::{
     ControlCommand, ControlError, ControlMessage, ControlResponse, SupervisorControl,
+};
+use araliya_core::bus::{
+    BusError, BusHandler, BusMessage, ComponentInfo, ComponentStatus, SupervisorBus,
+    ERR_METHOD_NOT_FOUND,
 };
 
 /// Run the supervisor message loop until `shutdown` is cancelled.

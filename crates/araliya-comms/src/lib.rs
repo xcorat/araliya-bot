@@ -23,11 +23,11 @@ use tracing::{debug, info};
 use araliya_core::ui::UiServeHandle;
 
 use araliya_core::bus::{
-    BusError, BusHandle, BusHandler, BusPayload, BusResult, ComponentInfo,
-    ComponentStatusResponse, ERR_METHOD_NOT_FOUND,
+    BusError, BusHandle, BusHandler, BusPayload, BusResult, ComponentInfo, ComponentStatusResponse,
+    ERR_METHOD_NOT_FOUND,
 };
 use araliya_core::config::Config;
-use araliya_core::runtime::{Component, SubsystemHandle, spawn_components};
+use araliya_core::runtime::{spawn_components, Component, SubsystemHandle};
 
 // ── CommsStatusHandler ───────────────────────────────────────────────────────
 

@@ -172,8 +172,8 @@ pub fn populate_kgdocstore_from_source(
     index_name: &str,
     kg_cfg: &araliya_core::config::DocsKgConfig,
 ) -> Result<(), AppError> {
-    use araliya_memory::stores::sqlite_core::Document;
     use araliya_memory::stores::kg_docstore::{IKGDocStore, KgConfig};
+    use araliya_memory::stores::sqlite_core::Document;
 
     let store = IKGDocStore::open(agent_identity_dir)?;
 
@@ -379,7 +379,7 @@ mod tests {
         // Images directory that must be skipped.
         let img_dir = src.join("images");
         fs::create_dir_all(&img_dir).expect("images dir");
-        fs::write(img_dir.join("logo.png"), &[0u8; 4]).expect("logo.png");
+        fs::write(img_dir.join("logo.png"), [0u8; 4]).expect("logo.png");
         fs::write(img_dir.join("caption.md"), "this should be skipped")
             .expect("caption.md in images");
 
