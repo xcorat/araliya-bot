@@ -4,7 +4,7 @@
 //! local filesystem directly.  They are plain async fns — no `LocalTool`
 //! wrapper is needed because the webbuilder loop is itself async.
 
-use crate::supervisor::bus::BusPayload;
+use araliya_core::bus::message::BusPayload;
 
 use super::super::AgentsState;
 

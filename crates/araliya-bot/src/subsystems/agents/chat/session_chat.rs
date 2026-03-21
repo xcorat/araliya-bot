@@ -12,9 +12,9 @@ use tracing::{info, warn};
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
 use crate::subsystems::agents::core::prompt::PromptBuilder;
-use crate::supervisor::bus::{BusPayload, BusResult};
+use araliya_core::bus::message::{BusPayload, BusResult};
 
-use crate::subsystems::memory::handle::SessionHandle;
+use araliya_memory::handle::SessionHandle;
 
 /// How many recent transcript entries to inject as conversation context.
 const CONTEXT_WINDOW: usize = 20;
@@ -84,7 +84,7 @@ async fn handle_with_memory(
                         *guard = Some(h);
                     }
                     Err(e) => {
-                        return Err(crate::supervisor::bus::BusError::new(
+                        return Err(araliya_core::bus::message::BusError::new(
                             -32000,
                             format!("session load failed: {e}"),
                         ));
@@ -191,7 +191,7 @@ async fn handle_with_memory(
     }
 }
 
-fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppError> {
+fn init_session(state: &AgentsState) -> Result<SessionHandle, araliya_core::error::AppError> {
     let memory = &state.memory;
     let agent_store = state.open_agent_store("chat")?;
     let default_store_types = state
@@ -217,7 +217,7 @@ fn init_session(state: &AgentsState) -> Result<SessionHandle, crate::error::AppE
 fn load_session(
     state: &AgentsState,
     session_id: &str,
-) -> Result<SessionHandle, crate::error::AppError> {
+) -> Result<SessionHandle, araliya_core::error::AppError> {
     let memory = &state.memory;
     let agent_store = state.open_agent_store("chat")?;
     let sessions_root = agent_store.agent_sessions_dir();

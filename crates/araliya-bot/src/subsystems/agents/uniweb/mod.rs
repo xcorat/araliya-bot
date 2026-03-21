@@ -19,13 +19,13 @@ use tracing::info;
 
 use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
-use crate::error::AppError;
-use crate::supervisor::bus::{BusError, BusResult};
+use araliya_core::error::AppError;
+use araliya_core::bus::message::{BusError, BusResult};
 
 #[cfg(feature = "idocstore")]
 use super::docs::DocsRagTool;
 #[cfg(feature = "idocstore")]
-use crate::subsystems::memory::stores::docstore::IDocStore;
+use araliya_memory::stores::docstore::IDocStore;
 
 // ── UniwebAgent ───────────────────────────────────────────────────────────────
 

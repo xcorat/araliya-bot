@@ -19,21 +19,22 @@ use crate::subsystems::agents::core::AgentRuntimeClass;
 
 use tokio::sync::oneshot;
 
-use crate::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
+use araliya_core::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
 #[cfg(feature = "plugin-runtime-cmd")]
-use crate::config::RuntimeCmdAgentConfig;
+use araliya_core::config::RuntimeCmdAgentConfig;
 #[cfg(feature = "plugin-webbuilder")]
-use crate::config::WebBuilderAgentConfig;
-use crate::error::AppError;
-use crate::llm::ModelRates;
-use crate::supervisor::bus::{BusError, BusHandle, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
-use crate::supervisor::dispatch::BusHandler;
-use crate::supervisor::health::HealthReporter;
+use araliya_core::config::WebBuilderAgentConfig;
+use araliya_core::error::AppError;
+use araliya_llm::ModelRates;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_core::bus::handle::BusHandle;
+use araliya_core::bus::component::{ComponentInfo, ComponentStatusResponse};
+use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::health::HealthReporter;
 
-use crate::identity::{self, Identity};
-use crate::subsystems::memory::handle::SessionHandle;
-use crate::subsystems::memory::{AGENTS_DIRNAME, MemorySystem};
+use araliya_core::identity::{self, Identity};
+use araliya_memory::handle::SessionHandle;
+use araliya_memory::{AGENTS_DIRNAME, MemorySystem};
 
 // CHECK: wat?
 pub(crate) mod core;
@@ -151,16 +152,16 @@ impl AgentsState {
     /// restarts.  This call is synchronous (blocking I/O) — wrap in
     /// `spawn_blocking` when called from an async context.
     ///
-    /// [`AgentStore`]: crate::subsystems::memory::stores::agent::AgentStore
+    /// [`AgentStore`]: araliya_memory::stores::agent::AgentStore
     pub fn open_agent_store(
         &self,
         agent_id: &str,
-    ) -> Result<crate::subsystems::memory::stores::agent::AgentStore, AppError> {
+    ) -> Result<araliya_memory::stores::agent::AgentStore, AppError> {
         let identity = self
             .agent_identities
             .get(agent_id)
             .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
-        crate::subsystems::memory::stores::agent::AgentStore::open(&identity.identity_dir)
+        araliya_memory::stores::agent::AgentStore::open(&identity.identity_dir)
     }
 
     /// Open (or create) a named SQLite database for `agent_id`.
@@ -173,12 +174,12 @@ impl AgentsState {
         &self,
         agent_id: &str,
         db_name: &str,
-    ) -> Result<crate::subsystems::memory::stores::sqlite_store::SqliteStore, AppError> {
+    ) -> Result<araliya_memory::stores::sqlite_store::SqliteStore, AppError> {
         let identity = self
             .agent_identities
             .get(agent_id)
             .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
-        crate::subsystems::memory::stores::sqlite_store::SqliteStore::open(
+        araliya_memory::stores::sqlite_store::SqliteStore::open(
             &identity.identity_dir,
             db_name,
         )
@@ -303,8 +304,8 @@ impl AgentsState {
         channel_id: &str,
         content: &str,
         system: Option<&str>,
-    ) -> Result<tokio::sync::mpsc::Receiver<crate::llm::StreamChunk>, BusError> {
-        use crate::supervisor::bus::StreamReceiver;
+    ) -> Result<tokio::sync::mpsc::Receiver<araliya_llm::StreamChunk>, BusError> {
+        use araliya_core::bus::message::StreamReceiver;
         let result = self
             .bus
             .request(
@@ -1678,9 +1679,9 @@ impl BusHandler for AgentsSubsystem {
             tokio::spawn(async move {
                 let h = match reporter {
                     Some(r) => r.get_current().await.unwrap_or_else(|| {
-                        crate::supervisor::health::SubsystemHealth::ok("agents")
+                        araliya_core::bus::health::SubsystemHealth::ok("agents")
                     }),
-                    None => crate::supervisor::health::SubsystemHealth::ok("agents"),
+                    None => araliya_core::bus::health::SubsystemHealth::ok("agents"),
                 };
                 let data = serde_json::to_string(&h).unwrap_or_default();
                 let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
@@ -2057,8 +2058,9 @@ fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {
 mod tests {
     use super::*;
     use crate::subsystems::agents::core::AgentRuntimeClass;
-    use crate::supervisor::bus::{BusMessage, SupervisorBus};
-    use crate::supervisor::dispatch::BusHandler;
+    use araliya_core::bus::message::BusMessage;
+    use araliya_core::bus::handle::SupervisorBus;
+    use araliya_core::bus::dispatch::BusHandler;
     use tokio::sync::oneshot;
 
     fn echo_bus() -> (SupervisorBus, BusHandle) {
@@ -2073,7 +2075,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let mem = MemorySystem::new(
             dir.path(),
-            crate::subsystems::memory::MemoryConfig::default(),
+            araliya_memory::MemoryConfig::default(),
         )
         .unwrap();
         (dir, Arc::new(mem))
@@ -2701,7 +2703,7 @@ mod tests {
                     docsdir: Some(docsdir),
                     index: Some("index.md".to_string()),
                     use_kg: false,
-                    kg: crate::config::DocsKgConfig::default(),
+                    kg: araliya_core::config::DocsKgConfig::default(),
                 },
             )]),
             agentic_chat: None,
@@ -2918,7 +2920,7 @@ mod tests {
 
         tokio::spawn(async move {
             // Request 1: llm/instruct → empty JSON array (no tools)
-            if let Some(crate::supervisor::bus::BusMessage::Request {
+            if let Some(araliya_core::bus::message::BusMessage::Request {
                 payload, reply_tx, ..
             }) = bus_rx.recv().await
             {
@@ -2936,7 +2938,7 @@ mod tests {
                 }
             }
             // Request 2: llm/complete → response
-            if let Some(crate::supervisor::bus::BusMessage::Request {
+            if let Some(araliya_core::bus::message::BusMessage::Request {
                 payload, reply_tx, ..
             }) = bus_rx.recv().await
             {
@@ -2964,7 +2966,7 @@ mod tests {
             news_query: None,
             gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
-            agentic_chat: Some(crate::config::AgenticChatConfig {
+            agentic_chat: Some(araliya_core::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
@@ -3021,7 +3023,7 @@ mod tests {
         // Handle 4 sequential LLM requests (2 per turn: instruct + complete).
         tokio::spawn(async move {
             for i in 0..4u32 {
-                if let Some(crate::supervisor::bus::BusMessage::Request {
+                if let Some(araliya_core::bus::message::BusMessage::Request {
                     payload, reply_tx, ..
                 }) = bus_rx.recv().await
                 {
@@ -3055,7 +3057,7 @@ mod tests {
             news_query: None,
             gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
-            agentic_chat: Some(crate::config::AgenticChatConfig {
+            agentic_chat: Some(araliya_core::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
@@ -3136,7 +3138,7 @@ mod tests {
 
         tokio::spawn(async move {
             for _ in 0..2u32 {
-                if let Some(crate::supervisor::bus::BusMessage::Request {
+                if let Some(araliya_core::bus::message::BusMessage::Request {
                     payload, reply_tx, ..
                 }) = bus_rx.recv().await
                 {
@@ -3165,7 +3167,7 @@ mod tests {
             news_query: None,
             gdelt_query: None,
             agent_docs: std::collections::HashMap::new(),
-            agentic_chat: Some(crate::config::AgenticChatConfig {
+            agentic_chat: Some(araliya_core::config::AgenticChatConfig {
                 use_instruction_llm: false,
             }),
             runtime_cmd: None,
@@ -3213,7 +3215,7 @@ mod tests {
     #[cfg(feature = "plugin-runtime-cmd")]
     #[tokio::test]
     async fn runtime_cmd_is_routed_as_default_and_execs() {
-        use crate::config::RuntimeCmdAgentConfig;
+        use araliya_core::config::RuntimeCmdAgentConfig;
 
         let bus = SupervisorBus::new(16);
         let handle = bus.handle.clone();
@@ -3547,7 +3549,7 @@ mod tests {
     #[cfg(feature = "plugin-runtime-cmd")]
     #[tokio::test]
     async fn runtime_cmd_exec_error_is_formatted() {
-        use crate::config::RuntimeCmdAgentConfig;
+        use araliya_core::config::RuntimeCmdAgentConfig;
 
         let bus = SupervisorBus::new(16);
         let handle = bus.handle.clone();

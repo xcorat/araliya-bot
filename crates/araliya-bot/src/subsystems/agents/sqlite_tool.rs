@@ -26,7 +26,7 @@
 use std::sync::Arc;
 
 use super::core::agentic::LocalTool;
-use crate::subsystems::memory::stores::sqlite_store::{SqlValue, SqliteStore};
+use araliya_memory::stores::sqlite_store::{SqlValue, SqliteStore};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

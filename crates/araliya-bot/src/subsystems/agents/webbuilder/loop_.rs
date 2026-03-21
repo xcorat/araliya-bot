@@ -26,8 +26,8 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::warn;
 
-use crate::llm::StreamChunk;
-use crate::supervisor::bus::{BusPayload, BusResult, StreamReceiver};
+use araliya_llm::StreamChunk;
+use araliya_core::bus::message::{BusPayload, BusResult, StreamReceiver};
 
 use super::super::AgentsState;
 use super::tools;

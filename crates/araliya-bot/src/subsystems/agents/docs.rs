@@ -21,9 +21,9 @@ use tracing::warn;
 
 use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
-use crate::config::DocsKgConfig;
-use crate::subsystems::memory::stores::docstore::IDocStore;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_core::config::DocsKgConfig;
+use araliya_memory::stores::docstore::IDocStore;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 const ERR_INTERNAL: i32 = -32000;
 
@@ -69,7 +69,7 @@ impl LocalTool for DocsRagTool {
         // ── KG-RAG path (feature-gated) ──────────────────────────────
         #[cfg(feature = "ikgdocstore")]
         if self.use_kg {
-            use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
+            use araliya_memory::stores::kg_docstore::{IKGDocStore, KgConfig};
             let kg_store = IKGDocStore::open(&self.identity_dir).map_err(|e| e.to_string())?;
             let cfg = KgConfig {
                 min_entity_mentions: self.kg_cfg.min_entity_mentions,

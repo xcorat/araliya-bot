@@ -26,11 +26,11 @@ use std::time::Instant;
 use tokio::sync::oneshot;
 use tracing::{debug, warn};
 
-use crate::config::RuntimesConfig;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
-use crate::supervisor::dispatch::BusHandler;
-use crate::supervisor::health::HealthReporter;
+use araliya_core::config::RuntimesConfig;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_core::bus::component::{ComponentInfo, ComponentStatusResponse};
+use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::health::HealthReporter;
 
 /// Subsystem that spawns external runtime processes to execute scripts.
 ///

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::warn;
 
-use crate::supervisor::bus::{BusError, BusPayload, BusResult};
+use araliya_core::bus::message::{BusError, BusPayload, BusResult};
 
 use super::{Agent, AgentsState};
 

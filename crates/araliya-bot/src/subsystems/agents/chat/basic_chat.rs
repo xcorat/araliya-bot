@@ -8,7 +8,7 @@ use tokio::sync::oneshot;
 
 use super::super::{Agent, AgentsState};
 use super::core::ChatCore;
-use crate::supervisor::bus::BusResult;
+use araliya_core::bus::message::BusResult;
 
 pub(crate) struct BasicChatPlugin;
 

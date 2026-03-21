@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::warn;
 
-use crate::subsystems::memory::stores::agent::TextItem;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_memory::stores::agent::TextItem;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};

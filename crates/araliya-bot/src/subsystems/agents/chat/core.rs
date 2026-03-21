@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::subsystems::agents::AgentsState;
-use crate::supervisor::bus::BusResult;
+use araliya_core::bus::message::BusResult;
 
 /// Reusable core for chat-family plugins.
 ///

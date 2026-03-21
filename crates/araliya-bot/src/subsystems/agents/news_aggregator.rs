@@ -30,9 +30,9 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 
-use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
-use crate::subsystems::memory::stores::sqlite_core::Document;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_memory::stores::kg_docstore::{IKGDocStore, KgConfig};
+use araliya_memory::stores::sqlite_core::Document;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::{Agent, AgentsState};
 

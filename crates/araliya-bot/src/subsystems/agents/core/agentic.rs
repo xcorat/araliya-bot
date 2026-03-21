@@ -18,13 +18,13 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::warn;
 
-use crate::error::AppError;
-use crate::llm::StreamChunk;
-use crate::subsystems::memory::handle::SessionHandle;
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, StreamReceiver};
+use araliya_core::error::AppError;
+use araliya_llm::StreamChunk;
+use araliya_memory::handle::SessionHandle;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, StreamReceiver};
 
 use super::prompt::{PromptBuilder, preamble};
-use crate::subsystems::agents::AgentsState;
+use super::super::AgentsState;
 
 /// How many recent transcript entries to inject as conversation context.
 const CONTEXT_WINDOW: usize = 20;
@@ -753,7 +753,7 @@ async fn tee_and_persist(
     fwd_tx: mpsc::Sender<StreamChunk>,
     handle: SessionHandle,
     agent_id: String,
-    llm_rates: crate::llm::ModelRates,
+    llm_rates: araliya_llm::ModelRates,
     debug_logging: bool,
     debug_n: usize,
 ) {

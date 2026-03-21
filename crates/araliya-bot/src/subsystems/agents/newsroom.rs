@@ -22,9 +22,9 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::{error, warn};
 
-use crate::subsystems::memory::stores::sqlite_core::now_iso8601;
-use crate::subsystems::memory::stores::sqlite_store::{SqlValue, SqliteStore};
-use crate::supervisor::bus::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_memory::stores::sqlite_core::now_iso8601;
+use araliya_memory::stores::sqlite_store::{SqlValue, SqliteStore};
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
@@ -623,7 +623,7 @@ async fn handle_read(
                     .await
                 {
                     Ok(_) => {}
-                    Err(e) if e.code == crate::supervisor::bus::ERR_METHOD_NOT_FOUND => {
+                    Err(e) if e.code == araliya_core::bus::message::ERR_METHOD_NOT_FOUND => {
                         tracing::debug!(target = %agg_target, "newsroom: aggregator plugin not enabled — KG will not be updated");
                     }
                     Err(e) => {
@@ -841,7 +841,7 @@ fn sync_root_rank(
     store: &SqliteStore,
     root: &str,
     now: &str,
-) -> Result<(), crate::core::error::AppError> {
+) -> Result<(), araliya_core::error::AppError> {
     let rows = store.query_rows(
         "SELECT fetch_count, avg_tone, last_seen FROM sources WHERE root_domain = ?1",
         &[SqlValue::Text(root.to_string())],

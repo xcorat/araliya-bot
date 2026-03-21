@@ -13,14 +13,7 @@
 //!   9. Run comms subsystem (drives console until shutdown)
 //!  10. Cancel token + join supervisor
 
-mod bootstrap;
-mod core;
-mod llm;
 mod subsystems;
-mod supervisor;
-
-pub use bootstrap::{identity, logger};
-pub use core::{config, error};
 
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -28,11 +21,12 @@ use tracing::info;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use supervisor::bus::SupervisorBus;
-use supervisor::component_info::ComponentInfo;
-use supervisor::control::SupervisorControl;
-use supervisor::dispatch::BusHandler;
-use supervisor::health::HealthRegistry;
+use araliya_core::bus::handle::SupervisorBus;
+use araliya_core::bus::component::ComponentInfo;
+use araliya_supervisor::control::SupervisorControl;
+use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::health::HealthRegistry;
+use araliya_core::{config, error, identity, logger};
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
 #[cfg(feature = "subsystem-agents")]
 use subsystems::agents::AgentsSubsystem;
@@ -41,23 +35,22 @@ use subsystems::agents::AgentsSubsystem;
 use subsystems::llm::LlmSubsystem;
 
 #[cfg(feature = "subsystem-tools")]
-use subsystems::tools::ToolsSubsystem;
+use araliya_tools::ToolsSubsystem;
 
 #[cfg(feature = "subsystem-cron")]
-use subsystems::cron::CronSubsystem;
+use araliya_cron::CronSubsystem;
 
 #[cfg(feature = "subsystem-runtimes")]
 use subsystems::runtimes::RuntimesSubsystem;
 
 #[cfg(feature = "subsystem-memory")]
-use subsystems::memory::{MemoryConfig, MemorySystem};
+use araliya_memory::{MemoryConfig, MemorySystem};
 #[cfg(all(feature = "subsystem-memory", feature = "subsystem-agents"))]
-use subsystems::memory_bus::MemoryBusHandler;
+use araliya_memory::bus::MemoryBusHandler;
 
 #[cfg(feature = "subsystem-comms")]
-use subsystems::comms::CommsStatusHandler;
-use subsystems::management::ManagementInfo;
-use subsystems::management::ManagementSubsystem;
+use araliya_comms::CommsStatusHandler;
+use araliya_supervisor::management::{ManagementInfo, ManagementSubsystem};
 
 #[tokio::main]
 async fn main() {
@@ -200,7 +193,7 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let rates = crate::llm::ModelRates {
+        let rates = araliya_llm::ModelRates {
             input_per_million_usd: config.llm.openai.input_per_million_usd,
             output_per_million_usd: config.llm.openai.output_per_million_usd,
             cached_input_per_million_usd: config.llm.openai.cached_input_per_million_usd,
@@ -241,14 +234,14 @@ async fn run() -> Result<(), error::AppError> {
     // Spawn supervisor run-loop (owns the bus receiver).
     let sup_token = shutdown.clone();
     let sup_handle = tokio::spawn(async move {
-        supervisor::run(bus, control, sup_token, handlers).await;
+        araliya_supervisor::run::run(bus, control, sup_token, handlers).await;
     });
 
     // Start supervisor-internal transport adapters for control/chat over stdio.
     // The management adapter is only active when the user passes -i / --interactive.
     // The Unix domain socket adapter always starts (daemon management).
     let socket_path = config.work_dir.join("araliya.sock");
-    supervisor::adapters::start(
+    araliya_supervisor::adapters::start(
         control_handle,
         bus_handle.clone(),
         shutdown.clone(),
@@ -265,7 +258,7 @@ async fn run() -> Result<(), error::AppError> {
         #[cfg(feature = "subsystem-ui")]
         let ui_handle = subsystems::ui::start(&config);
 
-        let comms = subsystems::comms::start(
+        let comms = araliya_comms::start(
             &config,
             bus_handle,
             shutdown.clone(),
@@ -274,7 +267,7 @@ async fn run() -> Result<(), error::AppError> {
             #[cfg(feature = "plugin-webbuilder")]
             Some(identity.identity_dir.join("runtimes")),
             comms_info,
-            crate::supervisor::adapters::stdio::stdio_control_active(),
+            araliya_supervisor::adapters::stdio::stdio_control_active(),
         );
         comms.join().await?;
     }

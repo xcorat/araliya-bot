@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::supervisor::bus::{BusPayload, BusResult};
+use araliya_core::bus::message::{BusPayload, BusResult};
 
 use super::{Agent, AgentsState};
 
@@ -24,8 +24,8 @@ impl Agent for GmailAgentPlugin {
     ) {
         tokio::spawn(async move {
             if action != "read" {
-                let _ = reply_tx.send(Err(crate::supervisor::bus::BusError::new(
-                    crate::supervisor::bus::ERR_METHOD_NOT_FOUND,
+                let _ = reply_tx.send(Err(araliya_core::bus::message::BusError::new(
+                    araliya_core::bus::message::ERR_METHOD_NOT_FOUND,
                     format!("unknown gmail action: {action}"),
                 )));
                 return;
@@ -74,7 +74,7 @@ impl Agent for GmailAgentPlugin {
                 Ok(BusPayload::ToolResponse {
                     ok: false, error, ..
                 }) => {
-                    let _ = reply_tx.send(Err(crate::supervisor::bus::BusError::new(
+                    let _ = reply_tx.send(Err(araliya_core::bus::message::BusError::new(
                         -32000,
                         format!(
                             "gmail tool error: {}",
@@ -83,7 +83,7 @@ impl Agent for GmailAgentPlugin {
                     )));
                 }
                 Ok(other) => {
-                    let _ = reply_tx.send(Err(crate::supervisor::bus::BusError::new(
+                    let _ = reply_tx.send(Err(araliya_core::bus::message::BusError::new(
                         -32000,
                         format!("unexpected tools reply: {other:?}"),
                     )));

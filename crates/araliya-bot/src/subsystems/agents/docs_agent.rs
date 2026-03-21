@@ -10,7 +10,7 @@ use tokio::sync::oneshot;
 
 use super::docs::DocsAgentPlugin;
 use super::{Agent, AgentsState};
-use crate::supervisor::bus::BusResult;
+use araliya_core::bus::message::BusResult;
 
 pub(crate) struct DocsAgentWrapper {
     inner: DocsAgentPlugin,

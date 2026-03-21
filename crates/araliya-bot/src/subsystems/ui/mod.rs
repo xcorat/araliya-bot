@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use crate::config::Config;
+use araliya_core::config::Config;
 
 // Re-export from araliya-core so existing `use crate::subsystems::ui::*` paths work.
 pub use araliya_core::ui::{ServeResponse, UiServe, UiServeHandle};

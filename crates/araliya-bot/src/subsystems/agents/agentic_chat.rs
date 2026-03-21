@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::config::AgenticChatConfig;
-use crate::supervisor::bus::BusResult;
+use araliya_core::config::AgenticChatConfig;
+use araliya_core::bus::message::BusResult;
 
 use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
@@ -26,7 +26,7 @@ use super::{Agent, AgentsState};
 #[cfg(feature = "idocstore")]
 use super::docs::DocsRagTool;
 #[cfg(feature = "idocstore")]
-use crate::subsystems::memory::stores::docstore::IDocStore;
+use araliya_memory::stores::docstore::IDocStore;
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 

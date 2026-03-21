@@ -10,17 +10,17 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
-use crate::config::LlmConfig;
-use crate::llm::providers;
-use crate::llm::{LlmProvider, ModelRates, ProviderError};
+use araliya_core::config::LlmConfig;
+use araliya_llm::providers;
+use araliya_llm::{LlmProvider, ModelRates, ProviderError};
 use tokio::sync::mpsc;
 
-use crate::supervisor::bus::{
+use araliya_core::bus::message::{
     BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND, StreamReceiver,
 };
-use crate::supervisor::component_info::{ComponentInfo, ComponentStatusResponse};
-use crate::supervisor::dispatch::BusHandler;
-use crate::supervisor::health::HealthReporter;
+use araliya_core::bus::component::{ComponentInfo, ComponentStatusResponse};
+use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::health::HealthReporter;
 
 /// Interval between background provider reachability checks.
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
@@ -154,11 +154,11 @@ impl BusHandler for LlmSubsystem {
                     let h = r
                         .get_current()
                         .await
-                        .unwrap_or_else(|| crate::supervisor::health::SubsystemHealth::ok("llm"));
+                        .unwrap_or_else(|| araliya_core::bus::health::SubsystemHealth::ok("llm"));
                     let data = serde_json::to_string(&h).unwrap_or_default();
                     let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
                 } else {
-                    let h = crate::supervisor::health::SubsystemHealth::ok("llm");
+                    let h = araliya_core::bus::health::SubsystemHealth::ok("llm");
                     let data = serde_json::to_string(&h).unwrap_or_default();
                     let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data }));
                 }

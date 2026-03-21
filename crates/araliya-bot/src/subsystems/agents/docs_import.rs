@@ -10,8 +10,8 @@
 use std::path::Path;
 use std::{fs, io};
 
-use crate::error::AppError;
-use crate::subsystems::memory::stores::docstore::{Document, IDocStore};
+use araliya_core::error::AppError;
+use araliya_memory::stores::docstore::{Document, IDocStore};
 
 /// Maximum size of a single source file that will be imported.
 pub const MAX_FILE_BYTES: u64 = 2_000_000; // 2 MB
@@ -170,10 +170,10 @@ pub fn populate_kgdocstore_from_source(
     agent_identity_dir: &Path,
     source_dir: &Path,
     index_name: &str,
-    kg_cfg: &crate::config::DocsKgConfig,
+    kg_cfg: &araliya_core::config::DocsKgConfig,
 ) -> Result<(), AppError> {
-    use crate::subsystems::memory::stores::sqlite_core::Document;
-    use crate::subsystems::memory::stores::kg_docstore::{IKGDocStore, KgConfig};
+    use araliya_memory::stores::sqlite_core::Document;
+    use araliya_memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 
     let store = IKGDocStore::open(agent_identity_dir)?;
 
@@ -353,7 +353,7 @@ fn collect_text_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subsystems::memory::AGENTS_DIRNAME;
+    use araliya_memory::AGENTS_DIRNAME;
     use std::fs;
     use tempfile::TempDir;
 
