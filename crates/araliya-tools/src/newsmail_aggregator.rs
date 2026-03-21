@@ -4,9 +4,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use tracing::debug;
 
-use crate::config::NewsmailAggregatorConfig;
+use araliya_core::config::NewsmailAggregatorConfig;
 
-use super::gmail::{self, GmailFilter, GmailSummary};
+use crate::gmail::{self, GmailFilter, GmailSummary};
 
 /// Accepts either a single label ID string or an array of label ID strings.
 #[derive(Debug, Deserialize)]

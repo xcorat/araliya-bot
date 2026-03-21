@@ -12,6 +12,7 @@ araliya-supervisor = { path = "../araliya-supervisor" }
 araliya-llm = { path = "../araliya-llm" }
 araliya-comms = { path = "../araliya-comms" }
 araliya-memory = { path = "../araliya-memory" }
+araliya-tools = { path = "../araliya-tools", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
@@ -41,8 +42,6 @@ pollster = { version = "0.3", optional = true }
 chrono = "0.4"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 text-splitter = { version = "0.17", optional = true, features = ["markdown"] }
-jsonwebtoken = { version = "9", optional = true }
-feed-rs = { version = "2", optional = true }
 htmd = "0.5"
 
 [features]
@@ -101,7 +100,7 @@ ikgdocstore = ["isqlite", "dep:text-splitter", "araliya-memory/ikgdocstore"]
 subsystem-llm = []
 subsystem-comms = []
 subsystem-ui = ["araliya-comms/subsystem-ui"]
-subsystem-tools = []
+subsystem-tools = ["dep:araliya-tools", "araliya-tools/subsystem-tools"]
 subsystem-cron = []
 subsystem-runtimes = []
 
@@ -112,10 +111,10 @@ plugin-docs-kg = ["subsystem-agents", "ikgdocstore"]
 plugin-basic-chat = ["subsystem-agents", "subsystem-llm"]
 plugin-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-agentic-chat = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
-plugin-gmail-tool = ["subsystem-tools"]
+plugin-gmail-tool = ["subsystem-tools", "araliya-tools/plugin-gmail-tool"]
 plugin-gmail-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
 plugin-news-agent = ["subsystem-agents", "subsystem-tools", "plugin-gmail-tool"]
-plugin-gdelt-tool = ["dep:jsonwebtoken", "subsystem-tools"]
+plugin-gdelt-tool = ["subsystem-tools", "araliya-tools/plugin-gdelt-tool"]
 plugin-gdelt-news-agent = ["plugin-gdelt-tool", "subsystem-agents"]
 plugin-newsroom-agent = ["plugin-gdelt-tool", "subsystem-agents", "isqlite"]
 plugin-news-aggregator = ["plugin-newsroom-agent", "ikgdocstore"]
@@ -123,7 +122,7 @@ plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
 plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-webbuilder"]
-plugin-rss-fetch-tool = ["subsystem-tools", "dep:feed-rs"]
+plugin-rss-fetch-tool = ["subsystem-tools", "araliya-tools/plugin-rss-fetch-tool"]
 plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool"]
 
 # Comms Channels

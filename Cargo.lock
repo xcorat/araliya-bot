@@ -149,20 +149,20 @@ dependencies = [
  "araliya-comms",
  "araliya-core",
  "araliya-llm",
+ "araliya-memory",
  "araliya-supervisor",
+ "araliya-tools",
  "axum",
  "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "dotenvy",
  "ed25519-dalek",
- "feed-rs",
  "futures-util",
  "gpui",
  "gpui-component",
  "hex",
  "htmd",
- "jsonwebtoken",
  "pollster 0.3.0",
  "rand_core 0.6.4",
  "reqwest 0.12.28",
@@ -238,6 +238,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "araliya-memory"
+version = "0.2.6"
+dependencies = [
+ "araliya-core",
+ "chrono",
+ "hex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "text-splitter",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "araliya-supervisor"
 version = "0.2.6"
 dependencies = [
@@ -247,6 +266,24 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "araliya-tools"
+version = "0.2.6"
+dependencies = [
+ "araliya-core",
+ "base64 0.22.1",
+ "chrono",
+ "feed-rs",
+ "jsonwebtoken",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

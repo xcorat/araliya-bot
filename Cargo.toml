@@ -6,6 +6,7 @@ members = [
     "crates/araliya-llm",
     "crates/araliya-comms",
     "crates/araliya-memory",
+    "crates/araliya-tools",
     "crates/araliya-bot",
 ]
 default-members = ["crates/araliya-bot"]

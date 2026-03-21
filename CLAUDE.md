@@ -63,6 +63,7 @@ cargo clippy -p araliya-core -- -D warnings
 cargo clippy -p araliya-supervisor -- -D warnings
 cargo clippy -p araliya-llm -- -D warnings
 cargo clippy -p araliya-comms --all-features -- -D warnings
+cargo clippy -p araliya-tools -- -D warnings
 cargo fmt --check
 
 # Frontend type checking
@@ -105,6 +106,7 @@ araliya-supervisor    ← dispatch loop, control plane, management, adapters (de
 araliya-llm           ← LLM provider abstraction: OpenAI-compatible, Qwen, dummy (depends on core)
 araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on core)
 araliya-memory        ← session management, stores (doc, KG, SQL); bus handler (depends on core)
+araliya-tools         ← external tool integrations: Gmail, GDELT BigQuery, RSS (depends on core)
 araliya-bot           ← binary + remaining subsystems (depends on all above)
 ```
 
@@ -126,7 +128,7 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
 - `memory/` — shim re-exporting from `araliya-memory` (session lifecycle, stores, bus handler)
 - `cron/` — timer-based event scheduling
-- `tools/` — external actions (Gmail MVP)
+- `tools/` — shim re-exporting from `araliya-tools` (Gmail, GDELT BigQuery, RSS)
 - `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
 
 **Key traits** (defined in `araliya-core`, re-exported through shims in `araliya-bot`):
@@ -154,8 +156,13 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - Core agents: echo, basic-chat, chat, agentic-chat, docs, uniweb
 - Plugin agents: gmail, news, gdelt_news, newsroom, news_aggregator, test_rssnews, webbuilder, runtime_cmd, docs_agent
 
+**Phase 7 (complete): Tools subsystem extraction** — `araliya-tools` crate.
+- `ToolsSubsystem` struct + `BusHandler` impl moved to `araliya-tools/src/dispatcher.rs`
+- Tool implementations moved: `gmail.rs`, `newsmail_aggregator.rs`, `gdelt_bigquery.rs`, `rss_fetch.rs`
+- Features forwarded from `araliya-bot`: `plugin-gmail-tool`, `plugin-gdelt-tool`, `plugin-rss-fetch-tool`
+- Shim re-export in `araliya-bot/subsystems/tools/mod.rs` preserves all call sites
+
 **Future phases:**
-- Phase 7: Extract tools subsystem (`araliya-tools`)
 - Phase 8: Extract cron subsystem (`araliya-cron`)
 - Phase 9: Extract agents registry + routing (`araliya-agents`)
 
@@ -204,6 +211,13 @@ crates/
 │   ├── telegram.rs          # Telegram channel (cfg: channel-telegram)
 │   ├── http/                # HTTP channel (cfg: channel-http)
 │   └── axum_channel/        # Axum channel (cfg: channel-axum)
+├── araliya-tools/src/       # Tools subsystem (external integrations)
+│   ├── lib.rs               # Public re-exports
+│   ├── dispatcher.rs        # ToolsSubsystem + BusHandler impl
+│   ├── gmail.rs             # Gmail OAuth2 API (feature: plugin-gmail-tool)
+│   ├── newsmail_aggregator.rs # Gmail filtering/aggregation (feature: plugin-gmail-tool)
+│   ├── gdelt_bigquery.rs    # GDELT v2 BigQuery API (feature: plugin-gdelt-tool)
+│   └── rss_fetch.rs         # RSS/Atom feed parser (feature: plugin-rss-fetch-tool)
 ├── araliya-memory/src/      # Memory subsystem (session management, stores, bus handler)
 │   ├── lib.rs               # MemorySystem, SessionInfo, SessionSpend, MemoryConfig
 │   ├── bus.rs               # MemoryBusHandler (management plane, read-only kg_graph queries)

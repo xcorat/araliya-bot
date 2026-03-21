@@ -525,9 +525,9 @@ pub async fn read_latest(q: Option<&str>) -> Result<GmailSummary, String> {
         label_ids: vec!["INBOX".to_string()],
         q: q.filter(|s| !s.is_empty()).map(|s| s.to_string()),
     };
-    let mut items = read_many(filter, 1).await?;
+    let items = read_many(filter, 1).await?;
     items
-        .drain(..)
+        .into_iter()
         .next()
         .ok_or_else(|| "no messages found".to_string())
 }
