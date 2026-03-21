@@ -122,7 +122,7 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 
 **Subsystems** (`crates/araliya-bot/src/subsystems/`):
 - `comms/` — shim re-exporting from `araliya-comms` (PTY, Telegram, HTTP, Axum channels)
-- `agents/` — message routing with pluggable `Agent` trait; built-in agents: `echo`, `basic-chat`, `chat`, `gmail`, `news`, `docs`
+- `agents/` — agent routing + registration; loads system agents from `config/agents/` and user agents from `~/.araliya/agents/`; built-in agents: `echo`, `basic-chat`, `chat`, `agentic-chat`, `docs`, `uniweb`, `gmail`, `news`, `gdelt_news`, `newsroom`, `news_aggregator`, `test_rssnews`, `webbuilder`, `runtime_cmd`, `docs_agent`
 - `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
 - `memory/` — shim re-exporting from `araliya-memory` (session lifecycle, stores, bus handler)
 - `cron/` — timer-based event scheduling
@@ -146,10 +146,18 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 - Background `DocstoreManager` for auto-indexing and orphan cleanup
 - Shim re-exports in `araliya-bot/subsystems/memory/` preserve all `use crate::subsystems::memory::*` call sites
 
+**Phase 6 (complete): Agent definitions** — agent identity, manifests, and prompt co-location.
+- `AgentDefinition` type in `araliya-core/src/config/agent_def.rs` with TOML parsing and directory scanning
+- `config/agents/` directory with 15 agent definitions + `_shared/` prompt layers
+- Unix-like directory layering: system agents (`config/agents/`) vs user agents (`~/.araliya/agents/`)
+- `PromptBuilder.agent_layer()` method resolves prompts with user override support
+- Core agents: echo, basic-chat, chat, agentic-chat, docs, uniweb
+- Plugin agents: gmail, news, gdelt_news, newsroom, news_aggregator, test_rssnews, webbuilder, runtime_cmd, docs_agent
+
 **Future phases:**
-- Phase 6: Extract tools subsystem (`araliya-tools`)
-- Phase 7: Extract cron subsystem (`araliya-cron`)
-- Phase 8: Extract agents registry + routing (`araliya-agents`)
+- Phase 7: Extract tools subsystem (`araliya-tools`)
+- Phase 8: Extract cron subsystem (`araliya-cron`)
+- Phase 9: Extract agents registry + routing (`araliya-agents`)
 
 ## Configuration
 
@@ -233,7 +241,18 @@ crates/
     └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
 
 frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)
-config/                      # TOML config files + prompts/
+config/                      # TOML config files + agent definitions
+│   ├── agents/              # System agent definitions (manifests + prompts)
+│   │   ├── _shared/         # Shared prompt layers (id.md, agent.md, memory_and_tools.md, etc.)
+│   │   ├── echo/
+│   │   ├── basic-chat/
+│   │   ├── chat/
+│   │   ├── agentic-chat/
+│   │   ├── docs/
+│   │   ├── docs_agent/
+│   │   ├── uniweb/
+│   │   └── …(11 more agents)
+│   └── *.toml               # Configuration overlays
 docs/                        # Architecture, operations, development docs
 ```
 

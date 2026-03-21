@@ -1,6 +1,6 @@
 # Agents Subsystem
 
-**Version:** v0.6 — runtime-classified agents · `AgentRegistration` wrapper · built-in agent classification · `AgentRuntimeClass` taxonomy · `AgentsState` capability boundary · `AgenticLoop` dual-model orchestration · `ChatCore` composition · session queries · docs RAG/KG-RAG · per-turn debug logging · externalized prompt templates.
+**Version:** v0.7 — agent definitions · Unix-like directory layering · manifests (`agent.toml`) · co-located prompts · user agent overrides · runtime-classified agents · `AgentRegistration` wrapper · `AgentRuntimeClass` taxonomy · `AgentsState` capability boundary · `AgenticLoop` dual-model orchestration · `ChatCore` composition · session queries · docs RAG/KG-RAG · per-turn debug logging · externalized prompt templates.
 
 ---
 
@@ -210,6 +210,8 @@ Agents receive `Arc<AgentsState>`, not a raw bus handle. The capability surface 
 | `agent_identities` | `HashMap<String, Identity>` — cryptographic identities per agent |
 | `agent_skills` | `HashMap<String, Vec<String>>` — per-agent bus-tool allowlists |
 | `llm_rates` | `ModelRates` — current LLM token pricing for spend accounting |
+| `agents_dir` | `String` — root directory for system agent definitions (`config/agents/`) |
+| `user_agents_dir` | `Option<String>` — optional user agent definitions directory (`~/.araliya/agents/`); when present, user agents override system ones by ID |
 | `debug_logging` | `bool` — whether per-turn debug data should be written to session KV |
 
 The raw bus handle is private. Agents cannot address arbitrary bus targets. This boundary keeps agent implementations testable in isolation and limits accidental subsystem coupling.
@@ -240,12 +242,12 @@ The context from tool execution, recent conversation history, and the original u
 
 - `agent_id` — used for identity and session scoping
 - `use_instruction_llm` — when `true`, routes the instruction pass through `llm/instruct`; when `false`, both passes use `llm/complete`
-- `instruct_prompt_file` — prompt template for the instruction pass
-- `context_prompt_file` — prompt template for the response pass
+- `instruct_prompt_file` — prompt template filename for the instruction pass (resolved via `agent_layer()`)
+- `context_prompt_file` — prompt template filename for the response pass (resolved via `agent_layer()`)
 - `local_tools` — in-process action tools implementing the `LocalTool` trait
 - `memory_tools` — in-process memory tools (e.g., document retrieval) implementing the `LocalTool` trait
 - `allowed_tools` — bus tool allowlist from agent skills config
-- `prompts_dir` — directory from which prompt files are loaded
+- `agents_dir` — root directory for agent definitions (`config/agents/`); used to resolve prompt files via `agent_layer()`
 - `debug_logging` — whether to write per-turn debug data to session KV
 
 **Instruction prompt structure**
@@ -325,26 +327,133 @@ Debug logging is off by default. It is intended for development, troubleshooting
 
 ---
 
+## Agent Definitions and Manifests
+
+**Phase 6 introduces agent definitions** — a Unix-like layered approach to agent identity, configuration, and prompts.
+
+Each agent is now defined by a directory under `config/agents/{agent_id}/` containing:
+
+- `agent.toml` — manifest declaring the agent's identity, extends, enabled status, tools/skills, memory stores, and LLM settings
+- `*.md` — co-located prompt files (instruct.md, context.md, summary.md, etc.)
+
+### Manifest Structure
+
+Each `agent.toml` declares:
+
+```toml
+[agent]
+extends = ""                    # optional: inherit from another agent (e.g., "docs_agent" extends "docs")
+enabled = true
+
+[tools]
+skills = ["web_search"]         # tools this agent can invoke
+
+[memory]
+stores = ["basic_session"]      # memory store types required
+
+[llm]
+use_instruction_llm = false     # route instruction pass through llm/instruct when true
+```
+
+Agent-specific config sections (e.g., `[docs]`, `[news.query]`) are supported and passed to the agent at runtime.
+
+### Directory Layering
+
+Two agent directories are scanned and merged at startup, following Unix-like conventions:
+
+1. **System agents** — `config/agents/` (distributed with the binary)
+2. **User agents** — `~/.araliya/agents/` (local overrides + custom definitions)
+
+When a user agent ID matches a system agent, the user definition completely overrides the system one (for both prompts and runtime configuration). User agents can also use `extends` to build on core agents without copying all their configuration.
+
+### Shared Prompt Layers
+
+Common prompt layers live in `config/agents/_shared/`:
+
+```
+config/agents/
+├── _shared/
+│   ├── id.md                   — bot identity / persona (who it is)
+│   ├── agent.md                — agent-level instructions (what it does)
+│   ├── memory_and_tools.md     — memory access & tool guidance
+│   ├── subagent.md             — (optional) subagent delegation constraints
+│   └── tools.ms                — tool manifest template
+├── docs/
+│   ├── agent.toml
+│   ├── instruct.md
+│   ├── context.md
+│   └── qa.md
+├── news/
+│   ├── agent.toml
+│   └── summary.md
+└── …
+```
+
+### Prompt Resolution
+
+The `PromptBuilder.agent_layer()` method resolves prompts using a three-tier lookup:
+
+1. User agent directory: `~/.araliya/agents/{agent_id}/{filename}`
+2. System agent directory: `config/agents/{agent_id}/{filename}`
+3. Shared directory: `config/agents/_shared/{filename}`
+
+This allows users to override individual prompts without reimplementing entire agents, and enables agent inheritance through shared base configurations.
+
+### Examples
+
+**Minimal manifest** (e.g., `echo`, `basic-chat`):
+
+```toml
+[agent]
+enabled = true
+```
+
+**Agent with tools** (e.g., `agentic-chat`):
+
+```toml
+[agent]
+enabled = true
+
+[tools]
+skills = ["web_search", "docs_search"]
+
+[memory]
+stores = ["basic_session"]
+```
+
+**Extending an agent** (e.g., `docs_agent` extends `docs`):
+
+```toml
+[agent]
+extends = "docs"
+enabled = true
+```
+
+**User override** (e.g., `~/.araliya/agents/my-docs/agent.toml`):
+
+```toml
+[agent]
+extends = "docs"
+
+[docs]
+docsdir = "~/my-project/docs"  # use custom doc directory
+```
+
+---
+
 ## Prompt Configuration
 
-Agent prompts are externalized as plain text files under `config/prompts/`. Each agent loads its prompt templates from the prompts directory at startup. Templates use `{{variable}}` syntax for interpolation (e.g. `{{items}}`, `{{docs}}`, `{{question}}`, `{{history}}`, `{{user_input}}`).
+Agent prompts are co-located with their definitions under `config/agents/{agent_id}/`. Templates use `{{variable}}` syntax for interpolation (e.g. `{{items}}`, `{{docs}}`, `{{question}}`, `{{history}}`, `{{user_input}}`).
 
-Externalizing prompts means behavioral policy can be updated without code changes or recompilation. Agents fall back to a minimal built-in prompt if the expected file is absent.
+Co-locating prompts with agent definitions means behavioral policy can be updated without code changes or recompilation. Agents fall back to a minimal built-in prompt if the expected file is absent.
 
-Example layout:
+The `PromptBuilder` utility handles file loading, variable substitution, and tool manifest rendering via two methods:
 
-```
-config/
-└── prompts/
-    ├── agentic_instruct.txt    — instruction pass prompt for AgenticLoop
-    ├── agentic_context.txt     — response pass prompt for AgenticLoop
-    ├── news_summary.txt        — news agent summarization prompt
-    ├── gdelt_news_summary.txt  — GDELT news agent summarization prompt
-    ├── docs_qa.txt             — docs agent QA prompt
-    └── chat_context.txt        — session chat context prompt
-```
+- `layer(filename)` — load from the prompts directory (for backward compat and shared layers)
+- `agent_layer(agents_dir, agent_id, filename)` — load from agent definition directory with `_shared/` fallback
+- `agent_layer_with_user(agents_dir, agent_id, filename, user_agents_dir)` — check user override first, then system agent, then shared
 
-The `PromptBuilder` utility handles file loading, variable substitution, and tool manifest rendering. Agents that need a preamble summarizing available tools (used by the instruction pass) use `PromptBuilder` to generate one from the agent's skill list.
+Agents that need a preamble summarizing available tools (used by the instruction pass) use `preamble(agents_dir, tools)` to generate the standard layers from `_shared/`.
 
 ---
 
