@@ -699,12 +699,6 @@ impl IKGDocStore {
             })
             .collect();
 
-        // name -> entity_id lookup for relation pass
-        let _name_to_id: HashMap<String, String> = confirmed
-            .values()
-            .map(|e| (e.name.clone(), e.id.clone()))
-            .collect();
-
         // ── Pass 2: relation extraction ───────────────────────────────────
         // (from_id, to_id, label) -> (raw_weight, set of chunk_ids)
         let mut raw_relations: HashMap<(String, String, String), (usize, HashSet<String>)> =
