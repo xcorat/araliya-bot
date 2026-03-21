@@ -5,7 +5,7 @@
 
 use tokio::sync::mpsc;
 
-use crate::llm::{LlmResponse, ProviderError, StreamChunk};
+use crate::{LlmResponse, ProviderError, StreamChunk};
 
 use super::openai_compatible::OpenAiCompatibleProvider;
 

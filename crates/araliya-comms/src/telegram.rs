@@ -8,19 +8,16 @@ use teloxide::prelude::*;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use super::state::CommsState;
-use crate::error::AppError;
-use crate::subsystems::runtime::{Component, ComponentFuture};
+use crate::state::CommsState;
+use araliya_core::error::AppError;
+use araliya_core::runtime::{Component, ComponentFuture};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-/// Telegram has a 4096 character limit per message.
-/// We chunk at 4000 to be safe.
 const MAX_MESSAGE_LENGTH: usize = 4000;
 
 // ── TelegramChannel ──────────────────────────────────────────────────────────
 
-/// A Telegram channel instance.
 pub struct TelegramChannel {
     channel_id: String,
     state: Arc<CommsState>,
@@ -82,8 +79,6 @@ async fn run_telegram(
                                 text = "(empty response)".to_string();
                             }
 
-                            // Telegram has a 4096 character limit per message.
-                            // We chunk at MAX_MESSAGE_LENGTH to be safe.
                             let chars: Vec<char> = text.chars().collect();
 
                             for chunk in chars.chunks(MAX_MESSAGE_LENGTH) {

@@ -1,9 +1,4 @@
 //! UI route handlers for the axum channel.
-//!
-//! The root handler serves a static welcome page.  The catch-all `serve_path`
-//! handler delegates to the [`UiServe`] backend when one is configured —
-//! calling it via [`tokio::task::spawn_blocking`] because [`UiServe::serve`]
-//! may perform blocking file I/O.
 
 use axum::{
     body::Body,
@@ -16,7 +11,6 @@ use super::AxumState;
 
 // ── Root page ─────────────────────────────────────────────────────────────────
 
-/// Simple welcome page served at the root path (mirrors `http/ui.rs`).
 const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -59,12 +53,10 @@ const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-/// GET / — root welcome page.
 pub(super) async fn root() -> Html<&'static str> {
     Html(ROOT_INDEX_HTML)
 }
 
-/// GET /*path — delegate to the UI backend (SPA fallback) or 404.
 pub(super) async fn serve_path(
     State(state): State<AxumState>,
     uri: axum::http::Uri,
@@ -73,7 +65,6 @@ pub(super) async fn serve_path(
 
     #[cfg(feature = "subsystem-ui")]
     if let Some(ui) = state.ui {
-        // UiServe::serve does blocking file I/O — run it off the async executor.
         let result = tokio::task::spawn_blocking(move || ui.serve(&path)).await;
         match result {
             Ok(Some(resp)) => {
@@ -96,7 +87,6 @@ pub(super) async fn serve_path(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Parse the status code out of a `"NNN Reason"` string (e.g. `"200 OK"`).
 fn parse_status_code(s: &str) -> StatusCode {
     s.split_once(' ')
         .and_then(|(code, _)| code.parse::<u16>().ok())
@@ -123,13 +113,11 @@ mod tests {
 
     #[test]
     fn parse_status_with_no_reason() {
-        // Some ServeResponse impls may have no reason phrase.
         assert_eq!(parse_status_code("500 "), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
     fn parse_status_invalid_falls_back_to_ok() {
-        // Unknown / unparseable must never panic.
         assert_eq!(parse_status_code("garbage"), StatusCode::OK);
     }
 }

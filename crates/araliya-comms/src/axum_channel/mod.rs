@@ -1,26 +1,5 @@
 //! Axum-based HTTP channel — serves API endpoints under `/api/` and
 //! delegates all other paths to the UI backend when available.
-//!
-//! This channel is a drop-in replacement for [`super::http::HttpChannel`]
-//! that uses axum/hyper instead of a hand-rolled HTTP parser.  It implements
-//! [`Component`] so it slots into the existing comms subsystem lifecycle:
-//! `run()` drives the axum event loop; the existing [`CancellationToken`]
-//! is wired to axum's graceful shutdown.
-//!
-//! ## URL layout (identical to channel-http)
-//!
-//! ```text
-//! GET  /api/health
-//! GET  /api/tree   — component tree (no private data)
-//! POST /api/message
-//! GET  /api/sessions
-//! GET  /api/sessions/{id}/memory
-//! GET  /api/sessions/{id}/files
-//! GET  /api/session/{id}
-//! GET  /favicon.ico              → 204
-//! GET  /                         → root HTML
-//! GET  /*path                    → UI backend (SPA fallback)
-//! ```
 
 mod api;
 #[cfg(feature = "plugin-webbuilder")]
@@ -38,12 +17,12 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::error::AppError;
-use crate::subsystems::runtime::{Component, ComponentFuture};
+use araliya_core::error::AppError;
+use araliya_core::runtime::{Component, ComponentFuture};
 #[cfg(feature = "subsystem-ui")]
-use crate::subsystems::ui::UiServeHandle;
+use araliya_core::ui::UiServeHandle;
 
-use super::state::CommsState;
+use crate::state::CommsState;
 
 // ── Type alias (mirrors http/mod.rs pattern) ──────────────────────────────────
 
@@ -54,19 +33,11 @@ pub(crate) type OptionalUiHandle = Option<()>;
 
 // ── Shared request state ──────────────────────────────────────────────────────
 
-/// Axum router state injected into every handler via [`axum::extract::State`].
-///
-/// Cheap to clone — all fields are reference-counted.
 #[derive(Clone)]
 pub(crate) struct AxumState {
-    /// Channel identifier used in log spans.
     pub channel_id: Arc<str>,
-    /// Comms subsystem capabilities (message routing, session queries).
     pub comms: Arc<CommsState>,
-    /// Optional UI backend for static-file / SPA serving.
     pub ui: OptionalUiHandle,
-    /// Root directory for webbuilder preview serving (`{identity_dir}/runtimes/`).
-    /// When `Some`, `GET /preview/{session_id}/{*path}` is active.
     #[cfg(feature = "plugin-webbuilder")]
     pub preview_root: Option<std::path::PathBuf>,
 }
@@ -160,7 +131,6 @@ async fn run_axum(
 
 fn build_router(state: AxumState) -> Router {
     let router = Router::new()
-        // API routes
         .route("/api/health", get(api::health))
         .route("/api/health/refresh", post(api::health_refresh))
         .route("/api/tree", get(api::tree))
@@ -182,12 +152,10 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/sessions/{session_id}/debug", get(api::session_debug))
         .route("/api/sessions/{session_id}/files", get(api::session_files))
         .route("/api/session/{session_id}", get(api::session_detail))
-        // UI routes
         .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }))
         .route("/", get(ui::root))
         .route("/{*path}", get(ui::serve_path));
 
-    // Preview routes (webbuilder dist serving) — compiled in only with the feature.
     #[cfg(feature = "plugin-webbuilder")]
     let router = router
         .route("/preview/{session_id}", get(preview::preview_index_handler))

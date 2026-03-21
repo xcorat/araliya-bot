@@ -12,7 +12,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 
-use crate::llm::{LlmResponse, LlmTiming, LlmUsage, ProviderError, StreamChunk};
+use crate::{LlmResponse, LlmTiming, LlmUsage, ProviderError, StreamChunk};
 
 // ── Public provider ───────────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ pub struct OpenAiCompatibleProvider {
     api_base_url: String,
     model: String,
     temperature: f32,
+    #[allow(dead_code)]
     timeout_seconds: u64,
     api_key: Option<String>,
     /// Maximum output tokens sent in every request.  0 means no explicit limit.
@@ -143,42 +144,8 @@ impl OpenAiCompatibleProvider {
             req = req.bearer_auth(key);
         }
 
-        // #region agent log
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open("/data/araliya/project/araliya-bot/.cursor/debug.log")
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64;
-            let line = format!(
-                "{{\"location\":\"openai_compatible.rs:complete\",\"message\":\"llm request start\",\"data\":{{\"url\":\"{}\",\"model\":\"{}\",\"timeout_seconds\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
-                self.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
-                self.model.replace('\\', "\\\\").replace('"', "\\\""),
-                self.timeout_seconds,
-                ts
-            );
-            let _ = f.write_all(line.as_bytes());
-        }
-        // #endregion
-
         let req_start = Instant::now();
         let response = req.send().await.map_err(|e| {
-            // #region agent log
-            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open("/data/araliya/project/araliya-bot/.cursor/debug.log") {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
-                let err_msg = e.to_string().replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ");
-                let line = format!("{{\"location\":\"openai_compatible.rs:send_err\",\"message\":\"llm request failed\",\"data\":{{\"url\":\"{}\",\"error\":\"{}\",\"is_timeout\":{}}},\"timestamp\":{},\"hypothesisId\":\"H1\"}}\n",
-                    self.api_base_url.replace('\\', "\\\\").replace('"', "\\\""),
-                    err_msg,
-                    e.is_timeout(), ts);
-                let _ = f.write_all(line.as_bytes());
-            }
-            // #endregion
             error!(url = %self.api_base_url, error = %e, "LLM HTTP request failed (transport)");
             ProviderError::Request(e.to_string())
         })?;
@@ -231,7 +198,7 @@ impl OpenAiCompatibleProvider {
             text,
             thinking,
             usage,
-            timing: Some(crate::llm::LlmTiming {
+            timing: Some(LlmTiming {
                 ttft_ms: None,
                 total_ms: req_start.elapsed().as_millis() as u64,
             }),
@@ -351,7 +318,7 @@ impl OpenAiCompatibleProvider {
                     let _ = tx
                         .send(StreamChunk::Done {
                             usage: Some(usage),
-                            timing: Some(crate::llm::LlmTiming {
+                            timing: Some(LlmTiming {
                                 ttft_ms,
                                 total_ms: req_start.elapsed().as_millis() as u64,
                             }),
@@ -387,7 +354,7 @@ impl OpenAiCompatibleProvider {
         let _ = tx
             .send(StreamChunk::Done {
                 usage: None,
-                timing: Some(crate::llm::LlmTiming {
+                timing: Some(LlmTiming {
                     ttft_ms,
                     total_ms: req_start.elapsed().as_millis() as u64,
                 }),

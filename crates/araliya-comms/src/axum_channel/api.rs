@@ -1,8 +1,4 @@
 //! Axum handlers for `/api/*` routes.
-//!
-//! Each handler receives [`AxumState`] via [`axum::extract::State`] and
-//! returns an axum [`Response`].  Timeout logic and bus interactions mirror
-//! the hand-rolled implementations in [`super::super::http::api`].
 
 use std::time::Duration;
 
@@ -22,7 +18,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::warn;
 
-use crate::llm::StreamChunk;
+use araliya_core::types::llm::StreamChunk;
 
 use super::AxumState;
 
@@ -40,14 +36,12 @@ pub(super) struct MessageRequest {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Build a JSON error response body.
 fn json_error(code: &str, msg: impl std::fmt::Display) -> Json<serde_json::Value> {
     Json(json!({ "error": code, "message": format!("{msg}") }))
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-/// GET /api/health
 pub(super) async fn health(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(Duration::from_secs(3), state.comms.management_http_get()).await {
         Ok(Ok(body)) => (
@@ -67,11 +61,6 @@ pub(super) async fn health(State(state): State<AxumState>) -> Response {
     }
 }
 
-/// POST /api/health/refresh — triggers a live health check across all subsystems.
-///
-/// Each subsystem reruns its health check synchronously (with a 5 s per-subsystem
-/// timeout) and returns the updated aggregated health body, identical in shape
-/// to `GET /api/health`.
 pub(super) async fn health_refresh(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(
         Duration::from_secs(15),
@@ -96,7 +85,6 @@ pub(super) async fn health_refresh(State(state): State<AxumState>) -> Response {
     }
 }
 
-/// GET /api/tree — component tree (no private data).
 pub(super) async fn tree(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(Duration::from_secs(3), state.comms.management_http_tree()).await {
         Ok(Ok(body)) => (
@@ -116,7 +104,6 @@ pub(super) async fn tree(State(state): State<AxumState>) -> Response {
     }
 }
 
-/// POST /api/message
 pub(super) async fn message(
     State(state): State<AxumState>,
     Json(req): Json<MessageRequest>,
@@ -169,15 +156,6 @@ pub(super) async fn message(
     }
 }
 
-/// POST /api/message/stream — SSE streaming completion routed through the agent pipeline.
-///
-/// The selected agent runs its full instruction + tool pipeline (buffered),
-/// then streams the final response pass as SSE events.
-///
-/// Events emitted:
-/// - `event: thinking` / `data: {"delta": "..."}` — reasoning token delta
-/// - `event: content`  / `data: {"delta": "..."}` — answer token delta
-/// - `event: done`     / `data: {"usage": {...}}` — end of stream with usage
 pub(super) async fn message_stream(
     State(state): State<AxumState>,
     Json(req): Json<MessageRequest>,
@@ -201,7 +179,6 @@ pub(super) async fn message_stream(
         }
     };
 
-    // Convert mpsc::Receiver into a futures Stream for axum's SSE.
     let event_stream = stream::unfold(rx, |mut rx| async move {
         let chunk = rx.recv().await?;
         let event: Result<Event, Infallible> = Ok(match chunk {
@@ -236,7 +213,6 @@ pub(super) async fn message_stream(
     Sse::new(event_stream).into_response()
 }
 
-/// GET /api/sessions
 pub(super) async fn sessions(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(Duration::from_secs(10), state.comms.request_sessions()).await {
         Ok(Ok(data)) => (
@@ -257,7 +233,6 @@ pub(super) async fn sessions(State(state): State<AxumState>) -> Response {
     }
 }
 
-/// GET /api/agents
 pub(super) async fn agents(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(Duration::from_secs(10), state.comms.request_agents()).await {
         Ok(Ok(data)) => (
@@ -278,10 +253,6 @@ pub(super) async fn agents(State(state): State<AxumState>) -> Response {
     }
 }
 
-/// GET /api/agents/{agent_id}/session — primary session transcript for an agent.
-///
-/// Returns `{session_id, transcript}` (`SessionDetailResponse` shape).
-/// `session_id` is `null` and `transcript` is `[]` when the agent has no session yet.
 pub(super) async fn agent_session(
     State(state): State<AxumState>,
     Path(agent_id): Path<String>,
@@ -310,7 +281,6 @@ pub(super) async fn agent_session(
     }
 }
 
-/// GET /api/agents/{agent_id}/spend — accumulated token/cost totals for an agent's active session.
 pub(super) async fn agent_spend(
     State(state): State<AxumState>,
     Path(agent_id): Path<String>,
@@ -339,7 +309,6 @@ pub(super) async fn agent_spend(
     }
 }
 
-/// GET /api/agents/{agent_id}/kg — knowledge graph for an agent's kgdocstore.
 pub(super) async fn agent_kg(
     State(state): State<AxumState>,
     Path(agent_id): Path<String>,
@@ -368,7 +337,6 @@ pub(super) async fn agent_kg(
     }
 }
 
-/// GET /api/memory/agents/{agent_id}/kg — KG via memory subsystem.
 pub(super) async fn memory_agent_kg(
     State(state): State<AxumState>,
     Path(agent_id): Path<String>,
@@ -397,7 +365,6 @@ pub(super) async fn memory_agent_kg(
     }
 }
 
-/// GET /api/session/{session_id}
 pub(super) async fn session_detail(
     State(state): State<AxumState>,
     Path(session_id): Path<String>,
@@ -426,7 +393,6 @@ pub(super) async fn session_detail(
     }
 }
 
-/// GET /api/sessions/{session_id}/memory
 pub(super) async fn session_memory(
     State(state): State<AxumState>,
     Path(session_id): Path<String>,
@@ -455,7 +421,6 @@ pub(super) async fn session_memory(
     }
 }
 
-/// GET /api/sessions/{session_id}/debug
 pub(super) async fn session_debug(
     State(state): State<AxumState>,
     Path(session_id): Path<String>,
@@ -484,7 +449,6 @@ pub(super) async fn session_debug(
     }
 }
 
-/// GET /api/sessions/{session_id}/files
 pub(super) async fn session_files(
     State(state): State<AxumState>,
     Path(session_id): Path<String>,

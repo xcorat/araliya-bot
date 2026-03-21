@@ -1,9 +1,8 @@
 //! UI route handlers — serves the root welcome page and delegates to the
 //! embedded UI backend when the `subsystem-ui` feature is enabled.
 
-use crate::error::AppError;
+use araliya_core::error::AppError;
 
-/// Simple welcome page served at the root path.
 const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -46,7 +45,6 @@ const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-/// GET / | /index.html — root welcome page.
 pub(super) async fn handle_root(socket: &mut tokio::net::TcpStream) -> Result<(), AppError> {
     super::write_response(
         socket,
@@ -57,7 +55,6 @@ pub(super) async fn handle_root(socket: &mut tokio::net::TcpStream) -> Result<()
     .await
 }
 
-/// GET /ui/* — delegate to the embedded UI backend, or 404.
 pub(super) async fn handle_ui_path(
     socket: &mut tokio::net::TcpStream,
     path: &str,
@@ -75,7 +72,6 @@ pub(super) async fn handle_ui_path(
     handle_not_found(socket).await
 }
 
-/// Catch-all 404 response.
 pub(super) async fn handle_not_found(socket: &mut tokio::net::TcpStream) -> Result<(), AppError> {
     super::write_response(
         socket,

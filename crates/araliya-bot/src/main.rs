@@ -274,6 +274,7 @@ async fn run() -> Result<(), error::AppError> {
             #[cfg(feature = "plugin-webbuilder")]
             Some(identity.identity_dir.join("runtimes")),
             comms_info,
+            crate::supervisor::adapters::stdio::stdio_control_active(),
         );
         comms.join().await?;
     }

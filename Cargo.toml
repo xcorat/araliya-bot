@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/araliya-core",
     "crates/araliya-supervisor",
+    "crates/araliya-llm",
+    "crates/araliya-comms",
     "crates/araliya-bot",
 ]
 default-members = ["crates/araliya-bot"]

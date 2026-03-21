@@ -53,6 +53,8 @@ cargo build -p araliya-bot --all-features
 cargo check --workspace
 cargo clippy -p araliya-core -- -D warnings
 cargo clippy -p araliya-supervisor -- -D warnings
+cargo clippy -p araliya-llm -- -D warnings
+cargo clippy -p araliya-comms --all-features -- -D warnings
 cargo fmt --check
 
 # Frontend type checking
@@ -86,13 +88,15 @@ Feature-gated code uses `#[cfg(feature = "feature-name")]` throughout.
 
 ## Architecture
 
-**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, and subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
+**Multi-crate workspace** — shared types and contracts live in `araliya-core`, the runtime orchestrator in `araliya-supervisor`, LLM providers in `araliya-llm`, I/O channels in `araliya-comms`, and remaining subsystem implementations + binary wiring in `araliya-bot`. All subsystems are Tokio tasks within one process communicating through a typed channel bus (star topology). The supervisor is a pure router; it never awaits results.
 
 **Crate dependency DAG:**
 ```
-araliya-core          ← foundation: config, error, identity, bus protocol, traits
+araliya-core          ← foundation: config, error, identity, bus protocol, traits, UI serve trait
 araliya-supervisor    ← dispatch loop, control plane, management, adapters (depends on core)
-araliya-bot           ← binary + all subsystems (depends on core + supervisor)
+araliya-llm           ← LLM provider abstraction: OpenAI-compatible, Qwen, dummy (depends on core)
+araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on core)
+araliya-bot           ← binary + remaining subsystems (depends on all above)
 ```
 
 **Bus routing** (method prefix → subsystem):
@@ -108,9 +112,9 @@ araliya-bot           ← binary + all subsystems (depends on core + supervisor)
 Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded immediately to the handler, which resolves it synchronously or from a spawned task.
 
 **Subsystems** (`crates/araliya-bot/src/subsystems/`):
-- `comms/` — I/O channels (PTY, Telegram, HTTP, Axum); each channel is a concurrent Tokio task
+- `comms/` — shim re-exporting from `araliya-comms` (PTY, Telegram, HTTP, Axum channels)
 - `agents/` — message routing with pluggable `Agent` trait; built-in agents: `echo`, `basic-chat`, `chat`, `gmail`, `news`, `docs`
-- `llm/` — `OpenAiCompatibleProvider` abstraction; dummy provider for testing
+- `llm/` — shim re-exporting from `araliya-llm` (OpenAI-compatible, Qwen, dummy providers)
 - `memory/` — session + transcript store; optional SQLite-backed doc store (`idocstore`) and knowledge graph (`ikgdocstore`)
 - `cron/` — timer-based event scheduling
 - `tools/` — external actions (Gmail MVP)
@@ -158,22 +162,32 @@ crates/
 │   ├── control.rs           # ControlCommand, ControlHandle, SupervisorControl
 │   ├── management.rs        # ManagementSubsystem (manage/* bus handler)
 │   └── adapters/            # stdio REPL, Unix domain socket
-└── araliya-bot/src/         # Binary + all subsystems
+├── araliya-llm/src/        # LLM provider abstraction
+│   ├── lib.rs               # ProviderError, LlmResponse, LlmProvider enum
+│   └── providers/           # OpenAI-compatible, Qwen, dummy implementations
+├── araliya-comms/src/      # Comms subsystem (I/O channels)
+│   ├── lib.rs               # CommsStatusHandler, start()
+│   ├── state.rs             # CommsState, CommsReply, CommsEvent
+│   ├── pty.rs               # PTY channel (cfg: channel-pty)
+│   ├── telegram.rs          # Telegram channel (cfg: channel-telegram)
+│   ├── http/                # HTTP channel (cfg: channel-http)
+│   └── axum_channel/        # Axum channel (cfg: channel-axum)
+└── araliya-bot/src/         # Binary + remaining subsystems
     ├── main.rs              # Entry point, CLI parsing
     ├── lib.rs               # Library exports
     ├── bootstrap/           # Re-exports from araliya-core (identity, logger)
     ├── core/                # Re-exports from araliya-core (config, error)
     ├── supervisor/          # Re-exports from araliya-core + araliya-supervisor
-    ├── llm/                 # LLM provider abstraction (OpenAI-compatible, Qwen, dummy)
+    ├── llm/                 # Shim re-exporting from araliya-llm
     ├── subsystems/
     │   ├── runtime.rs       # Re-exports from araliya-core
     │   ├── agents/          # Agent routing + all agent plugins
-    │   ├── comms/           # Channel plugins (PTY, Telegram, HTTP, Axum)
+    │   ├── comms/           # Shim re-exporting from araliya-comms
     │   ├── llm/             # LLM bus handler
     │   ├── memory/          # Session & transcript stores
     │   ├── cron/            # Scheduler
     │   ├── tools/           # Tool execution
-    │   └── ui/              # UI backends
+    │   └── ui/              # UI backends (UiServe trait in araliya-core)
     └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
 
 frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)

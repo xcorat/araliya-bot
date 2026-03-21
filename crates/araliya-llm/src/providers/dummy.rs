@@ -3,7 +3,7 @@
 
 use tokio::sync::mpsc;
 
-use crate::llm::{LlmResponse, ProviderError, StreamChunk};
+use crate::{LlmResponse, ProviderError, StreamChunk};
 
 #[derive(Debug, Clone)]
 pub struct DummyProvider;
@@ -59,7 +59,6 @@ mod tests {
     #[tokio::test]
     async fn complete_empty_input() {
         let p = DummyProvider;
-        // `_system` param is intentionally unused
         assert_eq!(p.complete("", None, None).await.unwrap().text, "[echo] ");
     }
 

@@ -11,20 +11,14 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use super::state::{CommsEvent, CommsState};
-use crate::error::AppError;
-use crate::subsystems::runtime::{Component, ComponentFuture};
+use crate::state::{CommsEvent, CommsState};
+use araliya_core::error::AppError;
+use araliya_core::runtime::{Component, ComponentFuture};
 #[cfg(feature = "subsystem-ui")]
-use crate::subsystems::ui::UiServeHandle;
+use araliya_core::ui::UiServeHandle;
 
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 
-/// Optional UI serve handle — typed alias so the struct works with or without
-/// the `subsystem-ui` feature.
-
-// TODO: Maybe we should split the HTTP channel into two components: a pure API server (no UI
-// support) and a UI server that serves static files and delegates to the API server for `/api/*`.
-// Each would inherit common traits, but we dont have to have an option ui that way
 #[cfg(feature = "subsystem-ui")]
 type OptionalUiHandle = Option<UiServeHandle>;
 #[cfg(not(feature = "subsystem-ui"))]
@@ -206,7 +200,6 @@ fn parse_agent_subresource_path<'a>(path: &'a str, subresource: &str) -> Option<
     Some(inner)
 }
 
-/// Parse `/api/memory/agents/{agent_id}/{subresource}` → agent_id.
 fn parse_memory_agent_subresource_path<'a>(path: &'a str, subresource: &str) -> Option<&'a str> {
     let prefix = "/api/memory/agents/";
     let suffix = format!("/{subresource}");
@@ -241,7 +234,6 @@ fn parse_session_subresource_path<'a>(path: &'a str, subresource: &str) -> Optio
 
 // ── Request parsing ───────────────────────────────────────────────────────────
 
-/// Parsed HTTP request with method, path, and optional body.
 struct HttpRequest {
     method: String,
     path: String,
@@ -252,7 +244,6 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpR
     let mut buffer = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
 
-    // Read until we have the full header block (terminated by \r\n\r\n).
     loop {
         let n = socket.read(&mut chunk).await?;
         if n == 0 {
@@ -275,7 +266,6 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpR
         }
     }
 
-    // Split headers from any body bytes already read.
     let header_end = buffer.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
     let body_start = header_end + 4;
     let header_bytes = &buffer[..header_end];
@@ -298,7 +288,6 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpR
         .ok_or_else(|| AppError::Comms("missing http path".to_string()))?
         .to_string();
 
-    // Parse Content-Length from headers (case-insensitive).
     let content_length: usize = header_str
         .lines()
         .skip(1)
@@ -313,7 +302,6 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpR
         })
         .unwrap_or(0);
 
-    // Read body if Content-Length > 0.
     let mut body = buffer[body_start..].to_vec();
     while body.len() < content_length {
         let remaining = content_length - body.len();
@@ -330,18 +318,6 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Result<Option<HttpR
 }
 
 // ── Response helpers ──────────────────────────────────────────────────────────
-
-async fn write_redirect(
-    socket: &mut tokio::net::TcpStream,
-    location: &str,
-) -> Result<(), AppError> {
-    let header = format!(
-        "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-    );
-    socket.write_all(header.as_bytes()).await?;
-    socket.shutdown().await?;
-    Ok(())
-}
 
 async fn write_json_response(
     socket: &mut tokio::net::TcpStream,

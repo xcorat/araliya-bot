@@ -9,6 +9,8 @@ default-run = "araliya-bot"
 [dependencies]
 araliya-core = { path = "../araliya-core" }
 araliya-supervisor = { path = "../araliya-supervisor" }
+araliya-llm = { path = "../araliya-llm" }
+araliya-comms = { path = "../araliya-comms" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
@@ -97,7 +99,7 @@ idocstore = ["isqlite", "dep:text-splitter"]
 ikgdocstore = ["isqlite", "dep:text-splitter"]
 subsystem-llm = []
 subsystem-comms = []
-subsystem-ui = []
+subsystem-ui = ["araliya-comms/subsystem-ui"]
 subsystem-tools = []
 subsystem-cron = []
 subsystem-runtimes = []
@@ -119,15 +121,15 @@ plugin-news-aggregator = ["plugin-newsroom-agent", "ikgdocstore"]
 plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm"]
 plugin-docs-agent = ["subsystem-agents", "plugin-docs"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes"]
-plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm"]
+plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-webbuilder"]
 plugin-rss-fetch-tool = ["subsystem-tools", "dep:feed-rs"]
 plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool"]
 
 # Comms Channels
-channel-pty = ["subsystem-comms"]
-channel-telegram = ["subsystem-comms", "dep:teloxide"]
-channel-http = ["subsystem-comms"]   # deprecated: static file server, prefer channel-axum
-channel-axum = ["subsystem-comms", "dep:axum"]
+channel-pty = ["subsystem-comms", "araliya-comms/channel-pty"]
+channel-telegram = ["subsystem-comms", "dep:teloxide", "araliya-comms/channel-telegram"]
+channel-http = ["subsystem-comms", "araliya-comms/channel-http"]
+channel-axum = ["subsystem-comms", "dep:axum", "araliya-comms/channel-axum"]
 
 # UI Backends
 ui-svui = ["subsystem-ui"]

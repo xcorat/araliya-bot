@@ -1,7 +1,4 @@
 //! Preview route — serves static files from `webbuilder` workspace dist dirs.
-//!
-//! Route: `GET /preview/{session_id}/{*path}`
-//! Serves: `{preview_root}/{session_id}/dist/{path}`
 
 use std::path::{Path, PathBuf};
 
@@ -38,7 +35,6 @@ pub(crate) async fn preview_index_handler(
 }
 
 async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -> Response {
-    // Validate session_id — only alphanumeric, dashes, and underscores allowed.
     if !session_id
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
@@ -49,14 +45,12 @@ async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -
     let workspace_name = format!("webbuilder-{session_id}");
     let dist_root = preview_root.join(&workspace_name).join("dist");
 
-    // Normalise requested path and guard against traversal.
     let requested = PathBuf::from(path.trim_start_matches('/'));
     let file_path = dist_root.join(&requested);
 
     let file_path = match file_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            // File doesn't exist yet or path is invalid — try index.html.
             if path != "index.html" {
                 let index = dist_root.join("index.html");
                 match index.canonicalize() {
@@ -69,7 +63,6 @@ async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -
         }
     };
 
-    // Ensure the resolved path stays within dist_root (traverse guard).
     let dist_canonical = match dist_root.canonicalize() {
         Ok(p) => p,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
@@ -78,7 +71,6 @@ async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    // Read file.
     let bytes = match tokio::fs::read(&file_path).await {
         Ok(b) => b,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),

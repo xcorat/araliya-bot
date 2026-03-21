@@ -16,6 +16,7 @@ pub mod logger;
 pub mod bus;
 pub mod runtime;
 pub mod types;
+pub mod ui;
 
 // Re-export commonly used types at crate root for convenience.
 pub use error::AppError;

@@ -6,8 +6,8 @@ use std::time::Duration;
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::error::AppError;
-use crate::subsystems::comms::CommsState;
+use araliya_core::error::AppError;
+use crate::CommsState;
 
 const NO_SESSION_ID: &str = "00000000-0000-0000-0000-000000000000";
 
@@ -23,7 +23,6 @@ struct MessageRequest {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-/// GET /api/health
 pub(super) async fn handle_health(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -56,10 +55,6 @@ pub(super) async fn handle_health(
     }
 }
 
-/// POST /api/health/refresh
-///
-/// Triggers a live health check across all subsystems and returns the updated
-/// health body (same format as `GET /api/health`).
 pub(super) async fn handle_health_refresh(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -93,7 +88,6 @@ pub(super) async fn handle_health_refresh(
     }
 }
 
-/// GET /api/tree — component tree (no private data).
 pub(super) async fn handle_tree(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -126,7 +120,6 @@ pub(super) async fn handle_tree(
     }
 }
 
-/// POST /api/message
 pub(super) async fn handle_message(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -204,7 +197,6 @@ pub(super) async fn handle_message(
     }
 }
 
-/// GET /api/sessions
 pub(super) async fn handle_sessions(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -238,7 +230,6 @@ pub(super) async fn handle_sessions(
     }
 }
 
-/// GET /api/session/{session_id}
 pub(super) async fn handle_session_detail(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -277,7 +268,6 @@ pub(super) async fn handle_session_detail(
     }
 }
 
-/// GET /api/sessions/{session_id}/memory
 pub(super) async fn handle_session_memory(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -316,7 +306,6 @@ pub(super) async fn handle_session_memory(
     }
 }
 
-/// GET /api/agents/{agent_id}/kg
 pub(super) async fn handle_agent_kg(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -352,7 +341,6 @@ pub(super) async fn handle_agent_kg(
     }
 }
 
-/// GET /api/memory/agents/{agent_id}/kg
 pub(super) async fn handle_memory_agent_kg(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -388,7 +376,6 @@ pub(super) async fn handle_memory_agent_kg(
     }
 }
 
-/// GET /api/sessions/{session_id}/debug
 pub(super) async fn handle_session_debug(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,
@@ -427,7 +414,6 @@ pub(super) async fn handle_session_debug(
     }
 }
 
-/// GET /api/sessions/{session_id}/files
 pub(super) async fn handle_session_files(
     socket: &mut tokio::net::TcpStream,
     state: &Arc<CommsState>,

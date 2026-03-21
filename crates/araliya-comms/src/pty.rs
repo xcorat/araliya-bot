@@ -1,11 +1,5 @@
 //! PTY (console) comms channel — reads lines from stdin, sends to supervisor,
 //! prints the reply to stdout.
-//!
-//! [`PtyChannel`] implements [`runtime::Component`] directly.  State
-//! (`Arc<CommsState>`) is captured at construction time so the generic
-//! `Component::run(self, shutdown)` signature applies without modification.
-//! All supervisor communication goes through [`CommsState::send_message`]
-//! — this module has no direct bus access.
 
 use std::sync::Arc;
 
@@ -13,15 +7,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use super::state::{CommsEvent, CommsState};
-use crate::error::AppError;
-use crate::subsystems::runtime::{Component, ComponentFuture};
+use crate::state::{CommsEvent, CommsState};
+use araliya_core::error::AppError;
+use araliya_core::runtime::{Component, ComponentFuture};
 
 // ── PtyChannel ───────────────────────────────────────────────────────────────
 
-/// A PTY channel instance.  Multiple instances would each get a unique id.
-/// State is captured at construction; the generic `Component` interface
-/// is used for all lifecycle management.
 pub struct PtyChannel {
     channel_id: String,
     state: Arc<CommsState>,
@@ -83,7 +74,6 @@ async fn run_pty(
                         break;
                     }
                     Ok(None) => {
-                        // Ctrl-D / EOF — move past the "> " prompt.
                         println!();
                         info!("pty stdin closed");
                         break;

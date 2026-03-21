@@ -1,0 +1,25 @@
+[package]
+name = "araliya-comms"
+version = "0.2.6"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Comms subsystem (I/O channels) for araliya-bot"
+
+[dependencies]
+araliya-core = { path = "../araliya-core" }
+tokio = { version = "1", features = ["sync", "io-util", "io-std", "macros", "net", "rt", "time", "fs"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
+teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
+futures-util = { version = "0.3", optional = true }
+
+[features]
+channel-pty = []
+channel-http = []
+channel-axum = ["dep:axum", "dep:futures-util"]
+channel-telegram = ["dep:teloxide"]
+subsystem-ui = []
+plugin-webbuilder = []
