@@ -1,6 +1,6 @@
 [package]
 name = "araliya-bot"
-version = "0.2.6"
+version = "0.2.0-alpha"
 edition = "2024"
 description = "Modular agentic assistant — supervisor bootstrap"
 license = "GPL-3.0-only"

@@ -2,7 +2,7 @@
 
 Modular agentic assistant. Rust, single-process supervisor with pluggable subsystems and a SvelteKit web UI.
 
-**Status:** v0.2.6 — full multi-crate workspace
+**Status:** v0.2.0-alpha — full multi-crate workspace
 
 ---
 
@@ -126,22 +126,22 @@ araliya-bot/
 Tagging `v*` triggers GitHub Actions to build three-tier Linux x86_64 release bundles.
 
 ```bash
-git tag v0.2.6
-git push origin v0.2.6
+git tag v0.2.0-alpha
+git push origin v0.2.0-alpha
 ```
 
 Release artifacts:
 
-- `araliya-bot-v0.2.6-minimal-x86_64-unknown-linux-gnu.tar.gz`
-- `araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu.tar.gz`
-- `araliya-bot-v0.2.6-full-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.0-alpha-minimal-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.0-alpha-default-x86_64-unknown-linux-gnu.tar.gz`
+- `araliya-bot-v0.2.0-alpha-full-x86_64-unknown-linux-gnu.tar.gz`
 - `SHA256SUMS`
 
 Each bundle includes `bin/araliya-bot`, `config/`, and `frontend/svui/`.
 
 ```bash
 sha256sum -c SHA256SUMS
-tar -xzf araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu.tar.gz
-cd araliya-bot-v0.2.6-default-x86_64-unknown-linux-gnu
+tar -xzf araliya-bot-v0.2.0-alpha-default-x86_64-unknown-linux-gnu.tar.gz
+cd araliya-bot-v0.2.0-alpha-default-x86_64-unknown-linux-gnu
 ./bin/araliya-bot -f config/cfg.toml
 ```

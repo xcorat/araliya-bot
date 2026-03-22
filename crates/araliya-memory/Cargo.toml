@@ -1,6 +1,6 @@
 [package]
 name = "araliya-memory"
-version = "0.2.6"
+version = "0.2.0-alpha"
 edition = "2024"
 license = "GPL-3.0-only"
 

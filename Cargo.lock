@@ -144,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-agents"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "araliya-llm",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-bot"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-agents",
  "araliya-comms",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-comms"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "axum",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-core"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "dirs 5.0.1",
  "dotenvy",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-cron"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "serde",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-llm"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "futures-util",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-memory"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "chrono",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-supervisor"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "serde",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "araliya-tools"
-version = "0.2.6"
+version = "0.2.0-alpha"
 dependencies = [
  "araliya-core",
  "base64 0.22.1",
