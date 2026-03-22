@@ -1,0 +1,13 @@
+[package]
+name = "araliya-ui"
+version = "0.2.0-alpha"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+araliya-core = { path = "../araliya-core" }
+tracing = "0.1"
+
+[features]
+default = []
+ui-svui = []

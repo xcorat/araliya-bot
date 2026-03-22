@@ -40,7 +40,7 @@ use araliya_tools::ToolsSubsystem;
 use araliya_cron::CronSubsystem;
 
 #[cfg(feature = "subsystem-runtimes")]
-use subsystems::runtimes::RuntimesSubsystem;
+use araliya_runtimes::RuntimesSubsystem;
 
 #[cfg(all(feature = "subsystem-memory", feature = "subsystem-agents"))]
 use araliya_memory::bus::MemoryBusHandler;
@@ -254,7 +254,7 @@ async fn run() -> Result<(), error::AppError> {
     {
         // Build optional UI serve handle for the HTTP channel.
         #[cfg(feature = "subsystem-ui")]
-        let ui_handle = subsystems::ui::start(&config);
+        let ui_handle = araliya_ui::start(&config);
 
         let comms = araliya_comms::start(
             &config,

@@ -15,6 +15,8 @@ araliya-memory = { path = "../araliya-memory" }
 araliya-agents = { path = "../araliya-agents", optional = true }
 araliya-tools = { path = "../araliya-tools", optional = true }
 araliya-cron = { path = "../araliya-cron", optional = true }
+araliya-runtimes = { path = "../araliya-runtimes", optional = true }
+araliya-ui = { path = "../araliya-ui", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "io-util", "io-std", "sync", "time", "net", "fs", "process"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
@@ -91,10 +93,10 @@ idocstore = ["isqlite", "araliya-memory/idocstore"]
 ikgdocstore = ["isqlite", "araliya-memory/ikgdocstore"]
 subsystem-llm = []
 subsystem-comms = []
-subsystem-ui = ["araliya-comms/subsystem-ui"]
+subsystem-ui = ["dep:araliya-ui", "araliya-comms/subsystem-ui"]
 subsystem-tools = ["dep:araliya-tools", "araliya-tools/subsystem-tools"]
 subsystem-cron = ["dep:araliya-cron", "araliya-cron/subsystem-cron"]
-subsystem-runtimes = []
+subsystem-runtimes = ["dep:araliya-runtimes", "araliya-runtimes/subsystem-runtimes"]
 
 # Agent Plugins
 plugin-echo = ["subsystem-agents", "araliya-agents/plugin-echo"]
@@ -124,7 +126,7 @@ channel-http = ["subsystem-comms", "araliya-comms/channel-http"]
 channel-axum = ["subsystem-comms", "araliya-comms/channel-axum"]
 
 # UI Backends
-ui-svui = ["subsystem-ui"]
+ui-svui = ["subsystem-ui", "araliya-ui/ui-svui"]
 ui-gpui = ["dep:gpui", "dep:gpui-component", "dep:chrono"]
 ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster"]
 

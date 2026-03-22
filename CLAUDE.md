@@ -39,13 +39,14 @@ docker-compose up --build
 
 ```bash
 # Workspace-wide
-cargo test --workspace               # All tests across all crates (~318 tests)
+cargo test --workspace               # All tests across all crates (~250 tests)
 cargo test -p araliya-core           # Core foundation tests (44 tests)
 cargo test -p araliya-supervisor     # Supervisor tests (6 tests)
 cargo test -p araliya-llm            # LLM provider tests (10 tests — includes dummy dispatch)
 cargo test -p araliya-comms          # Comms state tests (4 tests)
 cargo test -p araliya-memory         # Memory subsystem tests (64 base, 91 with features)
 cargo test -p araliya-cron           # Cron service tests (4 tests)
+cargo test -p araliya-runtimes       # Runtimes subsystem tests (5 tests)
 cargo test -p araliya-agents         # Agents subsystem tests
 cargo test -p araliya-bot            # Bot subsystem tests
 
@@ -67,6 +68,8 @@ cargo clippy -p araliya-llm -- -D warnings
 cargo clippy -p araliya-comms --all-features -- -D warnings
 cargo clippy -p araliya-tools -- -D warnings
 cargo clippy -p araliya-cron -- -D warnings
+cargo clippy -p araliya-runtimes -- -D warnings
+cargo clippy -p araliya-ui -- -D warnings
 cargo clippy -p araliya-agents -- -D warnings
 cargo fmt --check
 
@@ -112,8 +115,10 @@ araliya-comms         ← I/O channels: PTY, HTTP, Axum, Telegram (depends on co
 araliya-memory        ← session management, stores (doc, KG, SQL); bus handler (depends on core)
 araliya-tools         ← external tool integrations: Gmail, GDELT BigQuery, RSS (depends on core)
 araliya-cron          ← timer-based event scheduling; BusHandler for cron/* (depends on core)
+araliya-runtimes      ← script execution in external runtimes (node, python3); BusHandler for runtimes/* (depends on core)
+araliya-ui            ← UI backends: SvUI static file serving, SPA routing (depends on core)
 araliya-agents        ← Agent trait, AgentsSubsystem, all built-in agent plugins (depends on core, memory, llm)
-araliya-bot           ← binary wiring: main.rs + LLM/runtimes/UI subsystems (depends on all above)
+araliya-bot           ← binary wiring: main.rs + LLM subsystem only (depends on all above)
 ```
 
 **Bus routing** (method prefix → subsystem):
@@ -130,10 +135,8 @@ Each request carries a `reply_tx: oneshot::Sender<BusResult>` that is forwarded 
 
 **Subsystems** (`crates/araliya-bot/src/subsystems/`):
 - `llm/` — LLM bus handler routing `llm/*` requests to providers in `araliya-llm`
-- `runtimes/` — script execution in external runtimes (node, python3)
-- `ui/` — SvelteKit web backend (`svui`), GPUI desktop, beacon
 
-All other subsystems (agents, memory, tools, cron, comms) live in their own crates and are wired directly from `main.rs`.
+All other subsystems (agents, memory, tools, cron, runtimes, ui, comms) live in their own crates and are wired directly from `main.rs`.
 
 **Key traits** (defined in `araliya-core`):
 - `Component` — pluggable subsystem lifecycle (`araliya_core::runtime`)
@@ -181,6 +184,13 @@ All other subsystems (agents, memory, tools, cron, comms) live in their own crat
 - `channel-axum`/`channel-telegram` features now forward only to `araliya-comms` (no `dep:` redeclarations)
 - `idocstore`/`ikgdocstore` features no longer redeclare `dep:text-splitter` (handled in `araliya-memory`)
 - Removed stale TODO comments in `main.rs`
+
+**Phase 12 (complete): Runtimes + UI extraction** — `araliya-runtimes` and `araliya-ui` crates.
+- `RuntimesSubsystem` (BusHandler for `runtimes/*`) moved to `araliya-runtimes/src/dispatcher.rs`
+- `SvuiBackend` + `start()` moved to `araliya-ui/src/` — no longer a BusHandler, provides `UiServeHandle`
+- `araliya-bot/src/subsystems/` now contains only `llm/` — all other subsystems in their own crates
+- CI `build-tiers` matrix extended: `runtimes`, `ui`, `agents`, `memory-extended` per-crate jobs added
+- All crate versions unified at `0.2.0-alpha`
 
 ## Configuration
 
@@ -238,6 +248,13 @@ crates/
 │   ├── newsmail_aggregator.rs # Gmail filtering/aggregation (feature: plugin-gmail-tool)
 │   ├── gdelt_bigquery.rs    # GDELT v2 BigQuery API (feature: plugin-gdelt-tool)
 │   └── rss_fetch.rs         # RSS/Atom feed parser (feature: plugin-rss-fetch-tool)
+├── araliya-runtimes/src/    # Runtimes subsystem (script execution in external runtimes)
+│   ├── lib.rs               # pub use dispatcher::RuntimesSubsystem + type re-exports
+│   ├── dispatcher.rs        # RuntimesSubsystem + BusHandler impl (runtimes/init, exec, status)
+│   └── types.rs             # RuntimeExecRequest, RuntimeInitRequest, result types
+├── araliya-ui/src/          # UI subsystem (static file serving, SPA routing)
+│   ├── lib.rs               # start() → Option<UiServeHandle>; re-exports UiServe, UiServeHandle
+│   └── svui.rs              # SvuiBackend: serves static files or built-in placeholder
 ├── araliya-agents/src/      # Agents subsystem (Agent trait, routing, all plugins)
 │   ├── lib.rs               # AgentsSubsystem, AgentsState, Agent trait, AgentRegistration
 │   ├── core/                # AgentRuntimeClass, PromptBuilder, AgenticLoop, LocalTool
@@ -273,16 +290,14 @@ crates/
 │       ├── sqlite_store.rs  # General-purpose typed SQL (feature: isqlite)
 │       ├── docstore.rs      # FTS5 document index (feature: idocstore)
 │       └── kg_docstore.rs   # Document store + knowledge graph (feature: ikgdocstore)
-└── araliya-bot/src/         # Binary + thin remaining subsystems
+└── araliya-bot/src/         # Binary entry point — pure wiring
     ├── main.rs              # Entry point, CLI parsing, subsystem wiring
     ├── lib.rs               # Library exports
     ├── bootstrap/           # Re-exports from araliya-core (identity, logger)
     ├── core/                # Re-exports from araliya-core (config, error)
     ├── supervisor/          # Re-exports from araliya-core + araliya-supervisor
     ├── subsystems/
-    │   ├── llm/             # LLM bus handler (routes llm/* to araliya-llm providers)
-    │   ├── runtimes/        # Script execution subsystem (node, python3)
-    │   └── ui/              # UI backends (svui, gpui, beacon)
+    │   └── llm/             # LLM bus handler (routes llm/* to araliya-llm providers)
     └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
 
 frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)

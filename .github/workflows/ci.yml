@@ -59,6 +59,14 @@ jobs:
             command: cargo build -p araliya-tools --all-features
           - tier: cron
             command: cargo build -p araliya-cron
+          - tier: runtimes
+            command: cargo build -p araliya-runtimes --all-features
+          - tier: ui
+            command: cargo build -p araliya-ui --all-features
+          - tier: agents
+            command: cargo build -p araliya-agents --all-features
+          - tier: memory-extended
+            command: cargo build -p araliya-memory --features "isqlite,idocstore,ikgdocstore"
     steps:
       - uses: actions/checkout@v4
       

@@ -9,6 +9,8 @@ members = [
     "crates/araliya-agents",
     "crates/araliya-tools",
     "crates/araliya-cron",
+    "crates/araliya-runtimes",
+    "crates/araliya-ui",
     "crates/araliya-bot",
 ]
 default-members = ["crates/araliya-bot"]
