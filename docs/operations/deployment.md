@@ -74,7 +74,7 @@ Every `v*` tag publishes release assets on GitHub Releases.
 
 ```bash
 # Example version
-VERSION=v0.2.6
+VERSION=v0.2.0-alpha
 TIER=default
 
 curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu.tar.gz
@@ -93,7 +93,7 @@ Inside the bundle, `config/cfg.toml` points to the tier-specific default:
 
 - `minimal` → `config/minimal.toml`
 - `default` → `config/default.toml`
-- `full` → `config/full.toml`
+- `full` → `config/profiles/full.toml`
 
 > **Note:** the canonical version string lives only in `crates/araliya-bot/Cargo.toml`.
 > When building the Svelte UI the frontend sync script (`scripts/sync-version.mjs`)
@@ -103,8 +103,8 @@ Inside the bundle, `config/cfg.toml` points to the tier-specific default:
 To create a release from this repository:
 
 ```bash
-git tag v0.2.6
-git push origin v0.2.6
+git tag v0.2.0-alpha
+git push origin v0.2.0-alpha
 ```
 
 The GitHub Actions workflow publishes the assets automatically.

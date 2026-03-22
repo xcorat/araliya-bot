@@ -612,7 +612,7 @@ Non-prefixed chunks are plain LLM text shown in chat as normal.
 
 The `gdelt_news` agent fetches recent global events from the GDELT v2 BigQuery dataset (authenticated via `config/secrets/araliya-1012f47de255.json`) and summarises them with the LLM. Results are cached by content hash so identical event sets are only summarised once.
 
-Requires the `plugin-gdelt-news-agent` Cargo feature (includes `plugin-gdelt-tool`). The summarisation prompt is loaded from `config/prompts/gdelt_news_summary.txt` and renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
+Requires the `plugin-gdelt-news-agent` Cargo feature (includes `plugin-gdelt-tool`). The summarisation prompt is loaded from `config/agents/gdelt_news/summary.md` and renders country flag emojis, event-type status emotes, and a 🚨 crisis flag for high-impact events.
 
 Query parameters are configured under `[agents.gdelt_news.gdelt_query]`:
 

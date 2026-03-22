@@ -1,6 +1,6 @@
 # LLM Subsystem
 
-**Status:** v0.6.0 — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · Qwen provider · per-session spend accumulation.
+**Status:** v0.2.0-alpha — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · Qwen provider · per-session spend accumulation.
 
 ---
 
@@ -139,7 +139,7 @@ Used by the response pass of `AgenticLoop` and by simple chat agents. Routes to 
 
 Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the main provider** when no instruction provider is configured.
 
-The instruction pass expects structured JSON output from the model. Use a model tuned for structured output or apply few-shot examples in the prompt (`config/prompts/agentic_instruct.txt`).
+The instruction pass expects structured JSON output from the model. Use a model tuned for structured output or apply few-shot examples in the prompt (`config/agents/agentic-chat/instruct.md`).
 
 ### `llm/stream` — streaming completion
 

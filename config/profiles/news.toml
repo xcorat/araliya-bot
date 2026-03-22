@@ -1,10 +1,6 @@
 [meta]
 base = "full.toml"
 
-# Future command style examples (not parsed yet):
-# /chat news --n_last 5
-# /chat news --t_interval 1d
-
 [agents]
 default = "news"
 

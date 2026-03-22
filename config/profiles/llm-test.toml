@@ -1,3 +1,12 @@
+# Local LLM testing — routes all inference to a local Qwen instance.
+# Requires a running Qwen server at http://127.0.0.1:8081.
+#
+# Usage:
+#   cargo run -- -i --config config/profiles/llm-test.toml
+
+[meta]
+base = "../default.toml"
+
 [supervisor]
 bot_name = "araliya-test"
 work_dir = "~/.araliya"
@@ -12,15 +21,6 @@ debug_logging = true
 
 [agents.basic_chat]
 enabled = true
-
-# [llm]
-# default = "openai"
-
-# [llm.openai]
-# api_base_url = "https://api.openai.com/v1/chat/completions"
-# model = "gpt-5-nano"
-# temperature = 0.2
-# timeout_seconds = 60
 
 [llm]
 default = "qwen"

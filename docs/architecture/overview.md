@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Version:** v0.7 — full multi-crate workspace · `araliya-agents` crate extraction complete · all 9 subsystems in dedicated crates · `araliya-bot` is pure binary wiring · no shim re-exports · orphaned deps purged.
+**Version:** v0.2.0-alpha — full multi-crate workspace · 11 crates · `araliya-runtimes` and `araliya-ui` extracted (Phase 12) · `araliya-bot` is pure binary wiring (only `llm/` subsystem remains) · no shim re-exports · orphaned deps purged.
 
 ---
 
@@ -27,8 +27,10 @@ araliya-comms         Tier 1 — I/O channels: PTY, Axum, HTTP, Telegram (all fe
 araliya-memory        Tier 1 — session lifecycle, pluggable stores, bus handler
 araliya-tools         Tier 1 — external tools: Gmail, GDELT BigQuery, RSS
 araliya-cron          Tier 1 — timer-based scheduling, BusHandler for cron/*
+araliya-runtimes      Tier 1 — external runtime execution (node, python3, bash)
+araliya-ui            Tier 1 — UI backends (svui static file serving + SPA routing)
 araliya-agents        Tier 2 — Agent trait, AgentsSubsystem, all 15 built-in agent plugins
-araliya-bot           Tier 3 — binary: main.rs + LLM/runtimes/UI subsystems
+araliya-bot           Tier 3 — binary: main.rs + LLM bus handler (pure wiring)
 ```
 
 Each crate depends only on `araliya-core` plus the Tier 1 crates it needs. `araliya-agents` depends on `araliya-core`, `araliya-memory`, and `araliya-llm` (for `ModelRates`). No circular dependencies.

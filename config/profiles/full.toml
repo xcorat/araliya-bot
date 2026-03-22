@@ -3,7 +3,7 @@
 # All other settings are inherited from the base file.
 
 [meta]
-base = "default.toml"
+base = "../default.toml"
 
 [comms.telegram]
 # Requires TELEGRAM_BOT_TOKEN env var
@@ -26,10 +26,6 @@ enabled = true
 [memory.basic_session]
 kv_cap = 200
 transcript_cap = 500
-
-# Future command style examples (not parsed yet):
-# /chat news --n_last 5
-# /chat news --t_interval 1d
 
 [agents.news]
 enabled = true

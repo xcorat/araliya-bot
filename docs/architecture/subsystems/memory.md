@@ -1,6 +1,6 @@
 # Memory Subsystem
 
-**Status:** v0.5.0 — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `SqliteStore` (`isqlite` Cargo feature) for general-purpose agent-scoped SQLite databases** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval** · **optional `IKGDocStore` (`ikgdocstore` Cargo feature) for KG-augmented RAG retrieval**.
+**Status:** v0.2.0-alpha — typed value model (`PrimaryValue`, `Obj`, `Value`, `Doc`, `Block`, `Collection`) · `Store` struct (labeled collection map) · `TmpStore` (ephemeral in-process store) · `SessionStore` trait · `BasicSessionStore` · `SessionRw` data ops layer · `SessionHandle` with `tmp_doc`/`tmp_block` accessors · **`SessionSpend` — per-session token and cost tracking in `spend.json`** · **optional `SqliteStore` (`isqlite` Cargo feature) for general-purpose agent-scoped SQLite databases** · **optional `IDocStore` (`idocstore` Cargo feature) for BM25 document retrieval** · **optional `IKGDocStore` (`ikgdocstore` Cargo feature) for KG-augmented RAG retrieval**.
 
 ---
 

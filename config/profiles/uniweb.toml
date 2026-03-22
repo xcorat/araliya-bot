@@ -4,11 +4,11 @@
 # LLM call runs at a time; concurrent callers wait in a FIFO queue.
 #
 # Usage:
-#   cargo run -- -c config/uniweb.toml
-#   cargo run -- -c config/uniweb.toml -i   # interactive mode
+#   cargo run -- -c config/profiles/uniweb.toml
+#   cargo run -- -c config/profiles/uniweb.toml -i   # interactive mode
 
 [meta]
-base = "default.toml"
+base = "../default.toml"
 
 [supervisor]
 bot_name = "uniweb"

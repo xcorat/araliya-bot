@@ -1,6 +1,6 @@
 # Testing
 
-> The current package version is defined solely in `crates/araliya-bot/Cargo.toml` (0.2.6 as of this writing); tests and documentation should refer to that file rather than hard‑coding the string.
+> The current package version is defined in each crate's `Cargo.toml` (all at `0.2.0-alpha`). Tests and documentation should refer to that file rather than hard‑coding the string.
 
 
 ## Running Tests
@@ -9,16 +9,34 @@
 cargo test
 ```
 
-## Test Coverage (v0.2.6)
+## Test Coverage (v0.2.0-alpha)
 
-| Module | Tests | Coverage |
-|--------|-------|---------|
-| `error.rs` | 4 | All variants: display, trait impl, IO conversion |
-| `logger.rs` | 3 | Valid levels, invalid levels, init succeeds |
-| `config.rs` | 6 | Parse, tilde expansion, absolute/relative paths, missing file, env overrides |
-| `identity.rs` | 6 | bot_id format, unique keygen, save/load round-trip, dir creation, idempotency, file permissions |
+Run all tests with:
 
-**Total: 22 tests**
+```bash
+cargo test --workspace               # ~318 tests
+```
+
+Per-crate breakdown:
+
+| Crate | Tests | Notes |
+|-------|-------|-------|
+| `araliya-core` | 44 | config, identity, error, logger |
+| `araliya-supervisor` | 6 | dispatch loop, control plane |
+| `araliya-llm` | 10 | provider dispatch, dummy provider |
+| `araliya-comms` | 4+ | comms state |
+| `araliya-memory` | 64 base / 91 with features | `isqlite`, `idocstore`, `ikgdocstore` |
+| `araliya-cron` | 4 | timer service |
+| `araliya-agents` | varies | feature-gated plugin tests |
+| `araliya-bot` | 142+ | integration, subsystem wiring |
+
+Feature-gated tests require explicit flags:
+
+```bash
+cargo test -p araliya-memory --features "isqlite,idocstore,ikgdocstore"
+cargo test --features idocstore
+cargo test --features ikgdocstore
+```
 
 ## Filesystem Tests
 
@@ -51,12 +69,13 @@ assert_eq!(cfg.work_dir, PathBuf::from("/tmp/override"));
 - Test error paths as well as happy paths
 - Parser and helper code (e.g. FTS5 query escaping) should have unit or integration tests to prevent regressions
 
-## CI (Future)
+## CI
 
-```yaml
-# .github/workflows/ci.yml (planned)
-- cargo check
-- cargo test
-- cargo clippy -- -D warnings
-- cargo fmt --check
+`.github/workflows/ci.yml` runs on every push and PR:
+
+```bash
+cargo fmt --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+# Plus per-crate build tier jobs (minimal, default, full, runtimes, ui, agents, memory-extended)
 ```

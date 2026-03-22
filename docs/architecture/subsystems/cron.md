@@ -1,6 +1,6 @@
 # Cron Subsystem
 
-**Status:** Implemented — `src/subsystems/cron/`  
+**Status:** Implemented — `crates/araliya-cron/src/` · extracted to dedicated crate (Phase 8)
 **Feature:** `subsystem-cron`  
 **Bus prefix:** `cron`
 
@@ -17,9 +17,10 @@ The cron subsystem provides timer-based event scheduling. Other subsystems sched
 ### Module layout
 
 ```
-src/subsystems/cron/
-├── mod.rs       CronSubsystem — BusHandler, owns mpsc::Sender to bg task
-└── service.rs   CronService   — background tokio task, priority queue, timer loop
+crates/araliya-cron/src/
+├── lib.rs          — pub use dispatcher::CronSubsystem
+├── dispatcher.rs   — CronSubsystem: BusHandler, owns mpsc::Sender to bg task
+└── service.rs      — CronService: background tokio task, priority queue, timer loop
 ```
 
 ### Internal communication

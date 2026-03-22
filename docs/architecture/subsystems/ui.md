@@ -1,6 +1,6 @@
 # UI Subsystem
 
-**Status:** v0.2.6 — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page · route-backed Status SPA panes.
+**Status:** v0.2.0-alpha — `UiServe` trait · `svui` backend · static file serving with SPA fallback · built-in placeholder page · route-backed Status SPA panes · extracted to `araliya-ui` crate (Phase 12).
 
 ---
 
@@ -28,7 +28,7 @@ Svelte-based web UI backend. Serves static files from a build directory, or a bu
 
 MIME types are inferred from file extensions (html, css, js, svg, png, woff2, wasm, etc.).
 
-**Source:** `src/subsystems/ui/svui.rs`
+**Source:** `crates/araliya-ui/src/svui.rs`
 
 ### SVUI route model (frontend)
 
@@ -59,12 +59,12 @@ Status memory inspector MVP notes:
 ### Module layout
 
 ```
-src/
-  subsystems/
-    ui/
-      mod.rs    — UiServe trait, UiServeHandle type, start(config) → Option<UiServeHandle>
-      svui.rs   — SvuiBackend: UiServe
+crates/araliya-ui/src/
+  lib.rs    — start(config) → Option<UiServeHandle>; re-exports UiServe, UiServeHandle
+  svui.rs   — SvuiBackend: UiServe
 ```
+
+`UiServe` and `UiServeHandle` are defined in `araliya-core` (`araliya_core::ui`); `araliya-ui` depends on `araliya-core` and provides the `start()` wiring function and the `svui` backend.
 
 ### Integration with HTTP channel
 

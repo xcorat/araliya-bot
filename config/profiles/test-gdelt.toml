@@ -1,6 +1,6 @@
-# config/test-gdelt.toml
+# config/profiles/test-gdelt.toml
 [meta]
-base = "default.toml"
+base = "../default.toml"
 
 [supervisor]
 enabled_agents = [

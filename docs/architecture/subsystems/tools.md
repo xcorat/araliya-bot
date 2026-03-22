@@ -1,6 +1,6 @@
 # Tools Subsystem
 
-**Status:** Implemented (MVP) — `src/subsystems/tools/`
+**Status:** Implemented — `crates/araliya-tools/src/` · Gmail, GDELT BigQuery, RSS, newsmail aggregator · extracted to dedicated crate (Phase 7).
 
 ---
 
@@ -27,7 +27,7 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 
 ## Current Gmail Tool
 
-- Module: `src/subsystems/tools/gmail.rs`
+- Module: `crates/araliya-tools/src/gmail.rs`
 - Action: `read_latest`
 - OAuth: Desktop loopback auth (`GOOGLE_CLIENT_ID`, optional `GOOGLE_CLIENT_SECRET`)
 - Token cache: `config/gmail_token.json`
@@ -35,10 +35,10 @@ The Tools subsystem owns tool execution on behalf of agents. Agents call the too
 
 ## Newsmail Aggregator Tool
 
-- Module: `src/subsystems/tools/newsmail_aggregator.rs`
+- Module: `crates/araliya-tools/src/newsmail_aggregator.rs`
 - Actions: `get`, `healthcheck`
 - Transport: `tools/execute` (same as all tools)
-- Uses Gmail core integration from `src/subsystems/tools/gmail.rs` (no duplicated OAuth/API stack)
+- Uses Gmail core integration from `crates/araliya-tools/src/gmail.rs` (no duplicated OAuth/API stack)
 - Optional LLM inputs: `label` (string or array of Gmail label IDs), `n_last`, `t_interval` (preferred), `tsec_last` (legacy), `q` (extra Gmail search terms)
 - Config default: `label_ids = ["INBOX"]` — used when the LLM provides no label override
 - `healthcheck` performs a minimal fetch (`maxResults=1`) with `labelIds={defaults}` and `q=newsletter`
@@ -65,7 +65,7 @@ skills = ["gmail", "newsmail_aggregator"]  # can invoke both
 
 ## GDELT BigQuery Tool
 
-- Module: `src/subsystems/tools/gdelt_bigquery.rs`
+- Module: `crates/araliya-tools/src/gdelt_bigquery.rs`
 - Feature flag: `plugin-gdelt-tool` (enables `dep:jsonwebtoken` + `subsystem-tools`)
 - Actions: `fetch`, `healthcheck`
 - Auth: service-account JSON at `config/secrets/araliya-1012f47de255.json` → RS256 JWT (`jsonwebtoken` crate) → OAuth2 token exchange → BigQuery REST `runQuery`

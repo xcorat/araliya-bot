@@ -1,5 +1,5 @@
 [meta]
-base = "default.toml"
+base = "../default.toml"
 
 [supervisor]
 bot_name = "docs-agent"

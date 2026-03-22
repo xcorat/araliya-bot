@@ -385,7 +385,7 @@ Daily/monthly/yearly event counts for normalizing against monitoring volume grow
 
 ## Relevant Araliya-Bot Integration
 
-The `gdelt_news` agent (`crates/araliya-bot/src/subsystems/agents/gdelt_news.rs`) is the current integration point. Key config in `config/newsroom.toml`:
+The `gdelt_news` agent (`crates/araliya-agents/src/gdelt_news.rs`) is the current integration point. Key config in `config/profiles/newsroom.toml`:
 
 ```toml
 [agents.newsroom.gdelt_query]
@@ -395,4 +395,4 @@ min_articles     = 1
 english_only     = true
 ```
 
-The agent calls `gdelt_bigquery/fetch` via the bus and stores results in an `AgentStore` (SQLite-backed). Raw fetch results are persisted and a summary is LLM-generated from `config/prompts/gdelt_news_summary.txt`. The `newsroom` agent is a composition on top of `gdelt_news` that adds session/transcript storage and streaming response to the UI.
+The agent calls `gdelt_bigquery/fetch` via the bus and stores results in an `AgentStore` (SQLite-backed). Raw fetch results are persisted and a summary is LLM-generated from `config/agents/gdelt_news/summary.md`. The `newsroom` agent is a composition on top of `gdelt_news` that adds session/transcript storage and streaming response to the UI.

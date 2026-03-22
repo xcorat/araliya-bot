@@ -3,10 +3,10 @@
 # via the runtimes subsystem.  No LLM involved.
 #
 # Usage:
-#   cargo run -- -i -c config/runtime_cmd.toml
+#   cargo run -- -i -c config/profiles/runtime_cmd.toml
 
 [meta]
-base = "default.toml"
+base = "../default.toml"
 
 [comms.pty]
 enabled = true

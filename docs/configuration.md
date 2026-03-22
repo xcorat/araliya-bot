@@ -51,13 +51,15 @@ When `comms.http.enabled = true`, the HTTP channel exposes `GET /health` on
 `comms.http.bind` and forwards the request to the management bus method
 `manage/http/get`.
 
-### Full-Featured Config (`full.toml`)
+### Launch Profiles (`config/profiles/`)
 
-`config/full.toml` is a **partial overlay** that inherits from `default.toml` via `[meta] base`.  It only lists the keys that differ from the base, so it stays short and easy to read:
+Named launch configurations live in `config/profiles/`.  Each is a **partial overlay** that inherits from `config/default.toml` via `[meta] base = "../default.toml"`.  Only the keys that differ from the base are listed.
+
+`config/profiles/full.toml` — all features enabled (Telegram, Gmail, news, docs):
 
 ```toml
 [meta]
-base = "default.toml"  # path relative to this file
+base = "../default.toml"  # path relative to this file
 
 [comms.telegram]
 enabled = true
@@ -67,17 +69,14 @@ default = "chat"
 # … only changed entries …
 ```
 
-To use it:
+To use a profile:
 
 ```bash
-cargo run -- -f config/full.toml
+cargo run -- -f config/profiles/full.toml
+cargo run -- -f config/profiles/news.toml
 ```
 
-For the news agent overlay:
-
-```bash
-cargo run -- -f config/news.toml
-```
+Available profiles: `full`, `docker`, `llm-test`, `docs_agent`, `news`, `newsroom`, `runtime_cmd`, `test-gdelt`, `uniweb`.
 
 The loader follows the `base` chain automatically, deep-merging each layer so that overlay keys win and everything else comes from the base.
 

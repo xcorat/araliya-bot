@@ -194,7 +194,7 @@ All other subsystems (agents, memory, tools, cron, runtimes, ui, comms) live in 
 
 ## Configuration
 
-TOML-based with inheritance: `config/default.toml` is the base. Overlays declare `[meta] base = "other.toml"` for composition.
+TOML-based with inheritance: `config/default.toml` is the base. Overlays declare `[meta] base = "other.toml"` for composition. Named launch profiles live in `config/profiles/` and use `[meta] base = "../default.toml"`.
 
 Key config sections: `[supervisor]`, `[comms.pty]`, `[comms.telegram]`, `[agents]`, `[memory]`, `[llm]`, `[tools]`, `[ui]`.
 
@@ -312,7 +312,19 @@ config/                      # TOML config files + agent definitions
 │   │   ├── docs_agent/
 │   │   ├── uniweb/
 │   │   └── …(11 more agents)
-│   └── *.toml               # Configuration overlays
+│   ├── profiles/            # Named launch configurations (feature/deployment-specific overlays)
+│   │   ├── full.toml        # All features enabled (Telegram, Gmail, news, docs)
+│   │   ├── docker.toml      # Container deployment (0.0.0.0 binds, no PTY)
+│   │   ├── llm-test.toml    # Local Qwen inference testing
+│   │   ├── docs_agent.toml  # Agentic chat + KG docstore
+│   │   ├── news.toml        # Gmail news agent focus
+│   │   ├── newsroom.toml    # Persistent newsroom + GDELT aggregation
+│   │   ├── runtime_cmd.toml # Interactive REPL passthrough (no LLM)
+│   │   ├── test-gdelt.toml  # GDELT BigQuery news testing
+│   │   └── uniweb.toml      # Shared-session front-porch agentic chat
+│   ├── default.toml         # Base config (binary default)
+│   ├── minimal.toml         # Minimal feature set (CI + local testing)
+│   └── dummy.toml           # Dummy LLM (no API key — bus round-trip testing)
 docs/                        # Architecture, operations, development docs
 ```
 
