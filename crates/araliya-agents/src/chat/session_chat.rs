@@ -134,8 +134,7 @@ async fn handle_with_memory(
     // Build system preamble (identity layers) and user message separately.
     let chat_skills = state.agent_skills.get("chat").cloned().unwrap_or_default();
     let agents_dir = std::path::Path::new(&state.agents_dir);
-    let system =
-        crate::core::prompt::preamble(&state.agents_dir, &chat_skills).build();
+    let system = crate::core::prompt::preamble(&state.agents_dir, &chat_skills).build();
 
     let body = {
         let agent_path = agents_dir.join("chat").join("context.md");
@@ -164,10 +163,10 @@ async fn handle_with_memory(
         if let Err(e) = handle.transcript_append("assistant", reply).await {
             warn!("session_chat: transcript_append(assistant) failed: {e}");
         }
-        if let Some(u) = usage {
-            if let Err(e) = handle.accumulate_spend(u, &state.llm_rates).await {
-                warn!("session_chat: accumulate_spend failed: {e}");
-            }
+        if let Some(u) = usage
+            && let Err(e) = handle.accumulate_spend(u, &state.llm_rates).await
+        {
+            warn!("session_chat: accumulate_spend failed: {e}");
         }
     }
 

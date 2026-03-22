@@ -246,7 +246,10 @@ pub async fn fetch_events(args: &GdeltQueryArgs) -> Result<Vec<GdeltEvent>, Stri
 
     // Safety: never query unpartitioned tables.
     if query.contains("gdeltv2.events`") || query.contains("gdeltv2.eventmentions`") {
-        return Err("gdelt: query rejected — must use events_partitioned and eventmentions_partitioned".to_string());
+        return Err(
+            "gdelt: query rejected — must use events_partitioned and eventmentions_partitioned"
+                .to_string(),
+        );
     }
 
     let limit = args.limit.unwrap_or(50);

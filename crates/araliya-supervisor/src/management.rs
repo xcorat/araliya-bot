@@ -9,11 +9,11 @@ use std::sync::{Arc, OnceLock};
 
 use tokio::sync::oneshot;
 
-use araliya_core::bus::{
-    BusError, BusHandle, BusHandler, BusPayload, BusResult, ComponentInfo,
-    ComponentStatusResponse, ERR_METHOD_NOT_FOUND, HealthRegistry,
-};
 use crate::control::{ControlCommand, ControlHandle, ControlResponse};
+use araliya_core::bus::{
+    BusError, BusHandle, BusHandler, BusPayload, BusResult, ComponentInfo, ComponentStatusResponse,
+    HealthRegistry, ERR_METHOD_NOT_FOUND,
+};
 
 /// Static info collected at startup and included in the health response.
 #[derive(Debug, Clone)]

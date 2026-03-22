@@ -3,13 +3,13 @@
 use std::time::Duration;
 
 use axum::{
-    Json,
     extract::{Path, State},
     http::StatusCode,
     response::{
-        IntoResponse, Response,
         sse::{Event, Sse},
+        IntoResponse, Response,
     },
+    Json,
 };
 use std::convert::Infallible;
 

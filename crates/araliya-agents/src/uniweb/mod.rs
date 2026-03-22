@@ -19,8 +19,8 @@ use tracing::info;
 
 use super::core::agentic::{AgenticLoop, LocalTool};
 use super::{Agent, AgentsState};
-use araliya_core::error::AppError;
 use araliya_core::bus::message::{BusError, BusResult};
+use araliya_core::error::AppError;
 
 #[cfg(feature = "idocstore")]
 use super::docs::DocsRagTool;
@@ -94,25 +94,25 @@ impl UniwebAgent {
     fn build_memory_tools(state: &AgentsState) -> Vec<Arc<dyn LocalTool + Send + Sync>> {
         #[cfg(feature = "idocstore")]
         {
-            if let Some(docs_cfg) = state.agent_docs.get("uniweb") {
-                if let Some(identity) = state.agent_identities.get("uniweb") {
-                    let dir = &identity.identity_dir;
-                    let populated = IDocStore::open(dir)
-                        .and_then(|s| s.list_documents())
-                        .map(|docs| !docs.is_empty())
-                        .unwrap_or(false);
-                    if populated {
-                        let tool: Arc<dyn LocalTool + Send + Sync> = Arc::new(DocsRagTool {
-                            identity_dir: dir.clone(),
-                            index_name: docs_cfg
-                                .index
-                                .clone()
-                                .unwrap_or_else(|| "index.md".to_string()),
-                            use_kg: docs_cfg.use_kg,
-                            kg_cfg: docs_cfg.kg.clone(),
-                        });
-                        return vec![tool];
-                    }
+            if let Some(docs_cfg) = state.agent_docs.get("uniweb")
+                && let Some(identity) = state.agent_identities.get("uniweb")
+            {
+                let dir = &identity.identity_dir;
+                let populated = IDocStore::open(dir)
+                    .and_then(|s| s.list_documents())
+                    .map(|docs| !docs.is_empty())
+                    .unwrap_or(false);
+                if populated {
+                    let tool: Arc<dyn LocalTool + Send + Sync> = Arc::new(DocsRagTool {
+                        identity_dir: dir.clone(),
+                        index_name: docs_cfg
+                            .index
+                            .clone()
+                            .unwrap_or_else(|| "index.md".to_string()),
+                        use_kg: docs_cfg.use_kg,
+                        kg_cfg: docs_cfg.kg.clone(),
+                    });
+                    return vec![tool];
                 }
             }
         }

@@ -699,12 +699,6 @@ impl IKGDocStore {
             })
             .collect();
 
-        // name -> entity_id lookup for relation pass
-        let name_to_id: HashMap<String, String> = confirmed
-            .values()
-            .map(|e| (e.name.clone(), e.id.clone()))
-            .collect();
-
         // ── Pass 2: relation extraction ───────────────────────────────────
         // (from_id, to_id, label) -> (raw_weight, set of chunk_ids)
         let mut raw_relations: HashMap<(String, String, String), (usize, HashSet<String>)> =
@@ -1167,8 +1161,11 @@ fn is_camel_case(s: &str) -> bool {
     if !chars.iter().all(|c| c.is_alphanumeric() || *c == '_') {
         return false;
     }
-    // Must have at least one uppercase letter after position 0
-    chars[1..].iter().any(|c| c.is_uppercase())
+    // Must have at least one uppercase letter after position 0 AND at least one lowercase letter
+    // (to distinguish CamelCase from ALL_CAPS or UPPERCASE strings)
+    let has_internal_upper = chars[1..].iter().any(|c| c.is_uppercase());
+    let has_lowercase = chars.iter().any(|c| c.is_lowercase());
+    has_internal_upper && has_lowercase
 }
 
 /// Walk the text collecting sequences of >= 2 consecutive Title Case words

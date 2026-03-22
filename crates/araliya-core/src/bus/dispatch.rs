@@ -24,8 +24,8 @@
 
 use tokio::sync::oneshot;
 
-use super::message::{BusPayload, BusResult};
 use super::component::ComponentInfo;
+use super::message::{BusPayload, BusResult};
 
 /// A subsystem that can handle bus messages.
 ///

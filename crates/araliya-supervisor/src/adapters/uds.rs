@@ -17,9 +17,7 @@ use tokio::net::UnixListener;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
-use crate::control::{
-    ControlCallError, ControlCommand, ControlError, ControlHandle, WireResponse,
-};
+use crate::control::{ControlCallError, ControlCommand, ControlError, ControlHandle, WireResponse};
 
 pub fn start(control: ControlHandle, socket_path: PathBuf, shutdown: CancellationToken) {
     // Remove stale socket file left by a previous run.

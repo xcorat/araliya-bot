@@ -20,12 +20,12 @@ use tracing::info;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use araliya_core::bus::handle::SupervisorBus;
 use araliya_core::bus::component::ComponentInfo;
-use araliya_supervisor::control::SupervisorControl;
 use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::handle::SupervisorBus;
 use araliya_core::bus::health::HealthRegistry;
 use araliya_core::{config, error, identity, logger};
+use araliya_supervisor::control::SupervisorControl;
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
 #[cfg(feature = "subsystem-agents")]
 use araliya_agents::AgentsSubsystem;
@@ -42,10 +42,10 @@ use araliya_cron::CronSubsystem;
 #[cfg(feature = "subsystem-runtimes")]
 use subsystems::runtimes::RuntimesSubsystem;
 
-#[cfg(feature = "subsystem-memory")]
-use araliya_memory::{MemoryConfig, MemorySystem};
 #[cfg(all(feature = "subsystem-memory", feature = "subsystem-agents"))]
 use araliya_memory::bus::MemoryBusHandler;
+#[cfg(feature = "subsystem-memory")]
+use araliya_memory::{MemoryConfig, MemorySystem};
 
 #[cfg(feature = "subsystem-comms")]
 use araliya_comms::CommsStatusHandler;
@@ -522,7 +522,7 @@ fn parse_cli_args() -> CliArgs {
         match arg.as_str() {
             "-h" | "--help" => {
                 println!("Usage: araliya-bot [OPTIONS]");
-                println!("");
+                println!();
                 println!("Options:");
                 println!("  -h, --help                 Print help");
                 println!(

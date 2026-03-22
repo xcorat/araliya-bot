@@ -17,7 +17,7 @@
 //! document.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -246,8 +246,8 @@ fn cleanup_orphans(store: &IDocStore) -> Result<usize, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::AGENTS_DIRNAME;
     use super::*;
+    use crate::AGENTS_DIRNAME;
     use std::collections::HashMap;
     use std::fs;
     use tempfile::TempDir;

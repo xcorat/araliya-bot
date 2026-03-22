@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::warn;
 
-use araliya_memory::stores::agent::TextItem;
 use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_memory::stores::agent::TextItem;
 
 use super::core::prompt::PromptBuilder;
 use super::{Agent, AgentsState};
@@ -253,11 +253,23 @@ async fn persist_summary(state: &Arc<AgentsState>, cache_key: &str, summary: &st
     .ok();
 }
 
-fn build_summary_prompt(items: &[TextItem], tools: &[String], agents_dir: &str) -> (String, String) {
+fn build_summary_prompt(
+    items: &[TextItem],
+    tools: &[String],
+    agents_dir: &str,
+) -> (String, String) {
     let mut items_str = String::new();
     for (i, item) in items.iter().enumerate() {
-        let actor1 = item.metadata.get("actor1").map(|s| s.as_str()).unwrap_or("");
-        let actor2 = item.metadata.get("actor2").map(|s| s.as_str()).unwrap_or("");
+        let actor1 = item
+            .metadata
+            .get("actor1")
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        let actor2 = item
+            .metadata
+            .get("actor2")
+            .map(|s| s.as_str())
+            .unwrap_or("");
         let event_code = item
             .metadata
             .get("event_code")
@@ -300,7 +312,9 @@ fn build_summary_prompt(items: &[TextItem], tools: &[String], agents_dir: &str) 
 
     let agents_path = std::path::Path::new(agents_dir);
     let body = std::fs::read_to_string(agents_path.join("gdelt_news").join("summary.md"))
-        .unwrap_or_else(|_| "Summarize the following GDELT global news events:\n\n{{items}}".to_string());
+        .unwrap_or_else(|_| {
+            "Summarize the following GDELT global news events:\n\n{{items}}".to_string()
+        });
     let user = PromptBuilder::new(agents_path.join("_shared"))
         .append(body)
         .var("items", &items_str)

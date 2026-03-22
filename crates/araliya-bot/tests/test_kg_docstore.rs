@@ -9,9 +9,7 @@
 use std::collections::HashMap;
 use std::fs;
 
-use araliya_memory::stores::kg_docstore::{
-    Document, IKGDocStore, KgConfig, KgSearchResult,
-};
+use araliya_memory::stores::kg_docstore::{Document, IKGDocStore, KgConfig, KgSearchResult};
 use tempfile::TempDir;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

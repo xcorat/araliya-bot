@@ -57,11 +57,7 @@ impl Agent for TestRssNewsAgent {
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
-async fn run(
-    channel_id: String,
-    session_id: Option<String>,
-    state: Arc<AgentsState>,
-) -> BusResult {
+async fn run(channel_id: String, session_id: Option<String>, state: Arc<AgentsState>) -> BusResult {
     // 1. Build tool args
     let urls: Vec<String> = DEFAULT_FEEDS.iter().map(|s| s.to_string()).collect();
     let args_json = serde_json::json!({
@@ -83,9 +79,7 @@ async fn run(
             ..
         }) => data,
         Ok(BusPayload::ToolResponse {
-            ok: false,
-            error,
-            ..
+            ok: false, error, ..
         }) => {
             let msg = error.unwrap_or_else(|| "rss_fetch tool error".to_string());
             warn!(error = %msg, "test_rssnews: tool returned error");
@@ -113,8 +107,8 @@ async fn run(
     let items: Vec<Item> = serde_json::from_str(&data_json).unwrap_or_default();
 
     if items.is_empty() {
-        let content = "No RSS items found in the last 24 hours across the configured feeds."
-            .to_string();
+        let content =
+            "No RSS items found in the last 24 hours across the configured feeds.".to_string();
         return Ok(BusPayload::CommsMessage {
             channel_id,
             content,
@@ -143,16 +137,20 @@ async fn run(
         .complete_via_llm_with_system(&channel_id, &user_text, Some(SYSTEM_PROMPT))
         .await
     {
-        Ok(BusPayload::CommsMessage { content, usage, timing, thinking, .. }) => {
-            Ok(BusPayload::CommsMessage {
-                channel_id,
-                content,
-                session_id: None,
-                usage,
-                timing,
-                thinking,
-            })
-        }
+        Ok(BusPayload::CommsMessage {
+            content,
+            usage,
+            timing,
+            thinking,
+            ..
+        }) => Ok(BusPayload::CommsMessage {
+            channel_id,
+            content,
+            session_id: None,
+            usage,
+            timing,
+            thinking,
+        }),
         Ok(_) => Err(BusError::new(-32000, "unexpected LLM response type")),
         Err(e) => {
             warn!(error = ?e, "test_rssnews: LLM call failed");

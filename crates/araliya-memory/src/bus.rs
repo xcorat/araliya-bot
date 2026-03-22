@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use araliya_core::bus::{BusError, BusHandler, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use araliya_core::bus::ComponentStatusResponse;
+use araliya_core::bus::{BusError, BusHandler, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 /// Bus handler for the `memory/` prefix.
 pub struct MemoryBusHandler {
@@ -25,7 +25,9 @@ pub struct MemoryBusHandler {
 
 impl MemoryBusHandler {
     pub fn new(agent_identity_dirs: Arc<HashMap<String, PathBuf>>) -> Self {
-        Self { agent_identity_dirs }
+        Self {
+            agent_identity_dirs,
+        }
     }
 }
 
@@ -34,7 +36,12 @@ impl BusHandler for MemoryBusHandler {
         "memory"
     }
 
-    fn handle_request(&self, method: &str, payload: BusPayload, reply_tx: oneshot::Sender<BusResult>) {
+    fn handle_request(
+        &self,
+        method: &str,
+        payload: BusPayload,
+        reply_tx: oneshot::Sender<BusResult>,
+    ) {
         match method {
             "memory/kg_graph" => {
                 let agent_id = match payload {
@@ -66,8 +73,8 @@ impl BusHandler for MemoryBusHandler {
 
                 let body = match std::fs::read_to_string(&kg_path) {
                     Ok(json) => {
-                        let graph =
-                            serde_json::from_str::<serde_json::Value>(&json).unwrap_or_else(
+                        let graph = serde_json::from_str::<serde_json::Value>(&json)
+                            .unwrap_or_else(
                                 |_| serde_json::json!({"entities": {}, "relations": []}),
                             );
                         serde_json::json!({ "agent_id": agent_id, "graph": graph })

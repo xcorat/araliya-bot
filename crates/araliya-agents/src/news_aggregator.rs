@@ -30,20 +30,20 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use araliya_memory::stores::kg_docstore::{IKGDocStore, KgConfig};
 use araliya_memory::stores::sqlite_core::Document;
-use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 
 use super::{Agent, AgentsState};
 
 const MAX_ARTICLE_CHARS: usize = 4_000;
+#[allow(dead_code)]
 const BATCH_LIMIT: i64 = 50; // Process up to 50 URLs per cycle — matches GDELT fetch limit
 const FETCH_TIMEOUT_S: u64 = 15;
 const CHUNK_SIZE: usize = 512;
 const FETCH_DELAY_MS: u64 = 1_500;
 
-const ARTICLE_SYSTEM: &str =
-    "You are a concise news summarizer. \
+const ARTICLE_SYSTEM: &str = "You are a concise news summarizer. \
      Summarize the given article in 2-3 short paragraphs covering: \
      who is involved, what happened, where, when, and why it matters. \
      Be factual and neutral. Do not include URLs or source attribution.";
@@ -108,7 +108,9 @@ impl Agent for NewsAggregatorAgent {
 
         tokio::spawn(async move {
             match effective.as_str() {
-                "aggregate" => handle_aggregate(channel_id, content, session_id, state, reply_tx).await,
+                "aggregate" => {
+                    handle_aggregate(channel_id, content, session_id, state, reply_tx).await
+                }
                 "status" => handle_status(channel_id, session_id, state, reply_tx).await,
                 "search" => handle_search(content, channel_id, session_id, state, reply_tx).await,
                 _ => {
@@ -304,16 +306,16 @@ async fn do_aggregate(channel_id: String, urls: Vec<String>, state: Arc<AgentsSt
         .unwrap_or_else(|e| Err(format!("news_aggregator: spawn_blocking rebuild: {e}")))
         {
             Ok(()) => info!(doc_count, "news_aggregator: KG rebuilt successfully"),
-            Err(e) => error!(error = %e, "news_aggregator: KG rebuild FAILED — graph will be stale"),
+            Err(e) => {
+                error!(error = %e, "news_aggregator: KG rebuild FAILED — graph will be stale")
+            }
         }
     }
 
     let total_in_kg = processed + known_urls.len();
     info!(
         processed,
-        skipped,
-        total_in_kg,
-        "news_aggregator: aggregation cycle complete"
+        skipped, total_in_kg, "news_aggregator: aggregation cycle complete"
     );
     format!(
         "Aggregated {processed} new article(s) into the knowledge graph \
@@ -536,7 +538,9 @@ fn strip_html(html: &str) -> String {
         // Skip non-content and media tags.  Crucially, skipping "img" prevents
         // htmd from emitting inline base64 data-URIs (data:image/...;base64,...)
         // which would eat the entire MAX_ARTICLE_CHARS budget before any text.
-        .skip_tags(vec!["script", "style", "head", "nav", "footer", "iframe", "img"])
+        .skip_tags(vec![
+            "script", "style", "head", "nav", "footer", "iframe", "img",
+        ])
         .build();
     let text = converter.convert(html).unwrap_or_default();
     // Strip any residual data-URI blobs that slipped through (e.g. inline svg

@@ -22,14 +22,13 @@
 use std::time::Duration;
 
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ── constants mirrored from news_aggregator.rs ────────────────────────────────
 
 const MAX_ARTICLE_CHARS: usize = 4_000;
-const FETCH_TIMEOUT_S:   u64   = 15;
-const ARTICLE_SYSTEM:    &str  =
-    "You are a concise news summarizer. \
+const FETCH_TIMEOUT_S: u64 = 15;
+const ARTICLE_SYSTEM: &str = "You are a concise news summarizer. \
      Summarize the given article in 2-3 short paragraphs covering: \
      who is involved, what happened, where, when, and why it matters. \
      Be factual and neutral. Do not include URLs or source attribution.";
@@ -38,7 +37,9 @@ const ARTICLE_SYSTEM:    &str  =
 
 fn strip_html(html: &str) -> String {
     let converter = htmd::HtmlToMarkdown::builder()
-        .skip_tags(vec!["script", "style", "head", "nav", "footer", "iframe", "img"])
+        .skip_tags(vec![
+            "script", "style", "head", "nav", "footer", "iframe", "img",
+        ])
         .build();
     let text = converter.convert(html).unwrap_or_default();
     let text = regex_strip_data_uris(&text);
@@ -104,7 +105,6 @@ fn find_events_db() -> Option<std::path::PathBuf> {
 }
 
 fn load_urls(db_path: &std::path::Path, limit: usize, skip_cursor: bool) -> Vec<(i64, String)> {
-    use std::collections::HashMap;
     let conn = rusqlite::Connection::open(db_path).expect("open events.db");
 
     // Read cursor.
@@ -122,9 +122,7 @@ fn load_urls(db_path: &std::path::Path, limit: usize, skip_cursor: bool) -> Vec<
     };
 
     let sql = if skip_cursor {
-        format!(
-            "SELECT id, source_url FROM events ORDER BY id DESC LIMIT {limit}"
-        )
+        format!("SELECT id, source_url FROM events ORDER BY id DESC LIMIT {limit}")
     } else {
         format!(
             "SELECT id, source_url FROM events WHERE id > {cursor} ORDER BY id ASC LIMIT {limit}"
@@ -132,13 +130,11 @@ fn load_urls(db_path: &std::path::Path, limit: usize, skip_cursor: bool) -> Vec<
     };
 
     let mut stmt = conn.prepare(&sql).expect("prepare");
-    stmt.query_map([], |r| {
-        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
-    })
-    .expect("query")
-    .filter_map(|r| r.ok())
-    .filter(|(_, u)| !u.is_empty())
-    .collect()
+    stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+        .expect("query")
+        .filter_map(|r| r.ok())
+        .filter(|(_, u)| !u.is_empty())
+        .collect()
 }
 
 // ── LLM call ─────────────────────────────────────────────────────────────────
@@ -196,11 +192,10 @@ fn extract_content(raw_json: &str) -> String {
 #[ignore]
 #[tokio::test]
 async fn debug_news_agg_pipeline() {
-    let api_key  = std::env::var("LLM_API_KEY").unwrap_or_default();
+    let api_key = std::env::var("LLM_API_KEY").unwrap_or_default();
     let base_url = std::env::var("LLM_BASE_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
-    let model = std::env::var("LLM_MODEL")
-        .unwrap_or_else(|_| "gpt-5-nano".to_string());
+    let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "gpt-5-nano".to_string());
     let limit: usize = std::env::var("PIPELINE_LIMIT")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -253,8 +248,8 @@ async fn debug_news_agg_pipeline() {
         .build()
         .expect("build reqwest client");
 
-    let mut ok_count    = 0usize;
-    let mut skip_count  = 0usize;
+    let mut ok_count = 0usize;
+    let mut skip_count = 0usize;
 
     for (event_id, url) in &urls {
         eprintln!("{}", "─".repeat(80));
@@ -297,7 +292,10 @@ async fn debug_news_agg_pipeline() {
         let char_count = stripped.chars().count();
         eprintln!("  chars  : {char_count}");
         let preview: String = stripped.chars().take(500).collect();
-        eprintln!("  first 500 chars:\n  ┌───\n  │ {}\n  └───", preview.replace('\n', "\n  │ "));
+        eprintln!(
+            "  first 500 chars:\n  ┌───\n  │ {}\n  └───",
+            preview.replace('\n', "\n  │ ")
+        );
 
         if stripped.trim().is_empty() {
             eprintln!("  result : ✗ empty after strip, skipping");
@@ -330,7 +328,16 @@ async fn debug_news_agg_pipeline() {
         if api_key.is_empty() {
             eprintln!("  skipped (LLM_API_KEY not set)");
         } else {
-            match call_llm(&client, &api_key, &base_url, &model, ARTICLE_SYSTEM, &prompt).await {
+            match call_llm(
+                &client,
+                &api_key,
+                &base_url,
+                &model,
+                ARTICLE_SYSTEM,
+                &prompt,
+            )
+            .await
+            {
                 Ok(raw) => {
                     eprintln!("  raw response JSON:\n  ┌───");
                     for line in raw.lines() {
@@ -338,8 +345,10 @@ async fn debug_news_agg_pipeline() {
                     }
                     eprintln!("  └───");
                     let content = extract_content(&raw);
-                    eprintln!("\n  extracted content:\n  ┌───\n  │ {}\n  └───",
-                        content.replace('\n', "\n  │ "));
+                    eprintln!(
+                        "\n  extracted content:\n  ┌───\n  │ {}\n  └───",
+                        content.replace('\n', "\n  │ ")
+                    );
                     ok_count += 1;
                 }
                 Err(e) => {
@@ -354,6 +363,9 @@ async fn debug_news_agg_pipeline() {
     }
 
     eprintln!("{}", "═".repeat(80));
-    eprintln!("  DONE  ok={ok_count}  skipped={skip_count}  total={}", urls.len());
+    eprintln!(
+        "  DONE  ok={ok_count}  skipped={skip_count}  total={}",
+        urls.len()
+    );
     eprintln!("{}", "═".repeat(80));
 }

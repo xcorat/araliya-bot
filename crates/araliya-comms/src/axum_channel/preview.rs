@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use axum::{
     extract::{Path as AxumPath, State},
-    http::{HeaderValue, StatusCode, header},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
 
@@ -79,10 +79,8 @@ async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -
     let content_type = mime_from_extension(&file_path);
 
     let mut resp = (StatusCode::OK, bytes).into_response();
-    resp.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
+    resp.headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     resp
 }
 

@@ -109,14 +109,14 @@ impl ApiClient {
 
     pub fn check_health(&self) -> Result<HealthResponse, reqwest::Error> {
         self.client
-            .get(&format!("{}/api/health", self.base_url))
+            .get(format!("{}/api/health", self.base_url))
             .send()?
             .json()
     }
 
     pub fn list_sessions(&self) -> Result<SessionsResponse, reqwest::Error> {
         self.client
-            .get(&format!("{}/api/sessions", self.base_url))
+            .get(format!("{}/api/sessions", self.base_url))
             .send()?
             .json()
     }
@@ -126,7 +126,7 @@ impl ApiClient {
         session_id: &str,
     ) -> Result<SessionDetailResponse, reqwest::Error> {
         self.client
-            .get(&format!("{}/api/session/{}", self.base_url, session_id))
+            .get(format!("{}/api/session/{}", self.base_url, session_id))
             .send()?
             .json()
     }
@@ -142,7 +142,7 @@ impl ApiClient {
             mode: None,
         };
         self.client
-            .post(&format!("{}/api/message", self.base_url))
+            .post(format!("{}/api/message", self.base_url))
             .json(&req)
             .send()?
             .json()

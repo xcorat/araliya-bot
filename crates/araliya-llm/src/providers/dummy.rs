@@ -65,12 +65,11 @@ mod tests {
     #[tokio::test]
     async fn complete_usage_is_none() {
         let p = DummyProvider;
-        assert!(
-            p.complete("test", None, None)
-                .await
-                .unwrap()
-                .usage
-                .is_none()
-        );
+        assert!(p
+            .complete("test", None, None)
+            .await
+            .unwrap()
+            .usage
+            .is_none());
     }
 }

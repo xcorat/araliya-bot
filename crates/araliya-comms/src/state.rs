@@ -3,9 +3,9 @@
 use tokio::sync::mpsc;
 use tracing::warn;
 
+use araliya_core::bus::{BusHandle, BusPayload, StreamReceiver};
 use araliya_core::error::AppError;
 use araliya_core::types::llm::StreamChunk;
-use araliya_core::bus::{BusHandle, BusPayload, StreamReceiver};
 
 #[derive(Debug, Clone)]
 pub struct CommsReply {
@@ -460,9 +460,7 @@ mod tests {
         let ev = CommsEvent::SessionStarted {
             channel_id: "axum0".to_string(),
         };
-        assert!(
-            matches!(ev, CommsEvent::SessionStarted { channel_id } if channel_id == "axum0")
-        );
+        assert!(matches!(ev, CommsEvent::SessionStarted { channel_id } if channel_id == "axum0"));
     }
 
     #[test]

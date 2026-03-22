@@ -39,7 +39,6 @@ use araliya_core::error::AppError;
 use handle::SessionHandle;
 use store::SessionStore;
 
-
 /// Directory name under `{memory_root}/` that stores per-agent identities.
 pub const AGENTS_DIRNAME: &str = "agents";
 
@@ -71,35 +70,18 @@ pub struct SessionSpend {
 }
 
 /// On-disk shape of `sessions.json`.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct SessionIndex {
     sessions: HashMap<String, SessionInfo>,
 }
 
-impl Default for SessionIndex {
-    fn default() -> Self {
-        Self {
-            sessions: HashMap::new(),
-        }
-    }
-}
-
 /// Configuration for the memory subsystem.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryConfig {
     /// Cap for k-v entries in `basic_session` store.
     pub kv_cap: Option<usize>,
     /// Cap for transcript entries in `basic_session` store.
     pub transcript_cap: Option<usize>,
-}
-
-impl Default for MemoryConfig {
-    fn default() -> Self {
-        Self {
-            kv_cap: None,
-            transcript_cap: None,
-        }
-    }
 }
 
 /// Central memory system.  Constructed once at startup, shared via `Arc`.
@@ -614,7 +596,7 @@ fn now_iso8601() -> String {
 
     let mut yr = 1970u64;
     loop {
-        let ydays = if yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0) {
+        let ydays = if yr.is_multiple_of(4) && (!yr.is_multiple_of(100) || yr.is_multiple_of(400)) {
             366
         } else {
             365
@@ -625,7 +607,7 @@ fn now_iso8601() -> String {
         days -= ydays;
         yr += 1;
     }
-    let leap = yr % 4 == 0 && (yr % 100 != 0 || yr % 400 == 0);
+    let leap = yr.is_multiple_of(4) && (!yr.is_multiple_of(100) || yr.is_multiple_of(400));
     let mdays: [u64; 12] = [
         31,
         if leap { 29 } else { 28 },

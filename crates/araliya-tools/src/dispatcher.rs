@@ -8,12 +8,12 @@ use araliya_core::bus::{
 };
 use araliya_core::config::NewsmailAggregatorConfig;
 
+#[cfg(feature = "plugin-gdelt-tool")]
+use crate::gdelt_bigquery;
 #[cfg(feature = "plugin-gmail-tool")]
 use crate::gmail;
 #[cfg(feature = "plugin-gmail-tool")]
 use crate::newsmail_aggregator;
-#[cfg(feature = "plugin-gdelt-tool")]
-use crate::gdelt_bigquery;
 #[cfg(feature = "plugin-rss-fetch-tool")]
 use crate::rss_fetch;
 
@@ -323,9 +323,7 @@ impl BusHandler for ToolsSubsystem {
                                     tool: "rss_fetch".to_string(),
                                     action: "healthcheck".to_string(),
                                     ok: true,
-                                    data_json: Some(
-                                        serde_json::json!({"status": msg}).to_string(),
-                                    ),
+                                    data_json: Some(serde_json::json!({"status": msg}).to_string()),
                                     error: None,
                                 }));
                             }

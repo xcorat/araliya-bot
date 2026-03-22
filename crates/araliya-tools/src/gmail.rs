@@ -16,6 +16,7 @@ const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GMAIL_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
 const SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
+#[allow(dead_code)]
 const DEFAULT_CALLBACK_PATH: &str = "/oauth2/callback";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,8 +61,8 @@ fn random_verifier() -> String {
 
 fn code_challenge_s256(verifier: &str) -> String {
     let digest = Sha256::digest(verifier.as_bytes());
-    use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
     URL_SAFE_NO_PAD.encode(digest)
 }
 

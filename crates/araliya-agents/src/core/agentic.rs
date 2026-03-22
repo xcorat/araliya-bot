@@ -12,19 +12,21 @@
 //! - **Bus tools** are dispatched through `state.execute_tool()` after all local tools
 //!   have been checked.
 
+#![allow(clippy::collapsible_if)]
+
 use std::sync::Arc;
 
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tracing::warn;
 
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, StreamReceiver};
 use araliya_core::error::AppError;
 use araliya_llm::StreamChunk;
 use araliya_memory::handle::SessionHandle;
-use araliya_core::bus::message::{BusError, BusPayload, BusResult, StreamReceiver};
 
-use super::prompt::{PromptBuilder, preamble};
 use super::super::AgentsState;
+use super::prompt::{PromptBuilder, preamble};
 
 /// How many recent transcript entries to inject as conversation context.
 const CONTEXT_WINDOW: usize = 20;
@@ -133,6 +135,7 @@ pub(crate) struct AgenticLoop {
 }
 
 impl AgenticLoop {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         agent_id: impl Into<String>,
         use_instruction_llm: bool,

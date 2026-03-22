@@ -19,18 +19,14 @@ use crate::core::AgentRuntimeClass;
 
 use tokio::sync::oneshot;
 
-use araliya_core::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
-#[cfg(feature = "plugin-runtime-cmd")]
-use araliya_core::config::RuntimeCmdAgentConfig;
-#[cfg(feature = "plugin-webbuilder")]
-use araliya_core::config::WebBuilderAgentConfig;
-use araliya_core::error::AppError;
-use araliya_llm::ModelRates;
-use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
-use araliya_core::bus::handle::BusHandle;
 use araliya_core::bus::component::{ComponentInfo, ComponentStatusResponse};
 use araliya_core::bus::dispatch::BusHandler;
+use araliya_core::bus::handle::BusHandle;
 use araliya_core::bus::health::HealthReporter;
+use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
+use araliya_core::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
+use araliya_core::error::AppError;
+use araliya_llm::ModelRates;
 
 use araliya_core::identity::{self, Identity};
 use araliya_memory::handle::SessionHandle;
@@ -50,26 +46,26 @@ mod docs;
 mod docs_agent;
 #[cfg(feature = "plugin-docs")]
 mod docs_import;
+#[cfg(feature = "plugin-gdelt-news-agent")]
+mod gdelt_news;
 #[cfg(feature = "plugin-gmail-agent")]
 mod gmail;
 #[cfg(feature = "plugin-news-agent")]
 mod news;
-#[cfg(feature = "plugin-gdelt-news-agent")]
-mod gdelt_news;
-#[cfg(feature = "plugin-newsroom-agent")]
-mod newsroom;
 #[cfg(feature = "plugin-news-aggregator")]
 mod news_aggregator;
-#[cfg(feature = "plugin-test-rssnews")]
-mod test_rssnews;
+#[cfg(feature = "plugin-newsroom-agent")]
+mod newsroom;
 #[cfg(feature = "plugin-runtime-cmd")]
 mod runtime_cmd;
+#[cfg(feature = "isqlite")]
+pub mod sqlite_tool;
+#[cfg(feature = "plugin-test-rssnews")]
+mod test_rssnews;
 #[cfg(feature = "plugin-uniweb")]
 mod uniweb;
 #[cfg(feature = "plugin-webbuilder")]
 mod webbuilder;
-#[cfg(feature = "isqlite")]
-pub mod sqlite_tool;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
 
@@ -113,6 +109,7 @@ pub struct AgentsState {
 }
 
 impl AgentsState {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         bus: BusHandle,
         memory: Arc<MemorySystem>,
@@ -179,10 +176,7 @@ impl AgentsState {
             .agent_identities
             .get(agent_id)
             .ok_or_else(|| AppError::Identity(format!("agent '{}' not found", agent_id)))?;
-        araliya_memory::stores::sqlite_store::SqliteStore::open(
-            &identity.identity_dir,
-            db_name,
-        )
+        araliya_memory::stores::sqlite_store::SqliteStore::open(&identity.identity_dir, db_name)
     }
 
     /// Get or create a subagent identity under the parent agent's memory directory.
@@ -1253,13 +1247,11 @@ impl AgentsSubsystem {
                     .unwrap_or_else(|_| serde_json::json!({"entities": {}, "relations": []}));
 
                 // Truncate entities: pick the most-mentioned / most-connected ones.
-                let mut entities_vec: Vec<(String, serde_json::Value)> = match full_graph
-                    .get("entities")
-                    .and_then(|e| e.as_object())
-                {
-                    Some(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-                    None => Vec::new(),
-                };
+                let mut entities_vec: Vec<(String, serde_json::Value)> =
+                    match full_graph.get("entities").and_then(|e| e.as_object()) {
+                        Some(map) => map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                        None => Vec::new(),
+                    };
 
                 if !entities_vec.is_empty() {
                     // Pre-compute degrees for each entity based on relations.
@@ -1267,9 +1259,10 @@ impl AgentsSubsystem {
                         std::collections::HashMap::new();
                     if let Some(rels) = full_graph.get("relations").and_then(|r| r.as_array()) {
                         for rel in rels {
-                            if let (Some(from), Some(to)) =
-                                (rel.get("from").and_then(|v| v.as_str()), rel.get("to").and_then(|v| v.as_str()))
-                            {
+                            if let (Some(from), Some(to)) = (
+                                rel.get("from").and_then(|v| v.as_str()),
+                                rel.get("to").and_then(|v| v.as_str()),
+                            ) {
                                 *degree.entry(from.to_string()).or_insert(0) += 1;
                                 *degree.entry(to.to_string()).or_insert(0) += 1;
                             }
@@ -1277,14 +1270,8 @@ impl AgentsSubsystem {
                     }
 
                     entities_vec.sort_by(|(_, a), (_, b)| {
-                        let ma = a
-                            .get("mention_count")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        let mb = b
-                            .get("mention_count")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
+                        let ma = a.get("mention_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let mb = b.get("mention_count").and_then(|v| v.as_u64()).unwrap_or(0);
 
                         let da = a
                             .get("id")
@@ -1306,47 +1293,41 @@ impl AgentsSubsystem {
                     entities_vec.truncate(MAX_ENTITIES_FOR_INSPECTOR);
                 }
 
-                let allowed_ids: std::collections::HashSet<String> =
-                    entities_vec.iter().filter_map(|(_, v)| {
+                let allowed_ids: std::collections::HashSet<String> = entities_vec
+                    .iter()
+                    .filter_map(|(_, v)| {
                         v.get("id")
                             .and_then(|id| id.as_str())
                             .map(|s| s.to_string())
-                    }).collect();
+                    })
+                    .collect();
 
                 // Truncate relations to those connecting kept entities, by weight.
-                let mut relations_vec: Vec<serde_json::Value> = match full_graph
-                    .get("relations")
-                    .and_then(|r| r.as_array())
-                {
-                    Some(list) => list
-                        .iter()
-                        .cloned()
-                        .filter(|rel| {
-                            let from_ok = rel
-                                .get("from")
-                                .and_then(|v| v.as_str())
-                                .map(|id| allowed_ids.contains(id))
-                                .unwrap_or(false);
-                            let to_ok = rel
-                                .get("to")
-                                .and_then(|v| v.as_str())
-                                .map(|id| allowed_ids.contains(id))
-                                .unwrap_or(false);
-                            from_ok && to_ok
-                        })
-                        .collect(),
-                    None => Vec::new(),
-                };
+                let mut relations_vec: Vec<serde_json::Value> =
+                    match full_graph.get("relations").and_then(|r| r.as_array()) {
+                        Some(list) => list
+                            .iter()
+                            .filter(|rel| {
+                                let from_ok = rel
+                                    .get("from")
+                                    .and_then(|v| v.as_str())
+                                    .map(|id| allowed_ids.contains(id))
+                                    .unwrap_or(false);
+                                let to_ok = rel
+                                    .get("to")
+                                    .and_then(|v| v.as_str())
+                                    .map(|id| allowed_ids.contains(id))
+                                    .unwrap_or(false);
+                                from_ok && to_ok
+                            })
+                            .cloned()
+                            .collect(),
+                        None => Vec::new(),
+                    };
 
                 relations_vec.sort_by(|a, b| {
-                    let wa = a
-                        .get("weight")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0);
-                    let wb = b
-                        .get("weight")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0);
+                    let wa = a.get("weight").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let wb = b.get("weight").and_then(|v| v.as_f64()).unwrap_or(0.0);
                     wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
                 });
                 relations_vec.truncate(MAX_RELATIONS_FOR_INSPECTOR);
@@ -2055,12 +2036,13 @@ fn parse_method(method: &str) -> Result<(Option<String>, String), BusError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::collapsible_if)]
 mod tests {
     use super::*;
     use crate::core::AgentRuntimeClass;
-    use araliya_core::bus::message::BusMessage;
-    use araliya_core::bus::handle::SupervisorBus;
     use araliya_core::bus::dispatch::BusHandler;
+    use araliya_core::bus::handle::SupervisorBus;
+    use araliya_core::bus::message::BusMessage;
     use tokio::sync::oneshot;
 
     fn echo_bus() -> (SupervisorBus, BusHandle) {
@@ -2073,11 +2055,7 @@ mod tests {
     /// The returned `TempDir` must be kept alive for the duration of the test.
     fn test_memory() -> (tempfile::TempDir, Arc<MemorySystem>) {
         let dir = tempfile::TempDir::new().unwrap();
-        let mem = MemorySystem::new(
-            dir.path(),
-            araliya_memory::MemoryConfig::default(),
-        )
-        .unwrap();
+        let mem = MemorySystem::new(dir.path(), araliya_memory::MemoryConfig::default()).unwrap();
         (dir, Arc::new(mem))
     }
 
@@ -2326,24 +2304,22 @@ mod tests {
             if let Some(BusMessage::Request {
                 payload, reply_tx, ..
             }) = rx.recv().await
-            {
-                if let BusPayload::LlmRequest {
+                && let BusPayload::LlmRequest {
                     channel_id,
                     content,
                     ..
                 } = payload
-                {
-                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-                        channel_id,
-                        content: format!("[fake] {content}"),
-                        session_id: None,
-                        usage: None,
+            {
+                let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                    channel_id,
+                    content: format!("[fake] {content}"),
+                    session_id: None,
+                    usage: None,
 
-                        timing: None,
+                    timing: None,
 
-                        thinking: None,
-                    }));
-                }
+                    thinking: None,
+                }));
             }
         });
 
@@ -2923,37 +2899,35 @@ mod tests {
             if let Some(araliya_core::bus::message::BusMessage::Request {
                 payload, reply_tx, ..
             }) = bus_rx.recv().await
+                && let BusPayload::LlmRequest { channel_id, .. } = payload
             {
-                if let BusPayload::LlmRequest { channel_id, .. } = payload {
-                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-                        channel_id,
-                        content: "[]".to_string(),
-                        session_id: None,
-                        usage: None,
+                let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                    channel_id,
+                    content: "[]".to_string(),
+                    session_id: None,
+                    usage: None,
 
-                        timing: None,
+                    timing: None,
 
-                        thinking: None,
-                    }));
-                }
+                    thinking: None,
+                }));
             }
             // Request 2: llm/complete → response
             if let Some(araliya_core::bus::message::BusMessage::Request {
                 payload, reply_tx, ..
             }) = bus_rx.recv().await
+                && let BusPayload::LlmRequest { channel_id, .. } = payload
             {
-                if let BusPayload::LlmRequest { channel_id, .. } = payload {
-                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-                        channel_id,
-                        content: "[fake] hello".to_string(),
-                        session_id: None,
-                        usage: None,
+                let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                    channel_id,
+                    content: "[fake] hello".to_string(),
+                    session_id: None,
+                    usage: None,
 
-                        timing: None,
+                    timing: None,
 
-                        thinking: None,
-                    }));
-                }
+                    thinking: None,
+                }));
             }
         });
 
@@ -3024,26 +2998,27 @@ mod tests {
         tokio::spawn(async move {
             for i in 0..4u32 {
                 if let Some(araliya_core::bus::message::BusMessage::Request {
-                    payload, reply_tx, ..
+                    payload,
+                    reply_tx,
+                    ..
                 }) = bus_rx.recv().await
+                    && let BusPayload::LlmRequest { channel_id, .. } = payload
                 {
-                    if let BusPayload::LlmRequest { channel_id, .. } = payload {
-                        let content = if i % 2 == 0 {
-                            "[]".to_string() // instruct pass → no tools
-                        } else {
-                            format!("[fake-turn-{}] response", i / 2 + 1)
-                        };
-                        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-                            channel_id,
-                            content,
-                            session_id: None,
-                            usage: None,
+                    let content = if i % 2 == 0 {
+                        "[]".to_string() // instruct pass → no tools
+                    } else {
+                        format!("[fake-turn-{}] response", i / 2 + 1)
+                    };
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content,
+                        session_id: None,
+                        usage: None,
 
-                            timing: None,
+                        timing: None,
 
-                            thinking: None,
-                        }));
-                    }
+                        thinking: None,
+                    }));
                 }
             }
         });
@@ -3139,21 +3114,22 @@ mod tests {
         tokio::spawn(async move {
             for _ in 0..2u32 {
                 if let Some(araliya_core::bus::message::BusMessage::Request {
-                    payload, reply_tx, ..
+                    payload,
+                    reply_tx,
+                    ..
                 }) = bus_rx.recv().await
+                    && let BusPayload::LlmRequest { channel_id, .. } = payload
                 {
-                    if let BusPayload::LlmRequest { channel_id, .. } = payload {
-                        let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
-                            channel_id,
-                            content: "[]".to_string(),
-                            session_id: None,
-                            usage: None,
+                    let _ = reply_tx.send(Ok(BusPayload::CommsMessage {
+                        channel_id,
+                        content: "[]".to_string(),
+                        session_id: None,
+                        usage: None,
 
-                            timing: None,
+                        timing: None,
 
-                            thinking: None,
-                        }));
-                    }
+                        thinking: None,
+                    }));
                 }
             }
         });
