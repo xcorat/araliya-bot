@@ -5,8 +5,16 @@ Welcome to the documentation portal.
 Start here:
 
 - [Quick Intro](quick-intro.md) — project overview and core concepts.
-- [Getting Started](getting-started.md) — build, run, and first-run verification.
+- [Getting Started](getting-started.md) — install, build, run, and first-run verification.
 - [Configuration](configuration.md) — config files, runtime flags, and env vars.
+
+Install in one line (Linux x86\_64/aarch64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/install.sh | bash
+araliya-bot setup   # interactive wizard — LLM provider, agent profile, channels
+araliya-bot doctor  # validate config before first run
+```
 
 UI notes:
 

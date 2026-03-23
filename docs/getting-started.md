@@ -1,6 +1,62 @@
 # Getting Started
 
-## Requirements
+## Quickstart (prebuilt binary)
+
+Download, configure, and run in three commands on Linux (x86\_64 / aarch64):
+
+```bash
+# 1. Download the binary and seed config directories
+curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/install.sh | bash
+
+# 2. Interactive setup wizard
+araliya-bot setup
+
+# 3. Validate the generated config
+araliya-bot doctor
+
+# 4. Start the bot
+araliya-bot
+```
+
+`install.sh` auto-detects arch, resolves the latest GitHub release, downloads the
+appropriate tier tarball (`minimal` / `default` / `full`), installs the binary to
+`~/.local/bin/`, and seeds `~/.config/araliya/` with starter config files.
+
+Override defaults with env vars before piping:
+```bash
+ARALIYA_TIER=full ARALIYA_VERSION=v0.2.0-alpha \
+  curl -fsSL .../install.sh | bash
+```
+
+Config is written to `~/.config/araliya/config.toml` (TOML, commented).
+Secrets (API keys, tokens) are written to `~/.config/araliya/.env` (mode 0600).
+Runtime data (identity keypair, sessions, memory) lives in `~/.araliya/`.
+
+### Setup wizard (`araliya-bot setup`)
+
+The wizard walks through four steps:
+
+1. **Bot identity** — bot name and runtime data directory
+2. **LLM provider** — OpenAI / OpenRouter / Anthropic / Local Ollama / custom / dummy + API key + model
+3. **Agent profile** — basic chat / session chat / agentic chat / docs / newsroom / custom
+4. **Channels** — HTTP bind address; Telegram (token validated live via `getMe`)
+
+Re-running `setup` does not overwrite existing secrets in `.env`.
+
+### Config doctor (`araliya-bot doctor`)
+
+Checks config file presence, TOML validity, required sections, and credential env vars.
+Exits non-zero on failure — useful as a pre-flight check in scripts or CI:
+
+```bash
+araliya-bot doctor && araliya-bot
+```
+
+---
+
+## Build from Source
+
+### Requirements
 
 - Rust toolchain 1.80+ (`rustup` recommended)
 - Linux or macOS

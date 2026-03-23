@@ -68,12 +68,39 @@ docker run --rm \
 
 ## Production (Single Machine)
 
-### Download prebuilt release binary
+### One-line install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/install.sh | bash
+```
+
+`install.sh` auto-detects arch (Linux x86\_64 / aarch64), resolves the latest GitHub
+release, downloads and verifies the tarball, installs the binary to `~/.local/bin/`,
+and seeds `~/.config/araliya/` with starter config.
+
+Override defaults with environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARALIYA_TIER` | `default` | Feature tier: `minimal`, `default`, or `full` |
+| `ARALIYA_VERSION` | latest | Pin to a specific release tag (e.g. `v0.2.0-alpha`) |
+| `INSTALL_DIR` | `~/.local/bin` | Binary installation directory |
+| `ARALIYA_CONFIG_DIR` | `~/.config/araliya` | Config directory |
+| `ARALIYA_WORK_DIR` | `~/.araliya` | Runtime data directory |
+
+After installation, run the interactive setup wizard:
+
+```bash
+araliya-bot setup   # LLM provider, agent profile, channels
+araliya-bot doctor  # validate config before first run
+araliya-bot         # start the bot
+```
+
+### Manual download
 
 Every `v*` tag publishes release assets on GitHub Releases.
 
 ```bash
-# Example version
 VERSION=v0.2.0-alpha
 TIER=default
 
@@ -81,25 +108,19 @@ curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/aral
 curl -LO https://github.com/xcorat/araliya-bot/releases/download/${VERSION}/SHA256SUMS
 sha256sum -c SHA256SUMS
 tar -xzf araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu.tar.gz
-cd araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu
-install -m 755 bin/araliya-bot /usr/local/bin/araliya-bot
-araliya-bot -f config/cfg.toml
+install -m 755 araliya-bot-${VERSION}-${TIER}-x86_64-unknown-linux-gnu/bin/araliya-bot ~/.local/bin/araliya-bot
+araliya-bot setup
 ```
 
 `TIER` options: `minimal`, `default`, `full`.
 
 Each tiered tarball includes `bin/araliya-bot`, `config/`, and `frontend/svui/`.
-Inside the bundle, `config/cfg.toml` points to the tier-specific default:
-
-- `minimal` → `config/minimal.toml`
-- `default` → `config/default.toml`
-- `full` → `config/profiles/full.toml`
 
 > **Note:** the canonical version string lives only in `crates/araliya-bot/Cargo.toml`.
 > When building the Svelte UI the frontend sync script (`scripts/sync-version.mjs`)
-> copies that value into `frontend/svui/.env` so the UI can display it.  Update the
+> copies that value into `frontend/svui/.env` so the UI can display it. Update the
 > Cargo version before tagging.
->
+
 To create a release from this repository:
 
 ```bash
@@ -116,25 +137,23 @@ cargo build --release --locked
 cp target/release/araliya-bot /usr/local/bin/
 ```
 
-Verify artifact details (optional):
-
-```bash
-ls -lh target/release/araliya-bot
-file target/release/araliya-bot
-ldd target/release/araliya-bot
-```
-
 ### systemd Service
 
 A ready-to-use unit file is provided at `deploy/araliya-bot.service` (see inline comments for full options). Quick setup:
 
 ```bash
-cargo build --release
-install -m 755 target/release/araliya-bot /usr/local/bin/araliya-bot
-install -m 755 target/release/araliya-ctl /usr/local/bin/araliya-ctl
+# Install binary (install.sh or build from source)
+curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/install.sh | bash
+# or: cargo build --release && install -m 755 target/release/araliya-bot /usr/local/bin/
+
+# Run setup wizard to generate config + .env
+araliya-bot setup
+
+# Validate config
+araliya-bot doctor
+
+# Install as a system service
 useradd -r -s /sbin/nologin araliya
-mkdir -p /etc/araliya-bot && install -m 600 /dev/null /etc/araliya-bot/env
-echo "LLM_API_KEY=sk-..." >> /etc/araliya-bot/env
 cp deploy/araliya-bot.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now araliya-bot
 journalctl -u araliya-bot -f
