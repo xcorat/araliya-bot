@@ -30,9 +30,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 dotenvy = "0.15"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
+dialoguer  = { version = "0.11", optional = true }
+console    = { version = "0.15", optional = true }
+indicatif  = { version = "0.17", optional = true }
+anyhow     = { version = "1", optional = true }
+toml       = { version = "0.8", optional = true }
+# reqwest already declared above as unconditional dep; blocking feature added via setup feature
 
 [features]
 default = [
+    "setup",
     "subsystem-agents",
     "subsystem-memory",
     "subsystem-llm",
@@ -72,6 +79,9 @@ full    = [
     "ikgdocstore",
     ]
 minimal = ["subsystem-agents", "subsystem-llm", "channel-pty", "plugin-basic-chat"]
+
+# Setup wizard + doctor
+setup = ["dep:dialoguer", "dep:console", "dep:indicatif", "dep:anyhow", "dep:toml"]
 
 # Binaries
 cli = []

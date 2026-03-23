@@ -14,6 +14,9 @@
 
 mod subsystems;
 
+#[cfg(feature = "setup")]
+mod setup;
+
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
@@ -53,9 +56,97 @@ use araliya_supervisor::management::{ManagementInfo, ManagementSubsystem};
 
 #[tokio::main]
 async fn main() {
+    // Intercept `setup` and `doctor` before the async runtime does any work.
+    // These are synchronous, interactive subcommands — they exit when done.
+    #[cfg(feature = "setup")]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(subcmd) = args.get(1).map(String::as_str) {
+            if subcmd == "setup" || subcmd == "doctor" {
+                if let Err(e) = run_setup_or_doctor(subcmd, &args[2..]) {
+                    eprintln!("error: {e:#}");
+                    std::process::exit(1);
+                }
+                return;
+            }
+        }
+    }
+
     if let Err(e) = run().await {
         eprintln!("error: {e}");
         std::process::exit(1);
+    }
+}
+
+/// Parses `--config`, `--env`, `--work-dir` from the trailing args slice.
+/// Falls back to XDG / platform defaults when flags are absent.
+#[cfg(feature = "setup")]
+fn resolve_setup_paths(
+    args: &[String],
+) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let mut config_path = None::<std::path::PathBuf>;
+    let mut env_path = None::<std::path::PathBuf>;
+    let mut work_dir = None::<std::path::PathBuf>;
+
+    let mut it = args.iter();
+    while let Some(flag) = it.next() {
+        match flag.as_str() {
+            "--config" | "-f" => {
+                if let Some(v) = it.next() {
+                    config_path = Some(std::path::PathBuf::from(v));
+                }
+            }
+            "--env" => {
+                if let Some(v) = it.next() {
+                    env_path = Some(std::path::PathBuf::from(v));
+                }
+            }
+            "--work-dir" => {
+                if let Some(v) = it.next() {
+                    work_dir = Some(std::path::PathBuf::from(v));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // XDG defaults: ~/.config/araliya/  and  ~/.araliya/
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    let xdg_config = std::env::var("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| home.join(".config"));
+
+    let default_config_dir = xdg_config.join("araliya");
+    let config = config_path.unwrap_or_else(|| default_config_dir.join("config.toml"));
+    let env = env_path.unwrap_or_else(|| config.with_file_name(".env"));
+    let work = work_dir.unwrap_or_else(|| home.join(".araliya"));
+
+    (config, env, work)
+}
+
+#[cfg(feature = "setup")]
+fn run_setup_or_doctor(subcmd: &str, args: &[String]) -> anyhow::Result<()> {
+    let (config_path, env_path, work_dir) = resolve_setup_paths(args);
+
+    match subcmd {
+        "setup" => {
+            setup::run_setup(setup::SetupOpts {
+                config_path,
+                env_path,
+                work_dir,
+            })
+        }
+        "doctor" => {
+            let all_ok = setup::run_doctor(setup::DoctorOpts {
+                config_path,
+                env_path,
+            })?;
+            if !all_ok {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        _ => unreachable!(),
     }
 }
 
