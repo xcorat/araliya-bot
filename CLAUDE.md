@@ -116,7 +116,7 @@ araliya-memory        ← session management, stores (doc, KG, SQL); bus handler
 araliya-tools         ← external tool integrations: Gmail, GDELT BigQuery, RSS (depends on core)
 araliya-cron          ← timer-based event scheduling; BusHandler for cron/* (depends on core)
 araliya-runtimes      ← script execution in external runtimes (node, python3); BusHandler for runtimes/* (depends on core)
-araliya-ui            ← UI backends: SvUI static file serving, SPA routing (depends on core)
+araliya-ui            ← UI backends: SvUI static serving (ui-svui), GPUI desktop client (ui-gpui), beacon widget (ui-beacon) (depends on core)
 araliya-agents        ← Agent trait, AgentsSubsystem, all built-in agent plugins (depends on core, memory, llm)
 araliya-bot           ← binary wiring: main.rs + LLM subsystem only (depends on all above)
 ```
@@ -192,6 +192,15 @@ All other subsystems (agents, memory, tools, cron, runtimes, ui, comms) live in 
 - CI `build-tiers` matrix extended: `runtimes`, `ui`, `agents`, `memory-extended` per-crate jobs added
 - All crate versions unified at `0.2.0-alpha`
 
+**Phase 13 (complete): GPUI + Beacon extraction** — both optional desktop binaries fully migrated into `araliya-ui`.
+- `araliya-ui` grows two new feature-gated modules: `gpui` (`ui-gpui`) and `beacon` (`ui-beacon`)
+- `gpui/mod.rs` exposes `pub fn run()` — app bootstrap, `GpuiAssets`, window wiring; sibling modules: `api`, `state`, `components`, `canvas_scene`, `icons/`
+- `beacon/mod.rs` exposes `pub fn run()` — winit event loop, wgpu/vello renderer, `BeaconApp`; sibling modules: `scene`, `ipc`
+- `araliya-ui` edition bumped to `2024` (let-chain syntax used in both backends)
+- `araliya-bot` binary shims thinned to single-line `araliya_ui::{gpui,beacon}::run()` calls
+- `gpui`, `gpui-component`, `winit`, `vello`, `wgpu`, `pollster` deps removed from `araliya-bot/Cargo.toml`; `ui-gpui` and `ui-beacon` features now forward to `araliya-ui`
+- `araliya-ui/README.md` added; `README.md` and `docs/development/gpui.md` updated to reflect new source locations and system prerequisites
+
 ## Configuration
 
 TOML-based with inheritance: `config/default.toml` is the base. Overlays declare `[meta] base = "other.toml"` for composition. Named launch profiles live in `config/profiles/` and use `[meta] base = "../default.toml"`.
@@ -252,9 +261,11 @@ crates/
 │   ├── lib.rs               # pub use dispatcher::RuntimesSubsystem + type re-exports
 │   ├── dispatcher.rs        # RuntimesSubsystem + BusHandler impl (runtimes/init, exec, status)
 │   └── types.rs             # RuntimeExecRequest, RuntimeInitRequest, result types
-├── araliya-ui/src/          # UI subsystem (static file serving, SPA routing)
+├── araliya-ui/src/          # UI backends: svui serving, gpui desktop client, beacon widget
 │   ├── lib.rs               # start() → Option<UiServeHandle>; re-exports UiServe, UiServeHandle
-│   └── svui.rs              # SvuiBackend: serves static files or built-in placeholder
+│   ├── svui.rs              # SvuiBackend: serves static files or built-in placeholder (ui-svui)
+│   ├── gpui/                # GPUI desktop client (ui-gpui): mod.rs, api, state, components, canvas_scene, icons/
+│   └── beacon/              # Beacon widget (ui-beacon): mod.rs, scene, ipc
 ├── araliya-agents/src/      # Agents subsystem (Agent trait, routing, all plugins)
 │   ├── lib.rs               # AgentsSubsystem, AgentsState, Agent trait, AgentRegistration
 │   ├── core/                # AgentRuntimeClass, PromptBuilder, AgenticLoop, LocalTool
@@ -298,7 +309,7 @@ crates/
     ├── supervisor/          # Re-exports from araliya-core + araliya-supervisor
     ├── subsystems/
     │   └── llm/             # LLM bus handler (routes llm/* to araliya-llm providers)
-    └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui, beacon)
+    └── bin/                 # Additional binaries (araliya-ctl, gmail_read_one, gpui shim, beacon shim)
 
 frontend/svui/               # SvelteKit web UI (pnpm, TypeScript, Tailwind CSS 4, Bits UI)
 config/                      # TOML config files + agent definitions

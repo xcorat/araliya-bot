@@ -1,13 +1,27 @@
 [package]
 name = "araliya-ui"
 version = "0.2.0-alpha"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-only"
 
 [dependencies]
 araliya-core = { path = "../araliya-core" }
 tracing = "0.1"
+gpui = { version = "0.2.2", optional = true }
+gpui-component = { version = "0.5.1", optional = true }
+chrono = { version = "0.4", optional = true }
+dirs = { version = "5", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+winit = { version = "0.30", optional = true }
+vello = { version = "0.4", optional = true }
+wgpu = { version = "23", optional = true }
+pollster = { version = "0.3", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"], optional = true }
 
 [features]
 default = []
 ui-svui = []
+ui-gpui = ["dep:gpui", "dep:gpui-component", "dep:chrono", "dep:dirs", "dep:reqwest", "dep:serde", "dep:serde_json"]
+ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster", "dep:tokio", "dep:dirs", "dep:serde", "dep:serde_json"]

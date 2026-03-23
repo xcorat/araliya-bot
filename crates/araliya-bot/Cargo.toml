@@ -29,13 +29,6 @@ dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 dotenvy = "0.15"
-chrono = { version = "0.4", optional = true }
-gpui = { version = "0.2.2", optional = true }
-gpui-component = { version = "0.5.1", optional = true }
-winit = { version = "0.30", optional = true }
-vello = { version = "0.4", optional = true }
-wgpu = { version = "23", optional = true }
-pollster = { version = "0.3", optional = true }
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 
 [features]
@@ -127,8 +120,8 @@ channel-axum = ["subsystem-comms", "araliya-comms/channel-axum"]
 
 # UI Backends
 ui-svui = ["subsystem-ui", "araliya-ui/ui-svui"]
-ui-gpui = ["dep:gpui", "dep:gpui-component", "dep:chrono"]
-ui-beacon = ["dep:winit", "dep:vello", "dep:wgpu", "dep:pollster"]
+ui-gpui = ["dep:araliya-ui", "araliya-ui/ui-gpui"]
+ui-beacon = ["dep:araliya-ui", "araliya-ui/ui-beacon"]
 
 [dev-dependencies]
 tempfile = "3"

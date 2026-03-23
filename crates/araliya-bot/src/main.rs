@@ -385,6 +385,7 @@ fn print_startup_summary(
         agent_lines.push("disabled (not compiled)".to_string());
     }
 
+    #[allow(unused_mut)]
     let mut enabled_tools: Vec<String> = Vec::new();
     #[cfg(feature = "subsystem-tools")]
     {

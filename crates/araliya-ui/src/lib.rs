@@ -19,7 +19,11 @@
 #[cfg(feature = "ui-svui")]
 pub mod svui;
 
-use std::sync::Arc;
+#[cfg(feature = "ui-gpui")]
+pub mod gpui;
+
+#[cfg(feature = "ui-beacon")]
+pub mod beacon;
 
 use tracing::info;
 
@@ -34,6 +38,7 @@ pub use araliya_core::ui::{ServeResponse, UiServe, UiServeHandle};
 pub fn start(config: &Config) -> Option<UiServeHandle> {
     #[cfg(feature = "ui-svui")]
     {
+        use std::sync::Arc;
         if config.ui_svui_should_load() {
             let static_dir = config.ui.svui.static_dir.clone();
             let backend = svui::SvuiBackend::new(static_dir, Some("/ui".to_owned()));

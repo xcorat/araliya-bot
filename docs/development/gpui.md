@@ -38,7 +38,7 @@ These are development (`-dev`) packages — they provide the `.so` symlinks and 
 
 ## Feature Flag
 
-The GPUI binary is gated behind the `ui-gpui` Cargo feature:
+The GPUI binary is gated behind the `ui-gpui` feature, declared in `araliya-ui/Cargo.toml`. The feature is forwarded from `araliya-bot`'s own `ui-gpui` feature flag:
 
 ```bash
 # Check only (fast)
@@ -68,13 +68,14 @@ The client target URL defaults to `http://127.0.0.1:8080`. See `config/default.t
 ## Architecture Notes
 
 - `gpui`'s `Application::run()` takes over the **main thread**, so the tokio runtime runs on a background `std::thread`.
-- `Config` and `Identity` are loaded before the runtime starts and passed to the UI as a `UiSnapshot` (owned, no lifetimes).
-- A shared `Arc<AtomicU8>` carries `BotStatus` so the status panel reflects the bot's lifecycle without holding locks.
-- Source lives in `src/bin/araliya-gpui/`:
-	- `main.rs` — app bootstrap and window wiring
-	- `components.rs` — UI shell and panel rendering
-	- `state.rs` — view/layout/session state
-	- `api.rs` — HTTP API client + DTOs
+- The client connects to the bot daemon's HTTP API at `http://127.0.0.1:8080` — it does not share in-process state with the daemon.
+- Source lives in `crates/araliya-ui/src/gpui/`:
+	- `mod.rs` — `run()` entry point, asset source, app/window bootstrap
+	- `components.rs` — UI shell and panel rendering (`AppView`, `Render` impl)
+	- `state.rs` — view/layout/session state (`AppState`, `LayoutState`, layout persistence)
+	- `api.rs` — HTTP API client + DTOs (`ApiClient`, `HealthResponse`, etc.)
+	- `canvas_scene.rs` — polygon geometry and hit-test helpers for canvas surface mode
+- The binary entry point in `araliya-bot/src/bin/araliya-gpui/main.rs` is a thin shim that calls `araliya_ui::gpui::run()`.
 
 ## Current UI Framework (PRD-aligned basic shell)
 
@@ -105,9 +106,9 @@ Behavior:
 
 Implementation locations:
 
-- `src/bin/araliya-gpui/canvas_scene.rs` — geometry + hit-test helpers
-- `src/bin/araliya-gpui/components.rs` — canvas rendering and interaction wiring
-- `src/bin/araliya-gpui/state.rs` — `SurfaceMode` state (`Canvas`/`Shell`)
+- `crates/araliya-ui/src/gpui/canvas_scene.rs` — geometry + hit-test helpers
+- `crates/araliya-ui/src/gpui/components.rs` — canvas rendering and interaction wiring
+- `crates/araliya-ui/src/gpui/state.rs` — `SurfaceMode` state (`Canvas`/`Shell`)
 
 ## Responsive layout behavior
 
