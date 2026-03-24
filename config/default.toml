@@ -220,6 +220,22 @@ temperature = 0.2
 timeout_seconds = 60
 max_tokens = 8192
 
+# ── Route hints ──────────────────────────────────────────────────────────────
+# Symbolic hints that agents can use to request capabilities without knowing
+# which provider/model backs them.  Agents send provider_override = "hint:<name>"
+# in their LlmRequest and the subsystem resolves it here.
+#
+# [llm.routes.fast]
+# provider = "openai"
+# model = "gpt-5-nano"            # optional — defaults to provider's model
+#
+# [llm.routes.reasoning]
+# provider = "codex"
+# model = "gpt-5.3-codex"
+#
+# [llm.routes.local]
+# provider = "local"
+
 ## ------------------------- Runtimes Subsystem ------------------------------
 
 [runtimes]

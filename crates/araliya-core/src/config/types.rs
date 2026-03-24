@@ -126,16 +126,34 @@ pub struct ProviderConfig {
     pub cached_input_per_million_usd: f64,
 }
 
+/// A named route mapping a symbolic hint to a (provider, model) pair.
+///
+/// Routes allow agents to request capabilities by name (e.g. `"fast"`,
+/// `"reasoning"`) while the actual provider + model resolution is config-driven.
+/// The `model` field is optional — when absent, the provider's default model
+/// from its `ProviderConfig` is used.
+#[derive(Debug, Clone)]
+pub struct RouteConfig {
+    /// Key into `LlmConfig::providers`.
+    pub provider: String,
+    /// Model override for this route. `None` = use the provider's configured model.
+    pub model: Option<String>,
+}
+
 /// LLM subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
-    /// Key into `providers` that is the active provider.
+    /// Key into `providers` that is the active default provider.
     pub default: String,
     /// All named provider configurations.
     pub providers: HashMap<String, ProviderConfig>,
     /// Optional: name of a provider in `providers` for the instruction pass.
     /// Falls back to `default` when `None`.
     pub instruction: Option<String>,
+    /// Symbolic route hints → (provider, optional model) pairs.
+    /// Agents can request `"hint:fast"` and config resolves it to a specific
+    /// provider + model without the agent knowing which backend it is.
+    pub routes: HashMap<String, RouteConfig>,
 }
 
 // ── Agents ───────────────────────────────────────────────────────────────────

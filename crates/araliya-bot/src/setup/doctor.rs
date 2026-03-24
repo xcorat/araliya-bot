@@ -103,23 +103,23 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
     }
 
     // ── Environment variables ─────────────────────────────────────────
-    let llm_key_set = std::env::var("LLM_API_KEY")
+    let llm_key_set = std::env::var("OPENAI_API_KEY")
         .map(|v| !v.is_empty())
         .unwrap_or(false);
 
     // Also check the .env file directly in case it hasn't been sourced.
     let llm_key_in_env_file = if env_path.exists() {
         std::fs::read_to_string(env_path)
-            .map(|c| c.lines().any(|l| l.starts_with("LLM_API_KEY=") && l.len() > "LLM_API_KEY=".len()))
+            .map(|c| c.lines().any(|l| l.starts_with("OPENAI_API_KEY=") && l.len() > "OPENAI_API_KEY=".len()))
             .unwrap_or(false)
     } else {
         false
     };
 
     all_ok &= check(
-        "LLM_API_KEY is set",
+        "OPENAI_API_KEY is set",
         llm_key_set || llm_key_in_env_file,
-        "LLM_API_KEY not found in environment or .env file",
+        "OPENAI_API_KEY not found in environment or .env file",
     );
 
     // Telegram: only check if enabled in config

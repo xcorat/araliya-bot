@@ -253,6 +253,8 @@ impl AgentsState {
                     channel_id: channel_id.to_string(),
                     content: content.to_string(),
                     system: system.map(|s| s.to_string()),
+                    provider_override: None,
+                    model_override: None,
                 },
             )
             .await;
@@ -280,6 +282,8 @@ impl AgentsState {
                     channel_id: channel_id.to_string(),
                     content: content.to_string(),
                     system: system.map(|s| s.to_string()),
+                    provider_override: None,
+                    model_override: None,
                 },
             )
             .await;
@@ -308,6 +312,8 @@ impl AgentsState {
                     channel_id: channel_id.to_string(),
                     content: content.to_string(),
                     system: system.map(|s| s.to_string()),
+                    provider_override: None,
+                    model_override: None,
                 },
             )
             .await;

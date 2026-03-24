@@ -1,21 +1,23 @@
 # LLM Subsystem
 
-**Status:** v0.2.0-alpha — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · `api_type`-based adapter selection · OpenAI Responses API provider · per-session spend accumulation.
+**Status:** v0.2.0-alpha — provider pool (all `[llm.providers.*]` built at startup) · runtime provider switch (`llm/set_default`) · per-request `provider_override` / `model_override` on `LlmRequest` · symbolic route hints (`[llm.routes]`) · `llm/list_providers` · unknown `api_type` catch-all (defaults to `chat_completions` + warn) · `LlmResponse.thinking` · `LlmUsage.reasoning_tokens` · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · `api_type`-based adapter selection · OpenAI Responses API provider · per-session spend accumulation.
 
 ---
 
 ## Overview
 
-The LLM subsystem is a bus participant that handles all `llm/*` requests. It owns the configured provider and resolves each request asynchronously — the supervisor loop is never blocked on provider I/O.
+The LLM subsystem is a bus participant that handles all `llm/*` requests. It owns a **pool** of named providers (all `[llm.providers.*]` entries built at startup) and resolves each request asynchronously — the supervisor loop is never blocked on provider I/O.
 
-The Agents subsystem uses the bus to call `llm/complete` rather than holding a direct reference to the provider. Any future subsystem can do the same.
+The Agents subsystem uses the bus to call `llm/complete` rather than holding a direct reference to any provider. Any future subsystem can do the same. The active provider can be switched at runtime via `llm/set_default`; per-request overrides allow any caller to target a specific provider or model without changing global state.
 
 ---
 
 ## Responsibilities
 
-- Receive `llm/complete`, `llm/instruct`, and `llm/stream` requests via the supervisor bus
-- Forward each prompt to the appropriate `LlmProvider` (main or instruction)
+- Build all `[llm.providers.*]` entries into a live pool at startup
+- Receive `llm/complete`, `llm/instruct`, `llm/stream`, `llm/list_providers`, and `llm/set_default` requests via the supervisor bus
+- Resolve which provider + model to use for each request (active default → `provider_override` → route hint)
+- Forward each prompt to the resolved `LlmProvider`
 - Deserialize token usage and reasoning content from the provider response
 - Compute per-call cost using configured pricing rates and log it
 - Return the reply as `BusPayload::CommsMessage` (preserving `channel_id`, `usage`, and `thinking`)
@@ -125,31 +127,83 @@ impl LlmProvider {
 
 ## Bus Protocol
 
-### `llm/complete` — main buffered completion
+`LlmRequest` carries two optional override fields available on every method that accepts it:
 
-**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
+| Field | Type | Description |
+|---|---|---|
+| `provider_override` | `Option<String>` | Named pool key (e.g. `"codex"`) or a route hint (`"hint:reasoning"`). Bypasses the active default. |
+| `model_override` | `Option<String>` | Overrides the provider's configured model for this single request. |
 
-Used by the response pass of `AgenticLoop` and by simple chat agents. Routes to the main configured provider.
+---
 
-**Reply payload:** `BusPayload::CommsMessage { channel_id, content: reply, session_id: None, usage: Option<LlmUsage>, thinking: Option<String> }`
+### `llm/complete` — buffered completion
+
+**Request:** `BusPayload::LlmRequest { channel_id, content, system, provider_override, model_override }`
+
+Used by the response pass of `AgenticLoop` and by simple chat agents. Routes to the resolved provider.
+
+**Reply:** `BusPayload::CommsMessage { channel_id, content: reply, session_id: None, usage, thinking }`
+
+---
 
 ### `llm/instruct` — instruction pass (SLM router)
 
-**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
+**Request:** `BusPayload::LlmRequest { channel_id, content, system, .. }`
 
-Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the main provider** when no instruction provider is configured.
+Used by the instruction pass of `AgenticLoop` when `use_instruction_llm = true`. Routes to the instruction provider (`[llm.instruction]`). **Falls back to the active default** when no instruction provider is configured. `provider_override` / `model_override` are ignored on this method.
 
 The instruction pass expects structured JSON output from the model. Use a model tuned for structured output or apply few-shot examples in the prompt (`config/agents/agentic-chat/instruct.md`).
 
+---
+
 ### `llm/stream` — streaming completion
 
-**Request payload:** `BusPayload::LlmRequest { channel_id: String, content: String, system: Option<String> }`
+**Request:** `BusPayload::LlmRequest { channel_id, content, system, provider_override, model_override }`
 
 **Immediate reply:** `BusPayload::LlmStreamResult { rx: StreamReceiver }` — the receiver is returned *before* generation begins. The caller then reads `StreamChunk`s from `rx` as the provider emits them.
 
-`StreamReceiver` is a newtype over `mpsc::Receiver<StreamChunk>`. It is in-process only — it implements `Serialize` as a unit value and `Deserialize` as an error to satisfy the `BusPayload: Serialize + Deserialize` bounds, but it is never serialized over a wire.
+`StreamReceiver` is a newtype over `mpsc::Receiver<StreamChunk>`. It is in-process only — never serialized over a wire.
 
 Bypasses session history — used by the SSE endpoint for direct streaming to HTTP clients.
+
+---
+
+### `llm/list_providers` — enumerate pool
+
+**Request:** any payload (ignored)
+
+**Reply:** `BusPayload::JsonResponse`
+
+```json
+{
+  "active": "openai",
+  "providers": [
+    { "name": "openai", "model": "gpt-5-nano", "active": true },
+    { "name": "local",  "model": "qwen2.5-instruct", "active": false }
+  ],
+  "routes": [
+    { "hint": "fast", "provider": "openai", "model": null }
+  ]
+}
+```
+
+---
+
+### `llm/set_default` — switch active provider at runtime
+
+**Request:** `BusPayload::JsonRequest { data: "{\"provider\": \"local\"}" }`
+
+Atomically updates the active default provider (protected by `Arc<RwLock<String>>`). Health checks and subsequent `llm/complete` requests immediately target the new provider. No restart needed.
+
+**Reply on success:** `{ "ok": true, "previous": "openai", "active": "local" }`
+
+**Reply on error:** `BusError` with a message listing available provider names.
+
+---
+
+### `llm/{name}/status` — provider-scoped status
+
+Returns `ComponentStatusResponse` for the named provider. Currently reports the active provider's health state.
 
 ---
 
@@ -232,12 +286,12 @@ Reasoning models expose their chain-of-thought separately from their final answe
 
 ## Configuration
 
-Provider names are user-defined keys under `[llm.providers.*]`. The `api_type` field selects which wire adapter is used; the provider name itself carries no meaning beyond being a lookup key.
+All `[llm.providers.*]` entries are built into a live pool at startup. Provider names are user-defined keys; `api_type` selects the wire adapter. The active default is set by `llm.default` and can be changed at runtime via `llm/set_default`.
 
 ```toml
 [llm]
-default = "openai"           # name of the active provider (must match a key in [llm.providers.*])
-# instruction = "fast"       # optional: name of a provider to use for llm/instruct requests
+default = "openai"           # active provider (must match a key in [llm.providers.*])
+# instruction = "fast"       # optional: provider for llm/instruct requests
 
 [llm.providers.openai]
 api_type = "chat_completions"
@@ -245,7 +299,7 @@ api_base_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-5-nano"
 temperature = 0.2
 timeout_seconds = 600
-# Token pricing — USD per 1 million tokens. Defaults to 0.0 when not set.
+# Token pricing — USD per 1 million tokens (defaults to 0.0)
 input_per_million_usd = 0.05
 output_per_million_usd = 0.40
 cached_input_per_million_usd = 0.005
@@ -263,6 +317,18 @@ model = "qwen2.5-instruct"
 temperature = 0.2
 timeout_seconds = 60
 max_tokens = 8192
+
+# ── Route hints ──────────────────────────────────────────────────────────────
+# Symbolic names agents can request via provider_override = "hint:<name>".
+# Decouples agent code from concrete provider/model choices.
+
+[llm.routes.fast]
+provider = "openai"
+model = "gpt-5-nano"         # optional — defaults to provider's configured model
+
+[llm.routes.reasoning]
+provider = "codex"
+# model not set → uses codex's configured model
 ```
 
 `api_type` values:
@@ -272,16 +338,19 @@ max_tokens = 8192
 | `"chat_completions"` | `/v1/chat/completions` | OpenAI, Ollama, LM Studio, llama.cpp, Qwen, any OpenAI-compatible server |
 | `"openai_responses"` | `/v1/responses` | Codex models (`gpt-5.3-codex`), OpenAI reasoning models |
 | `"dummy"` | none | Testing without an API key |
+| *(unknown string)* | `/v1/chat/completions` | Falls through to `chat_completions` + warning — lets new OpenAI-compatible providers be added via config without recompiling |
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.default` | string | `"dummy"` | Name of the active provider — must be a key in `[llm.providers.*]`. Use `"dummy"` with no providers entry for testing. |
-| `llm.instruction` | string | none | Name of a provider in `[llm.providers.*]` to use for `llm/instruct` requests. Falls back to `default` when absent. |
-| `llm.providers.<name>.api_type` | string | `"chat_completions"` | Wire adapter selector. |
-| `llm.providers.<name>.api_base_url` | string | adapter default | Endpoint URL. Defaults to the standard OpenAI URL for the chosen `api_type`. Override for local servers. |
+| `llm.default` | string | `"dummy"` | Active provider on startup. Use `"dummy"` with no providers entry for keyless testing. |
+| `llm.instruction` | string | none | Provider for `llm/instruct`. Falls back to `default` when absent. |
+| `llm.routes.<hint>.provider` | string | — | Pool key this hint resolves to. |
+| `llm.routes.<hint>.model` | string | none | Optional model override for this hint. |
+| `llm.providers.<name>.api_type` | string | `"chat_completions"` | Wire adapter selector. Unknown values fall through to `chat_completions` with a warning. |
+| `llm.providers.<name>.api_base_url` | string | adapter default | Endpoint URL. Override for local servers. |
 | `llm.providers.<name>.model` | string | — | Model name sent in the request body. |
 | `llm.providers.<name>.temperature` | float | `0.2` | Sampling temperature. Automatically omitted for `gpt-5` family models. |
-| `llm.providers.<name>.reasoning_effort` | string | `"none"` | Reasoning effort for `openai_responses` adapter: `"none"`, `"low"`, `"medium"`, `"high"`. |
+| `llm.providers.<name>.reasoning_effort` | string | `"none"` | For `openai_responses`: `"none"` / `"low"` / `"medium"` / `"high"`. |
 | `llm.providers.<name>.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
 | `llm.providers.<name>.max_tokens` | integer | `0` | Maximum output tokens (0 = no limit). |
 | `llm.providers.<name>.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
@@ -292,13 +361,29 @@ Pricing fields default to `0.0` so cost is silently omitted rather than wrong wh
 
 ---
 
-## Adding a Real Provider
+## Adding a Provider via Config (no recompile)
 
-1. Create `src/llm/providers/{name}.rs` — implement `complete()` and `complete_stream()`.
-2. Add a variant to `LlmProvider` in `src/llm/mod.rs`.
+Any OpenAI-compatible endpoint can be added as a new named provider without recompiling. Unknown `api_type` strings fall through to `chat_completions` with a warning:
+
+```toml
+[llm.providers.my_endpoint]
+api_type = "chat_completions"   # or omit — same effect
+api_base_url = "https://my-openai-compat.example.com/v1/chat/completions"
+model = "my-model"
+timeout_seconds = 60
+```
+
+Set `llm.default = "my_endpoint"` or use `llm/set_default` at runtime to activate it.
+
+## Adding a New Wire Protocol (requires recompile)
+
+For protocols with a genuinely different wire format (e.g. Anthropic `/v1/messages`):
+
+1. Create `crates/araliya-llm/src/providers/{name}.rs` — implement `complete()`, `complete_stream()`, and `ping()`.
+2. Add a variant to `LlmProvider` in `crates/araliya-llm/src/lib.rs`.
 3. Add match arms to `LlmProvider::complete`, `complete_stream`, and `ping`.
-4. Add a new `ApiType` variant and a corresponding match arm in `providers::build_from_provider(cfg, api_key)` in `src/llm/providers/mod.rs`.
-5. Add a provider entry in `[llm.providers.*]` in `config/default.toml` (or a profile overlay) with the new `api_type` value and `default = "{name}"`.
+4. Add a new `ApiType` variant and a corresponding `build_from_provider` match arm in `crates/araliya-llm/src/providers/mod.rs`.
+5. Add a provider entry in `[llm.providers.*]` in `config/default.toml` (or a profile overlay).
 6. Pass secrets via environment variable or `.env` (never in config files).
 
 ---

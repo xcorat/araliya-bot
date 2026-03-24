@@ -87,13 +87,24 @@ pub enum BusPayload {
         thinking: Option<String>,
     },
     /// A completion request to the LLM subsystem.
+    ///
     /// `channel_id` is threaded through so the LLM subsystem can attach it to
     /// the `CommsMessage` it returns, allowing the caller to re-associate the
     /// reply with the originating channel without extra bookkeeping.
+    ///
+    /// `provider_override` selects a named provider from the pool (bypasses
+    /// the active default). `model_override` overrides the provider's
+    /// configured model for this single request. Both are optional.
     LlmRequest {
         channel_id: String,
         content: String,
         system: Option<String>,
+        /// Use a specific named provider instead of the active default.
+        #[serde(default)]
+        provider_override: Option<String>,
+        /// Override the provider's configured model for this request only.
+        #[serde(default)]
+        model_override: Option<String>,
     },
     /// Request tool execution in the tools subsystem.
     ToolRequest {
@@ -157,6 +168,11 @@ pub enum BusPayload {
     ///
     /// The receiver is in-process only and not serializable; see [`StreamReceiver`].
     LlmStreamResult { rx: StreamReceiver },
+
+    /// Generic JSON request payload.
+    /// Used for control-plane methods like `llm/set_default` that carry
+    /// structured data not tied to a specific subsystem type.
+    JsonRequest { data: String },
 
     /// No payload — used by notifications whose meaning is in the method alone.
     Empty,

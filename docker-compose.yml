@@ -17,7 +17,7 @@ services:
 
     environment:
       # Set your LLM API key here or via an .env file (see .env.example).
-      # LLM_API_KEY: ""
+      # OPENAI_API_KEY: ""
       # Telegram bot token — only needed when the Telegram channel is enabled.
       # TELEGRAM_BOT_TOKEN: ""
 

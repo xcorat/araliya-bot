@@ -92,6 +92,9 @@ pub(super) struct RawLlm {
     /// Optional: name of a provider in `providers` to use for the instruction pass.
     #[serde(default)]
     pub instruction: Option<String>,
+    /// Symbolic route hints → (provider, optional model) pairs.
+    #[serde(default)]
+    pub routes: HashMap<String, RawRouteConfig>,
 }
 
 impl Default for RawLlm {
@@ -100,8 +103,17 @@ impl Default for RawLlm {
             provider: default_llm_provider(),
             providers: HashMap::new(),
             instruction: None,
+            routes: HashMap::new(),
         }
     }
+}
+
+/// A named route mapping a hint to a provider + optional model override.
+#[derive(Deserialize)]
+pub(super) struct RawRouteConfig {
+    pub provider: String,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// Configuration for a single named LLM provider.

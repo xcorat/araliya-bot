@@ -14,7 +14,7 @@ pub struct Answers {
 
     // ── LLM ───────────────────────────────────────────────────────────
     pub llm_provider: LlmProvider,
-    pub llm_api_key: String,
+    pub openai_api_key: String,
     pub llm_model: String,
     pub llm_api_base_url: String,
 

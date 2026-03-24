@@ -3,14 +3,14 @@
 //!
 //! # Run
 //! ```
-//! LLM_API_KEY=sk-... cargo test --features plugin-news-aggregator \
+//! OPENAI_API_KEY=sk-... cargo test --features plugin-news-aggregator \
 //!     --test test_news_agg_pipeline -- --ignored --nocapture
 //! ```
 //!
 //! # Env vars
 //! | Var              | Default                                              |
 //! |------------------|------------------------------------------------------|
-//! | `LLM_API_KEY`    | *(required for LLM step)*                            |
+//! | `OPENAI_API_KEY`    | *(required for LLM step)*                            |
 //! | `LLM_BASE_URL`   | `https://api.openai.com/v1/chat/completions`         |
 //! | `LLM_MODEL`      | `gpt-5-nano`                                         |
 //! | `EVENTS_DB`      | auto-detected from `~/.araliya`                      |
@@ -192,7 +192,7 @@ fn extract_content(raw_json: &str) -> String {
 #[ignore]
 #[tokio::test]
 async fn debug_news_agg_pipeline() {
-    let api_key = std::env::var("LLM_API_KEY").unwrap_or_default();
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
     let base_url = std::env::var("LLM_BASE_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
     let model = std::env::var("LLM_MODEL").unwrap_or_else(|_| "gpt-5-nano".to_string());
@@ -210,10 +210,10 @@ async fn debug_news_agg_pipeline() {
     eprintln!("  LLM base_url : {base_url}");
     eprintln!("  LLM model    : {model}");
     if api_key.is_empty() {
-        eprintln!("  LLM_API_KEY  : NOT SET — LLM step will be skipped");
+        eprintln!("  OPENAI_API_KEY  : NOT SET — LLM step will be skipped");
     } else {
         let masked = format!("{}***", &api_key[..api_key.len().min(8)]);
-        eprintln!("  LLM_API_KEY  : {masked}");
+        eprintln!("  OPENAI_API_KEY  : {masked}");
     }
     eprintln!("{}", "─".repeat(80));
 
@@ -326,7 +326,7 @@ async fn debug_news_agg_pipeline() {
         // ◆ Step 5 — LLM call ─────────────────────────────────────────────────
         eprintln!("\n◆ STEP 5 — LLM CALL");
         if api_key.is_empty() {
-            eprintln!("  skipped (LLM_API_KEY not set)");
+            eprintln!("  skipped (OPENAI_API_KEY not set)");
         } else {
             match call_llm(
                 &client,

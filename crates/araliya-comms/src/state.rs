@@ -125,6 +125,8 @@ impl CommsState {
                     channel_id: channel_id.to_string(),
                     content,
                     system,
+                    provider_override: None,
+                    model_override: None,
                 },
             )
             .await;

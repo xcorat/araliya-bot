@@ -65,6 +65,7 @@ impl Config {
                 default: "dummy".into(),
                 providers: std::collections::HashMap::new(),
                 instruction: None,
+                routes: std::collections::HashMap::new(),
             },
             openai_api_key: None,
             ui: UiConfig {

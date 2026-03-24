@@ -137,6 +137,7 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 default: "dummy".to_string(),
                 providers: HashMap::new(),
                 instruction: None,
+                routes: HashMap::new(),
             },
             openai_api_key: env::var("OPENAI_API_KEY").ok(),
             ui: UiConfig {
@@ -307,11 +308,16 @@ pub fn load_from(
                 "chat_completions" | "openai_compatible" => ApiType::ChatCompletions,
                 "openai_responses" | "responses" => ApiType::OpenAiResponses,
                 "dummy" => ApiType::Dummy,
-                t => {
-                    return Err(AppError::Config(format!(
-                        "unknown api_type '{}' for provider '{}'",
-                        t, name
-                    )))
+                // Catch-all: unknown api_type strings default to ChatCompletions.
+                // This lets users add new OpenAI-compatible providers via config
+                // without recompiling. Known wire protocols above stay strongly typed.
+                other => {
+                    tracing::warn!(
+                        api_type = other,
+                        provider = %name,
+                        "unknown api_type, defaulting to chat_completions"
+                    );
+                    ApiType::ChatCompletions
                 }
             };
             let api_base_url = raw.api_base_url.unwrap_or_else(|| match api_type {
@@ -337,7 +343,23 @@ pub fn load_from(
                 },
             ))
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<HashMap<String, ProviderConfig>, AppError>>()?;
+
+    // Symbolic route hints → (provider, optional model) pairs.
+    let routes: HashMap<String, RouteConfig> = parsed
+        .llm
+        .routes
+        .into_iter()
+        .map(|(hint, raw)| {
+            (
+                hint,
+                RouteConfig {
+                    provider: raw.provider,
+                    model: raw.model,
+                },
+            )
+        })
+        .collect();
 
     Ok(Config {
         bot_name: s.bot_name,
@@ -415,6 +437,7 @@ pub fn load_from(
             default: parsed.llm.provider,
             providers,
             instruction: instruction_llm,
+            routes,
         },
         openai_api_key: env::var("OPENAI_API_KEY").ok(),
         ui: UiConfig {

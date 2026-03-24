@@ -140,7 +140,7 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
 
     let prov = &providers[provider_idx];
 
-    let llm_api_key = if prov.needs_key {
+    let openai_api_key = if prov.needs_key {
         Password::new()
             .with_prompt(format!("{} API key", prov.label))
             .interact()
@@ -340,7 +340,7 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
         work_dir,
         config_dir: opts.config_path.parent().unwrap_or(&opts.config_path).to_path_buf(),
         llm_provider: prov.variant.clone(),
-        llm_api_key,
+        openai_api_key,
         llm_model: llm_model.clone(),
         llm_api_base_url: llm_api_base_url.clone(),
         profile,

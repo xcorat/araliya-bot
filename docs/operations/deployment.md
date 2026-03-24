@@ -39,7 +39,7 @@ The HTTP/axum channel is available at `http://localhost:8080`.
 | `ARALIYA_WORK_DIR` | `/data/araliya` | Persistent state (identity, memory) |
 | `ARALIYA_HTTP_BIND` | `0.0.0.0:8080` | Bind address for the HTTP/axum channel |
 | `ARALIYA_LOG_LEVEL` | *(from config)* | Log level override (`info`, `debug`, …) |
-| `LLM_API_KEY` | *(none)* | API key for the configured LLM provider |
+| `OPENAI_API_KEY` | *(none)* | API key for the configured LLM provider |
 | `TELEGRAM_BOT_TOKEN` | *(none)* | Telegram bot token (when Telegram channel is enabled) |
 
 ### Persistent data
@@ -62,7 +62,7 @@ docker build -t araliya-bot:latest .
 docker run --rm \
   -p 8080:8080 \
   -v "$(pwd)/data:/data/araliya" \
-  -e LLM_API_KEY=sk-... \
+  -e OPENAI_API_KEY=sk-... \
   araliya-bot:latest
 ```
 
@@ -173,7 +173,7 @@ araliya-ctl shutdown
 `/etc/araliya-bot/env` (mode 0600, owned root):
 
 ```bash
-LLM_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
 RUST_LOG=info              # optional; default comes from config log_level
 # TELEGRAM_BOT_TOKEN=...  # if channel-telegram is enabled
 ```

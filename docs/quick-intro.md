@@ -98,7 +98,7 @@ PID    USER   RSS
 Araliya Bot strictly separates configuration from secrets:
 
 - **Configuration:** Non-sensitive settings belong in `config/` (e.g., `config/default.toml`).
-- **Secrets:** API keys (e.g., `LLM_API_KEY`) and tokens must be provided via environment variables or an `.env` file. 
+- **Secrets:** API keys (e.g., `OPENAI_API_KEY`) and tokens must be provided via environment variables or an `.env` file. 
   > **Note:** Never commit secrets. The `.env` file must remain gitignored.
 
 ## 🛠️ Development
