@@ -45,6 +45,15 @@ pub(crate) async fn init_workspace(
                 .as_str()
                 .ok_or_else(|| "runtimes/init: missing runtime_dir in response".to_string())?
                 .to_string();
+            // Propagate script failure so workspace_ready is never set on a broken init.
+            if v["success"].as_bool() == Some(false) {
+                let stderr = v["stderr"].as_str().unwrap_or("").to_string();
+                let stdout = v["stdout"].as_str().unwrap_or("").to_string();
+                return Err(format!(
+                    "workspace init script failed (exit {:?})\nstdout: {stdout}\nstderr: {stderr}",
+                    v["exit_code"]
+                ));
+            }
             Ok(runtime_dir)
         }
         Ok(other) => Err(format!("runtimes/init: unexpected payload: {other:?}")),

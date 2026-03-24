@@ -1,0 +1,42 @@
+# Homebuilder profile — generates the bot landing page at /home/ and /.
+#
+# Usage:
+#   cargo build -p araliya-bot --features plugin-homebuilder
+#   ./target/debug/araliya-bot --config config/profiles/homebuilder.toml
+#
+# Then send a message like "Build a landing page for my Araliya bot".
+# Visit http://127.0.0.1:8080/home/ or http://127.0.0.1:8080/
+
+[meta]
+base = "../default.toml"
+
+[comms.pty]
+enabled = true
+
+[comms.axum_channel]
+enabled = true
+bind = "127.0.0.1:8080"
+
+[agents]
+default = "homebuilder"
+
+[agents.routing]
+# Route the PTY channel directly to homebuilder
+pty0 = "homebuilder"
+
+[agents.homebuilder]
+enabled = true
+max_iterations = 12
+
+[llm]
+default = "codex"
+
+[llm.providers.codex]
+api_type = "openai_responses"
+model = "gpt-5.3-codex"
+reasoning_effort = "low"
+timeout_seconds = 600
+
+[runtimes]
+enabled = true
+default_timeout_secs = 180

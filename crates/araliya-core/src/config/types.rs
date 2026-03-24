@@ -99,41 +99,28 @@ pub struct RuntimesConfig {
 
 // ── LLM ──────────────────────────────────────────────────────────────────────
 
-/// OpenAI / OpenAI-compatible provider configuration.
-/// Populated from `[llm.openai]` in the TOML.
-#[derive(Debug, Clone)]
-pub struct OpenAiConfig {
-    /// Full chat completions endpoint URL.
-    pub api_base_url: String,
-    /// Model name passed in the request body.
-    pub model: String,
-    /// Sampling temperature (ignored for models that forbid it).
-    pub temperature: f32,
-    /// Per-request HTTP timeout in seconds.
-    pub timeout_seconds: u64,
-    /// Maximum output tokens (0 = no limit).
-    pub max_tokens: usize,
-    /// Token pricing rates (USD per 1 million tokens).
-    pub input_per_million_usd: f64,
-    pub output_per_million_usd: f64,
-    pub cached_input_per_million_usd: f64,
+/// Which wire adapter a provider uses.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ApiType {
+    /// Dummy echo provider — no HTTP, no API key needed.
+    Dummy,
+    /// OpenAI `/v1/chat/completions` format (also Ollama, LM Studio, etc.).
+    ChatCompletions,
+    /// OpenAI `/v1/responses` format — used by Codex models.
+    OpenAiResponses,
 }
 
-/// Qwen provider configuration.
-/// Populated from `[llm.qwen]` in the TOML.
+/// Configuration for a single named LLM provider.
 #[derive(Debug, Clone)]
-pub struct QwenConfig {
-    /// Full chat completions endpoint URL.
+pub struct ProviderConfig {
+    pub api_type: ApiType,
     pub api_base_url: String,
-    /// Model name passed in the request body.
     pub model: String,
-    /// Sampling temperature.
     pub temperature: f32,
-    /// Per-request HTTP timeout in seconds.
+    /// Reasoning effort for `OpenAiResponses` adapter. `None` for others.
+    pub reasoning_effort: Option<String>,
     pub timeout_seconds: u64,
-    /// Maximum output tokens (limits prompt length to stay within context window).
     pub max_tokens: usize,
-    /// Token pricing rates (USD per 1 million tokens).
     pub input_per_million_usd: f64,
     pub output_per_million_usd: f64,
     pub cached_input_per_million_usd: f64,
@@ -142,17 +129,13 @@ pub struct QwenConfig {
 /// LLM subsystem configuration.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
-    /// Which provider is active (e.g. `"dummy"`, `"openai"`).
-    pub provider: String,
-    /// Config for the OpenAI / OpenAI-compatible provider (`[llm.openai]`).
-    pub openai: OpenAiConfig,
-    /// Config for the Qwen provider (`[llm.qwen]`).
-    pub qwen: QwenConfig,
-    /// Optional separate LLM for the instruction pass (`[llm.instruction]`).
-    ///
-    /// When present, `llm/instruct` bus requests are routed to this provider
-    /// rather than the main one.  Boxed to keep the struct size manageable.
-    pub instruction: Option<Box<LlmConfig>>,
+    /// Key into `providers` that is the active provider.
+    pub default: String,
+    /// All named provider configurations.
+    pub providers: HashMap<String, ProviderConfig>,
+    /// Optional: name of a provider in `providers` for the instruction pass.
+    /// Falls back to `default` when `None`.
+    pub instruction: Option<String>,
 }
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -249,6 +232,19 @@ impl Default for WebBuilderAgentConfig {
     }
 }
 
+/// Configuration for the `homebuilder` agent plugin.
+#[derive(Debug, Clone)]
+pub struct HomebuildAgentConfig {
+    /// Maximum LLM-tool iteration cycles before the agent gives up (default: 10).
+    pub max_iterations: usize,
+}
+
+impl Default for HomebuildAgentConfig {
+    fn default() -> Self {
+        Self { max_iterations: 10 }
+    }
+}
+
 /// Configuration for the `runtime_cmd` agent plugin.
 #[derive(Debug, Clone)]
 pub struct RuntimeCmdAgentConfig {
@@ -316,6 +312,8 @@ pub struct AgentsConfig {
     pub runtime_cmd: Option<RuntimeCmdAgentConfig>,
     /// Optional configuration for the `webbuilder` agent.
     pub webbuilder: Option<WebBuilderAgentConfig>,
+    /// Optional configuration for the `homebuilder` agent.
+    pub homebuilder: Option<HomebuildAgentConfig>,
     /// Per-agent bus-tool allowlists: agent_id → list of tool names the agent
     /// may invoke.  Populated from `skills = [...]` in each `[agents.<id>]`
     /// config section.  Agents without an entry default to no bus tools.
@@ -352,6 +350,7 @@ impl Default for AgentsConfig {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             agent_skills: HashMap::new(),
             debug_logging: false,
             uniweb_session_id: None,
@@ -378,8 +377,8 @@ pub struct Config {
     pub ui: UiConfig,
     pub tools: ToolsConfig,
     pub runtimes: RuntimesConfig,
-    /// API key from `LLM_API_KEY` env var — never sourced from TOML.
-    pub llm_api_key: Option<String>,
+    /// API key from `OPENAI_API_KEY` env var — never sourced from TOML.
+    pub openai_api_key: Option<String>,
     /// Memory subsystem caps (from `[memory.basic_session]`).
     pub memory_kv_cap: Option<usize>,
     pub memory_transcript_cap: Option<usize>,

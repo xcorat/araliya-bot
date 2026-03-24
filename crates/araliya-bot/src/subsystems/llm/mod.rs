@@ -38,31 +38,37 @@ pub struct LlmSubsystem {
 }
 
 impl LlmSubsystem {
-    /// Construct the subsystem. `api_key` comes from `LLM_API_KEY` env — never TOML.
+    /// Construct the subsystem. `api_key` comes from `OPENAI_API_KEY` env — never TOML.
     pub fn new(config: &LlmConfig, api_key: Option<String>) -> Result<Self, ProviderError> {
         let provider = providers::build(config, api_key.clone())?;
-        let provider_name = config.provider.clone();
-        let model_name = match config.provider.as_str() {
-            "qwen" => config.qwen.model.clone(),
-            _ => config.openai.model.clone(),
+        let provider_name = config.default.clone();
+        let model_name = config
+            .providers
+            .get(&config.default)
+            .map(|p| p.model.clone())
+            .unwrap_or_else(|| "dummy".to_string());
+        let rates = config
+            .providers
+            .get(&config.default)
+            .map(|p| ModelRates {
+                input_per_million_usd: p.input_per_million_usd,
+                output_per_million_usd: p.output_per_million_usd,
+                cached_input_per_million_usd: p.cached_input_per_million_usd,
+            })
+            .unwrap_or(ModelRates {
+                input_per_million_usd: 0.0,
+                output_per_million_usd: 0.0,
+                cached_input_per_million_usd: 0.0,
+            });
+        let instruction_provider = if let Some(ref instr_name) = config.instruction {
+            let instr_cfg = config
+                .providers
+                .get(instr_name)
+                .ok_or_else(|| ProviderError::UnknownProvider(instr_name.clone()))?;
+            Some(providers::build_from_provider(instr_cfg, api_key)?)
+        } else {
+            None
         };
-        let rates = match config.provider.as_str() {
-            "qwen" => ModelRates {
-                input_per_million_usd: config.qwen.input_per_million_usd,
-                output_per_million_usd: config.qwen.output_per_million_usd,
-                cached_input_per_million_usd: config.qwen.cached_input_per_million_usd,
-            },
-            _ => ModelRates {
-                input_per_million_usd: config.openai.input_per_million_usd,
-                output_per_million_usd: config.openai.output_per_million_usd,
-                cached_input_per_million_usd: config.openai.cached_input_per_million_usd,
-            },
-        };
-        let instruction_provider = config
-            .instruction
-            .as_deref()
-            .map(|inst_cfg| providers::build(inst_cfg, api_key))
-            .transpose()?;
         Ok(Self {
             provider,
             provider_name,

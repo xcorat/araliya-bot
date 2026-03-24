@@ -64,7 +64,7 @@ pub mod sqlite_tool;
 mod test_rssnews;
 #[cfg(feature = "plugin-uniweb")]
 mod uniweb;
-#[cfg(feature = "plugin-webbuilder")]
+#[cfg(any(feature = "plugin-webbuilder", feature = "plugin-homebuilder"))]
 mod webbuilder;
 
 // ── AgentsState ───────────────────────────────────────────────────────────────
@@ -816,6 +816,17 @@ impl AgentsSubsystem {
         if enabled_agents.contains("webbuilder") {
             let wb_cfg = config.webbuilder.unwrap_or_default();
             let agent: Box<dyn Agent> = Box::new(webbuilder::WebBuilderAgent::new(&wb_cfg));
+            agents.insert(
+                agent.id().to_string(),
+                AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
+            );
+        }
+
+        #[cfg(feature = "plugin-homebuilder")]
+        if enabled_agents.contains("homebuilder") {
+            let hb_cfg = config.homebuilder.unwrap_or_default();
+            let agent: Box<dyn Agent> =
+                Box::new(webbuilder::HomebuilderAgent::new(&hb_cfg));
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
@@ -2075,6 +2086,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2124,6 +2136,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2170,6 +2183,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2213,6 +2227,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2263,6 +2278,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2335,6 +2351,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2442,6 +2459,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2512,6 +2530,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2562,6 +2581,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2685,6 +2705,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2736,6 +2757,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2779,6 +2801,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2818,6 +2841,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2847,6 +2871,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -2945,6 +2970,7 @@ mod tests {
             }),
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3037,6 +3063,7 @@ mod tests {
             }),
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3148,6 +3175,7 @@ mod tests {
             }),
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: true,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3242,6 +3270,7 @@ mod tests {
                 setup_script: None,
             }),
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3300,6 +3329,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3332,6 +3362,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3364,6 +3395,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3396,6 +3428,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3428,6 +3461,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3460,6 +3494,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3493,6 +3528,7 @@ mod tests {
             agentic_chat: None,
             runtime_cmd: None,
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,
@@ -3572,6 +3608,7 @@ mod tests {
                 setup_script: None,
             }),
             webbuilder: None,
+            homebuilder: None,
             debug_logging: false,
             uniweb_session_id: None,
             uniweb_use_instruction_llm: false,

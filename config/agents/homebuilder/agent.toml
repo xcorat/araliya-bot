@@ -1,0 +1,5 @@
+[agent]
+enabled = false
+
+[homebuilder]
+max_iterations = 12

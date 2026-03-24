@@ -56,35 +56,17 @@ impl Config {
                 agentic_chat: None,
                 runtime_cmd: None,
                 webbuilder: None,
+                homebuilder: None,
                 debug_logging: false,
                 uniweb_session_id: None,
                 uniweb_use_instruction_llm: false,
             },
             llm: LlmConfig {
-                provider: "dummy".into(),
-                openai: OpenAiConfig {
-                    api_base_url: "http://localhost:0/v1/chat/completions".into(),
-                    model: "test-model".into(),
-                    temperature: 0.0,
-                    timeout_seconds: 1,
-                    max_tokens: 0,
-                    input_per_million_usd: 0.0,
-                    output_per_million_usd: 0.0,
-                    cached_input_per_million_usd: 0.0,
-                },
-                qwen: QwenConfig {
-                    api_base_url: "http://127.0.0.1:8081/v1/chat/completions".into(),
-                    model: "qwen2.5-instruct".into(),
-                    temperature: 0.2,
-                    timeout_seconds: 60,
-                    max_tokens: 8192,
-                    input_per_million_usd: 0.0,
-                    output_per_million_usd: 0.0,
-                    cached_input_per_million_usd: 0.0,
-                },
+                default: "dummy".into(),
+                providers: std::collections::HashMap::new(),
                 instruction: None,
             },
-            llm_api_key: None,
+            openai_api_key: None,
             ui: UiConfig {
                 svui: SvuiConfig {
                     enabled: false,
@@ -234,11 +216,12 @@ default = "echo"
 [llm]
 default = "dummy"
 
-[llm.openai]
+[llm.providers.openai]
+api_type = "chat_completions"
+api_base_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-base"
 temperature = 0.1
 timeout_seconds = 30
-api_base_url = "https://api.openai.com/v1/chat/completions"
 "#;
 
     fn write_named(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
@@ -272,13 +255,14 @@ log_level = "debug"
 [meta]
 base = "base.toml"
 
-[llm.openai]
+[llm.providers.openai]
 model = "gpt-overlay"
 "#;
         let overlay_path = write_named(&dir, "overlay.toml", overlay);
         let cfg = load_from(&overlay_path, None, None).unwrap();
-        assert_eq!(cfg.llm.openai.model, "gpt-overlay");
-        assert_eq!(cfg.llm.openai.temperature, 0.1);
+        let openai = cfg.llm.providers.get("openai").unwrap();
+        assert_eq!(openai.model, "gpt-overlay");
+        assert_eq!(openai.temperature, 0.1);
     }
 
     #[test]

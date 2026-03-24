@@ -53,8 +53,30 @@ const ROOT_INDEX_HTML: &str = r#"<!doctype html>
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-pub(super) async fn root() -> Html<&'static str> {
-    Html(ROOT_INDEX_HTML)
+pub(super) async fn root(State(state): State<AxumState>) -> axum::response::Response {
+    // When the homebuilder (or webbuilder) feature is active, serve the
+    // generated landing page if it has been built; fall back to the hardcoded
+    // welcome page otherwise.
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
+    if let Some(ref preview_root) = state.preview_root {
+        let index = preview_root
+            .join("homebuilder")
+            .join("dist")
+            .join("index.html");
+        if let Ok(bytes) = tokio::fs::read(&index).await {
+            let mut resp = (StatusCode::OK, bytes).into_response();
+            resp.headers_mut().insert(
+                header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            return resp;
+        }
+    }
+
+    #[cfg(not(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder")))]
+    let _ = state;
+
+    Html(ROOT_INDEX_HTML).into_response()
 }
 
 pub(super) async fn serve_path(

@@ -145,6 +145,13 @@ enabled = false
 max_iterations = 12
 scaffold = "vite-svelte"
 
+[agents.homebuilder]
+# Singleton bot landing page — LLM generates a Vite + Svelte 5 page served at
+# /home/ (also /preview/homebuilder/) and at / once built.
+# Requires: plugin-homebuilder feature + subsystem-runtimes.
+enabled = false
+max_iterations = 12
+
 [agents.newsroom]
 # Persistent GDELT newsroom agent — stores individual events in SQLite (dedup
 # by source_url, capped at 2500 rows) and summarises only newly detected events.
@@ -178,55 +185,40 @@ enabled = false
 ## ------------------------- LLM Subsystem ---------------------------------
 
 [llm]
-# Which LLM component to activate. Each component has its own config section below.
-# Options: "dummy", "openai", "qwen"
+# Name of the active provider — must match a key in [llm.providers.*].
+# Use "dummy" for no-API testing (no providers entry needed).
 default = "openai"
 
-[llm.dummy]
-# No config — echoes input back as "[echo] {input}". Useful for testing.
+# Optional: route the instruction pass to a separate provider.
+# Must be a key in [llm.providers.*]. Falls back to `default` when absent.
+# instruction = "fast"
 
-[llm.openai]
-# Used when default = "openai". API key must be set via LLM_API_KEY env var (never in TOML).
-# "openai-compatible" also uses this section (e.g. for local Ollama / LM Studio endpoints).
+[llm.providers.openai]
+# OpenAI chat completions. API key via OPENAI_API_KEY env (never in TOML).
+api_type = "chat_completions"
 api_base_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-5-nano"
 temperature = 0.2
 timeout_seconds = 600
-# Token pricing (USD per 1 million tokens). Defaults to 0.0 when not set.
-# gpt-5-nano pricing — update when model or provider changes.
 input_per_million_usd = 0.05
 output_per_million_usd = 0.40
 cached_input_per_million_usd = 0.005
 
-[llm.qwen]
-# Used when default = "qwen".
-# For local Qwen servers this is commonly a keyless endpoint.
+[llm.providers.codex]
+# OpenAI Responses API — for Codex and reasoning models.
+api_type = "openai_responses"
+model = "gpt-5.3-codex"
+reasoning_effort = "none"    # "none" | "low" | "medium" | "high"
+timeout_seconds = 600
+
+[llm.providers.local]
+# Local inference server (Ollama, LM Studio, llama.cpp, etc.)
+api_type = "chat_completions"
 api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
 model = "qwen2.5-instruct"
 temperature = 0.2
 timeout_seconds = 60
 max_tokens = 8192
-# Token pricing (USD per 1 million tokens). Defaults to 0.0 when not set.
-input_per_million_usd = 0.0
-output_per_million_usd = 0.0
-cached_input_per_million_usd = 0.0
-
-# Optional: configure a separate small model for the agentic-chat instruction pass.
-# Uncomment and set use_instruction_llm = true in [agents.agentic-chat] to activate.
-#
-# Provider sub-sections ([llm.instruction.openai] / [llm.instruction.qwen]) are
-# optional — when omitted all settings are inherited from [llm.openai] / [llm.qwen].
-# Only add the sub-section when you need to override a specific field.
-#
-# Minimal form (inherit everything from [llm.openai], just use a different model):
-# [llm.instruction]
-# provider = "openai"
-# [llm.instruction.openai]
-# model = "gpt-4o-mini"
-# temperature = 0.1
-#
-# If [llm.instruction.openai] is absent entirely, the main [llm.openai] config
-# is used as-is — api_base_url, timeout, pricing etc. are all inherited.
 
 ## ------------------------- Runtimes Subsystem ------------------------------
 

@@ -56,6 +56,7 @@ default = [
     "plugin-docs-agent",
     "plugin-runtime-cmd",
     "plugin-webbuilder",
+    "plugin-homebuilder",
     "plugin-newsroom-agent",
     "plugin-test-rssnews",
     "subsystem-runtimes",
@@ -119,6 +120,7 @@ plugin-uniweb = ["subsystem-agents", "subsystem-memory", "subsystem-llm", "arali
 plugin-docs-agent = ["subsystem-agents", "plugin-docs", "araliya-agents/plugin-docs-agent"]
 plugin-runtime-cmd = ["subsystem-agents", "subsystem-runtimes", "araliya-agents/plugin-runtime-cmd"]
 plugin-webbuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-webbuilder", "araliya-agents/plugin-webbuilder"]
+plugin-homebuilder = ["subsystem-agents", "subsystem-runtimes", "subsystem-memory", "subsystem-llm", "araliya-comms/plugin-homebuilder", "araliya-agents/plugin-homebuilder"]
 plugin-rss-fetch-tool = ["subsystem-tools", "araliya-tools/plugin-rss-fetch-tool"]
 plugin-test-rssnews = ["subsystem-agents", "subsystem-llm", "subsystem-tools", "plugin-rss-fetch-tool", "araliya-agents/plugin-test-rssnews"]
 

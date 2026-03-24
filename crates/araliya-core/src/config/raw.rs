@@ -86,58 +86,44 @@ pub(super) struct RawAxumChannel {
 pub(super) struct RawLlm {
     #[serde(rename = "default", default = "default_llm_provider")]
     pub provider: String,
+    /// Named provider configurations — each entry has an `api_type` field.
     #[serde(default)]
-    pub openai: RawOpenAiConfig,
+    pub providers: HashMap<String, RawProviderConfig>,
+    /// Optional: name of a provider in `providers` to use for the instruction pass.
     #[serde(default)]
-    pub qwen: RawQwenConfig,
-    /// Optional separate small model for the instruction pass (`[llm.instruction]`).
-    #[serde(default)]
-    pub instruction: Option<RawLlmInstruction>,
+    pub instruction: Option<String>,
 }
 
 impl Default for RawLlm {
     fn default() -> Self {
         Self {
             provider: default_llm_provider(),
-            openai: RawOpenAiConfig::default(),
-            qwen: RawQwenConfig::default(),
+            providers: HashMap::new(),
             instruction: None,
         }
     }
 }
 
-/// Configuration for the optional instruction-pass LLM (`[llm.instruction]`).
-///
-/// When present, `llm/instruct` bus requests are routed to this provider
-/// instead of the main LLM.  Provider sub-configs (`openai`, `qwen`) are
-/// optional — when absent, the corresponding values from `[llm.openai]` /
-/// `[llm.qwen]` are inherited.  Only specify the sub-section when you need
-/// to override a specific field (e.g. a different model or temperature).
-#[derive(Deserialize, Default)]
-pub(super) struct RawLlmInstruction {
-    /// Provider name ("openai", "qwen", "dummy").  Defaults to main provider if empty.
-    #[serde(default)]
-    pub provider: String,
-    /// Override fields for the OpenAI-compatible provider.
-    /// Absent → inherit all values from `[llm.openai]`.
-    #[serde(default)]
-    pub openai: Option<RawOpenAiConfig>,
-    /// Override fields for the Qwen provider.
-    /// Absent → inherit all values from `[llm.qwen]`.
-    #[serde(default)]
-    pub qwen: Option<RawQwenConfig>,
-}
-
+/// Configuration for a single named LLM provider.
+/// `api_type` determines the wire adapter; `api_base_url` defaults based on `api_type`.
 #[derive(Deserialize)]
-pub(super) struct RawOpenAiConfig {
-    #[serde(default = "default_openai_api_base_url")]
-    pub api_base_url: String,
-    #[serde(default = "default_openai_model")]
+pub(super) struct RawProviderConfig {
+    /// Wire adapter: `"chat_completions"` | `"openai_responses"` | `"dummy"`.
+    #[serde(default = "default_api_type")]
+    pub api_type: String,
+    /// Endpoint URL. When absent, a default is filled in by the loader based on `api_type`.
+    #[serde(default)]
+    pub api_base_url: Option<String>,
+    #[serde(default)]
     pub model: String,
-    #[serde(default = "default_openai_temperature")]
+    #[serde(default = "default_temperature")]
     pub temperature: f32,
-    #[serde(default = "default_openai_timeout_seconds")]
+    /// Reasoning effort for `openai_responses` adapter: `"none"` | `"low"` | `"medium"` | `"high"`.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    #[serde(default = "default_timeout_seconds")]
     pub timeout_seconds: u64,
+    /// Maximum output tokens (0 = no limit).
     #[serde(default)]
     pub max_tokens: usize,
     #[serde(default)]
@@ -146,56 +132,6 @@ pub(super) struct RawOpenAiConfig {
     pub output_per_million_usd: f64,
     #[serde(default)]
     pub cached_input_per_million_usd: f64,
-}
-
-impl Default for RawOpenAiConfig {
-    fn default() -> Self {
-        Self {
-            api_base_url: default_openai_api_base_url(),
-            model: default_openai_model(),
-            temperature: default_openai_temperature(),
-            timeout_seconds: default_openai_timeout_seconds(),
-            max_tokens: 0,
-            input_per_million_usd: 0.0,
-            output_per_million_usd: 0.0,
-            cached_input_per_million_usd: 0.0,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-pub(super) struct RawQwenConfig {
-    #[serde(default = "default_qwen_api_base_url")]
-    pub api_base_url: String,
-    #[serde(default = "default_qwen_model")]
-    pub model: String,
-    #[serde(default = "default_qwen_temperature")]
-    pub temperature: f32,
-    #[serde(default = "default_qwen_timeout_seconds")]
-    pub timeout_seconds: u64,
-    #[serde(default = "default_qwen_max_tokens")]
-    pub max_tokens: usize,
-    #[serde(default)]
-    pub input_per_million_usd: f64,
-    #[serde(default)]
-    pub output_per_million_usd: f64,
-    #[serde(default)]
-    pub cached_input_per_million_usd: f64,
-}
-
-impl Default for RawQwenConfig {
-    fn default() -> Self {
-        Self {
-            api_base_url: default_qwen_api_base_url(),
-            model: default_qwen_model(),
-            temperature: default_qwen_temperature(),
-            timeout_seconds: default_qwen_timeout_seconds(),
-            max_tokens: default_qwen_max_tokens(),
-            input_per_million_usd: 0.0,
-            output_per_million_usd: 0.0,
-            cached_input_per_million_usd: 0.0,
-        }
-    }
 }
 
 // ── Agents ───────────────────────────────────────────────────────────────────
@@ -441,32 +377,14 @@ pub(super) fn default_http_bind() -> String {
 fn default_llm_provider() -> String {
     "dummy".to_string()
 }
-fn default_openai_api_base_url() -> String {
-    "https://api.openai.com/v1/chat/completions".to_string()
+fn default_api_type() -> String {
+    "chat_completions".to_string()
 }
-fn default_openai_model() -> String {
-    "gpt-4o-mini".to_string()
-}
-fn default_openai_temperature() -> f32 {
+fn default_temperature() -> f32 {
     0.2
 }
-fn default_openai_timeout_seconds() -> u64 {
+fn default_timeout_seconds() -> u64 {
     60
-}
-fn default_qwen_api_base_url() -> String {
-    "http://127.0.0.1:8081/v1/chat/completions".to_string()
-}
-fn default_qwen_model() -> String {
-    "qwen2.5-instruct".to_string()
-}
-fn default_qwen_temperature() -> f32 {
-    0.2
-}
-fn default_qwen_timeout_seconds() -> u64 {
-    60
-}
-fn default_qwen_max_tokens() -> usize {
-    8192
 }
 
 fn default_runtimes_timeout() -> u64 {

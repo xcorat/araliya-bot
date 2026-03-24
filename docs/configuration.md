@@ -107,7 +107,7 @@ base = "default.toml"
 [supervisor]
 log_level = "debug"
 
-[llm.openai]
+[llm.providers.openai]
 model = "gpt-5-nano"
 ```
 
@@ -366,23 +366,54 @@ The newsmail aggregator is a tool (not an agent) invoked by the `news` agent and
 
 ## LLM Configuration
 
+Provider names are user-defined keys under `[llm.providers.*]`. The `api_type` field selects the wire adapter; a single provider entry can point at any compatible endpoint (OpenAI hosted, local Ollama, llama.cpp, Qwen, etc.).
+
+Example:
+
+```toml
+[llm]
+default = "openai"
+# instruction = "fast"   # optional: separate provider for llm/instruct requests
+
+[llm.providers.openai]
+api_type = "chat_completions"
+api_base_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-5-nano"
+temperature = 0.2
+timeout_seconds = 600
+input_per_million_usd = 0.05
+output_per_million_usd = 0.40
+cached_input_per_million_usd = 0.005
+
+[llm.providers.local]
+api_type = "chat_completions"
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 60
+max_tokens = 8192
+
+[llm.providers.codex]
+api_type = "openai_responses"
+model = "gpt-5.3-codex"
+reasoning_effort = "none"
+timeout_seconds = 600
+```
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.default` | string | `"dummy"` | Active LLM provider (`"dummy"`, `"openai"`, or `"qwen"`). Requires `subsystem-llm` feature. |
-| `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Override for Ollama / LM Studio. |
-| `llm.openai.model` | string | `"gpt-4o-mini"` | Model name sent in each request. |
-| `llm.openai.temperature` | float | `0.2` | Sampling temperature (omitted automatically for `gpt-5` family). |
-| `llm.openai.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
-| `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
-| `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
-| `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
-| `llm.qwen.api_base_url` | string | `"http://127.0.0.1:8081/v1/chat/completions"` | Qwen-style chat completions URL. |
-| `llm.qwen.model` | string | `"qwen2.5-instruct"` | Model name sent in each request. |
-| `llm.qwen.temperature` | float | `0.2` | Sampling temperature. |
-| `llm.qwen.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
-| `llm.qwen.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
-| `llm.qwen.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
-| `llm.qwen.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
+| `llm.default` | string | `"dummy"` | Name of the active provider — must be a key in `[llm.providers.*]`. Use `"dummy"` with no providers entry for testing. |
+| `llm.instruction` | string | none | Name of a provider in `[llm.providers.*]` to use for `llm/instruct` requests. Falls back to `default` when absent. |
+| `llm.providers.<name>.api_type` | string | `"chat_completions"` | Wire adapter: `"chat_completions"` (OpenAI `/v1/chat/completions` format), `"openai_responses"` (OpenAI `/v1/responses` format), or `"dummy"`. |
+| `llm.providers.<name>.api_base_url` | string | adapter default | Endpoint URL. Defaults to the standard OpenAI URL for the chosen `api_type`. Override for local servers. |
+| `llm.providers.<name>.model` | string | — | Model name sent in the request body. |
+| `llm.providers.<name>.temperature` | float | `0.2` | Sampling temperature. Automatically omitted for `gpt-5` family models. |
+| `llm.providers.<name>.reasoning_effort` | string | `"none"` | Reasoning effort for `openai_responses` adapter: `"none"`, `"low"`, `"medium"`, `"high"`. |
+| `llm.providers.<name>.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
+| `llm.providers.<name>.max_tokens` | integer | `0` | Maximum output tokens (0 = no limit). |
+| `llm.providers.<name>.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
+| `llm.providers.<name>.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
+| `llm.providers.<name>.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
 
 Pricing fields are used by `SessionHandle::accumulate_spend` to write per-session `spend.json` sidecars after each LLM turn. They default to `0.0` so cost is silently omitted rather than wrong when not set.
 
@@ -428,7 +459,7 @@ Secrets must come from environment variables or `.env`, never from config files.
 
 | Variable | Purpose |
 |----------|---------|
-| `LLM_API_KEY` | LLM provider API key |
+| `OPENAI_API_KEY` | LLM provider API key |
 | `TELEGRAM_BOT_TOKEN` | Telegram channel token |
 | `GOOGLE_CLIENT_ID` | Gmail OAuth desktop client ID |
 | `GOOGLE_CLIENT_SECRET` | Optional Gmail OAuth client secret |
@@ -438,7 +469,7 @@ A `.env` file in `araliya-bot/` is loaded automatically at startup if present. I
 
 ```bash
 # .env
-LLM_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 ```
 

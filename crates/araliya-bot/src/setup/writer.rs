@@ -72,7 +72,8 @@ debug_logging = false
 [llm]
 default = "openai"
 
-[llm.openai]
+[llm.providers.openai]
+api_type = "chat_completions"
 api_base_url = "{api_base}"
 model = "{model}"
 temperature = 0.2
@@ -120,8 +121,8 @@ pub fn write_env(answers: &Answers, path: &Path) -> Result<()> {
     maybe_add_key(
         &existing,
         &mut new_lines,
-        "LLM_API_KEY",
-        &answers.llm_api_key,
+        "OPENAI_API_KEY",
+        &answers.openai_api_key,
     );
 
     if let Some(token) = &answers.telegram_token {
@@ -226,7 +227,7 @@ mod tests {
             work_dir: PathBuf::from("/tmp/testbot"),
             config_dir: PathBuf::from("/tmp/testbot-config"),
             llm_provider: LlmProvider::OpenAI,
-            llm_api_key: "sk-test-key".into(),
+            openai_api_key: "sk-test-key".into(),
             llm_model: "gpt-4o-mini".into(),
             llm_api_base_url: "https://api.openai.com/v1/chat/completions".into(),
             profile: BotProfile::BasicChat,
@@ -290,7 +291,7 @@ mod tests {
         write_env(&dummy_answers(), &path).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("LLM_API_KEY=sk-test-key"));
+        assert!(content.contains("OPENAI_API_KEY=sk-test-key"));
     }
 
     #[test]
@@ -298,13 +299,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(".env");
         // Pre-seed the file with the key
-        fs::write(&path, "LLM_API_KEY=already-here\n").unwrap();
+        fs::write(&path, "OPENAI_API_KEY=already-here\n").unwrap();
 
         write_env(&dummy_answers(), &path).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
         // Must appear exactly once
-        assert_eq!(content.matches("LLM_API_KEY=").count(), 1);
+        assert_eq!(content.matches("OPENAI_API_KEY=").count(), 1);
     }
 
     #[test]

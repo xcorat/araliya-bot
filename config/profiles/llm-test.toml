@@ -23,17 +23,11 @@ debug_logging = true
 enabled = true
 
 [llm]
-default = "qwen"
+default = "local"
+instruction = "local"
 
-[llm.instruction]
-provider = "qwen"
-
-[llm.qwen]
+[llm.providers.local]
+api_type = "chat_completions"
 api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
 model = "qwen3.5"
-# temperature = 0.2
 timeout_seconds = 3600
-# max_tokens = 8192
-input_per_million_usd = 0.0
-output_per_million_usd = 0.0
-cached_input_per_million_usd = 0.0

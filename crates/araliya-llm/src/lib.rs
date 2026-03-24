@@ -56,8 +56,8 @@ pub struct LlmResponse {
 #[derive(Debug, Clone)]
 pub enum LlmProvider {
     Dummy(providers::dummy::DummyProvider),
-    OpenAiCompatible(providers::openai_compatible::OpenAiCompatibleProvider),
-    Qwen(providers::qwen::QwenProvider),
+    ChatCompletions(providers::chat_completions::ChatCompletionsProvider),
+    OpenAiResponses(providers::openai_responses::OpenAiResponsesProvider),
 }
 
 impl LlmProvider {
@@ -71,10 +71,12 @@ impl LlmProvider {
     ) -> Result<LlmResponse, ProviderError> {
         match self {
             LlmProvider::Dummy(p) => p.complete(content, system, max_tokens_override).await,
-            LlmProvider::OpenAiCompatible(p) => {
+            LlmProvider::ChatCompletions(p) => {
                 p.complete(content, system, max_tokens_override).await
             }
-            LlmProvider::Qwen(p) => p.complete(content, system, max_tokens_override).await,
+            LlmProvider::OpenAiResponses(p) => {
+                p.complete(content, system, max_tokens_override).await
+            }
         }
     }
 
@@ -95,11 +97,11 @@ impl LlmProvider {
                 p.complete_stream(content, system, tx, max_tokens_override)
                     .await
             }
-            LlmProvider::OpenAiCompatible(p) => {
+            LlmProvider::ChatCompletions(p) => {
                 p.complete_stream(content, system, tx, max_tokens_override)
                     .await
             }
-            LlmProvider::Qwen(p) => {
+            LlmProvider::OpenAiResponses(p) => {
                 p.complete_stream(content, system, tx, max_tokens_override)
                     .await
             }
@@ -114,8 +116,8 @@ impl LlmProvider {
     pub async fn ping(&self) -> Result<(), ProviderError> {
         match self {
             LlmProvider::Dummy(_) => Ok(()),
-            LlmProvider::OpenAiCompatible(p) => p.ping().await,
-            LlmProvider::Qwen(p) => p.ping().await,
+            LlmProvider::ChatCompletions(p) => p.ping().await,
+            LlmProvider::OpenAiResponses(p) => p.ping().await,
         }
     }
 }

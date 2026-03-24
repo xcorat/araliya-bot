@@ -15,11 +15,13 @@ tracing = "0.1"
 axum = { version = "0.8", optional = true, default-features = false, features = ["http1", "tokio", "json"] }
 teloxide = { version = "0.13", optional = true, default-features = false, features = ["macros", "rustls"] }
 futures-util = { version = "0.3", optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
 
 [features]
 channel-pty = []
 channel-http = []
-channel-axum = ["dep:axum", "dep:futures-util"]
+channel-axum = ["dep:axum", "dep:futures-util", "dep:tower-http"]
 channel-telegram = ["dep:teloxide"]
 subsystem-ui = []
 plugin-webbuilder = []
+plugin-homebuilder = []

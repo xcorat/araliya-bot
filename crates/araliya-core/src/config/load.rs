@@ -128,35 +128,17 @@ pub fn load(config_path: Option<&str>) -> Result<Config, AppError> {
                 agentic_chat: None,
                 runtime_cmd: None,
                 webbuilder: None,
+                homebuilder: None,
                 debug_logging: false,
                 uniweb_session_id: None,
                 uniweb_use_instruction_llm: false,
             },
             llm: LlmConfig {
-                provider: "dummy".to_string(),
-                openai: OpenAiConfig {
-                    api_base_url: "https://api.openai.com/v1/chat/completions".to_string(),
-                    model: "gpt-4o-mini".to_string(),
-                    temperature: 0.2,
-                    timeout_seconds: 60,
-                    max_tokens: 0,
-                    input_per_million_usd: 0.0,
-                    output_per_million_usd: 0.0,
-                    cached_input_per_million_usd: 0.0,
-                },
-                qwen: QwenConfig {
-                    api_base_url: "http://127.0.0.1:8081/v1/chat/completions".to_string(),
-                    model: "qwen2.5-instruct".to_string(),
-                    temperature: 0.2,
-                    timeout_seconds: 60,
-                    max_tokens: 8192,
-                    input_per_million_usd: 0.0,
-                    output_per_million_usd: 0.0,
-                    cached_input_per_million_usd: 0.0,
-                },
+                default: "dummy".to_string(),
+                providers: HashMap::new(),
                 instruction: None,
             },
-            llm_api_key: env::var("LLM_API_KEY").ok(),
+            openai_api_key: env::var("OPENAI_API_KEY").ok(),
             ui: UiConfig {
                 svui: SvuiConfig {
                     enabled: false,
@@ -306,70 +288,56 @@ pub fn load_from(
         }
     });
 
-    // Build the instruction LLM config by inheriting the main provider values
-    // and overlaying only the fields explicitly set in [llm.instruction.*].
-    let instruction_llm = parsed.llm.instruction.map(|inst| {
-        let provider = if inst.provider.is_empty() {
-            parsed.llm.provider.clone()
-        } else {
-            inst.provider
-        };
-        // OpenAI: use [llm.instruction.openai] overrides if present, else fall back
-        // to the main [llm.openai] values so the connection details are inherited.
-        let base_openai = &parsed.llm.openai;
-        let openai = match inst.openai {
-            Some(ov) => OpenAiConfig {
-                api_base_url: ov.api_base_url,
-                model: ov.model,
-                temperature: ov.temperature,
-                timeout_seconds: ov.timeout_seconds,
-                max_tokens: ov.max_tokens,
-                input_per_million_usd: ov.input_per_million_usd,
-                output_per_million_usd: ov.output_per_million_usd,
-                cached_input_per_million_usd: ov.cached_input_per_million_usd,
-            },
-            None => OpenAiConfig {
-                api_base_url: base_openai.api_base_url.clone(),
-                model: base_openai.model.clone(),
-                temperature: base_openai.temperature,
-                timeout_seconds: base_openai.timeout_seconds,
-                max_tokens: base_openai.max_tokens,
-                input_per_million_usd: base_openai.input_per_million_usd,
-                output_per_million_usd: base_openai.output_per_million_usd,
-                cached_input_per_million_usd: base_openai.cached_input_per_million_usd,
-            },
-        };
-        // Qwen: same pattern — inherit main [llm.qwen] unless overridden.
-        let base_qwen = &parsed.llm.qwen;
-        let qwen = match inst.qwen {
-            Some(ov) => QwenConfig {
-                api_base_url: ov.api_base_url,
-                model: ov.model,
-                temperature: ov.temperature,
-                timeout_seconds: ov.timeout_seconds,
-                max_tokens: ov.max_tokens,
-                input_per_million_usd: ov.input_per_million_usd,
-                output_per_million_usd: ov.output_per_million_usd,
-                cached_input_per_million_usd: ov.cached_input_per_million_usd,
-            },
-            None => QwenConfig {
-                api_base_url: base_qwen.api_base_url.clone(),
-                model: base_qwen.model.clone(),
-                temperature: base_qwen.temperature,
-                timeout_seconds: base_qwen.timeout_seconds,
-                max_tokens: base_qwen.max_tokens,
-                input_per_million_usd: base_qwen.input_per_million_usd,
-                output_per_million_usd: base_qwen.output_per_million_usd,
-                cached_input_per_million_usd: base_qwen.cached_input_per_million_usd,
-            },
-        };
-        Box::new(LlmConfig {
-            provider,
-            openai,
-            qwen,
-            instruction: None,
-        })
+    let homebuilder_cfg = parsed.agents.entries.get("homebuilder").map(|entry| {
+        let defaults = HomebuildAgentConfig::default();
+        HomebuildAgentConfig {
+            max_iterations: entry.max_iterations.unwrap_or(defaults.max_iterations),
+        }
     });
+
+    // Instruction LLM: just a reference to another provider name in the same map.
+    let instruction_llm = parsed.llm.instruction.clone();
+
+    let providers: HashMap<String, ProviderConfig> = parsed
+        .llm
+        .providers
+        .into_iter()
+        .map(|(name, raw)| {
+            let api_type = match raw.api_type.as_str() {
+                "chat_completions" | "openai_compatible" => ApiType::ChatCompletions,
+                "openai_responses" | "responses" => ApiType::OpenAiResponses,
+                "dummy" => ApiType::Dummy,
+                t => {
+                    return Err(AppError::Config(format!(
+                        "unknown api_type '{}' for provider '{}'",
+                        t, name
+                    )))
+                }
+            };
+            let api_base_url = raw.api_base_url.unwrap_or_else(|| match api_type {
+                ApiType::ChatCompletions => {
+                    "https://api.openai.com/v1/chat/completions".to_string()
+                }
+                ApiType::OpenAiResponses => "https://api.openai.com/v1/responses".to_string(),
+                ApiType::Dummy => String::new(),
+            });
+            Ok((
+                name,
+                ProviderConfig {
+                    api_type,
+                    api_base_url,
+                    model: raw.model,
+                    temperature: raw.temperature,
+                    reasoning_effort: raw.reasoning_effort,
+                    timeout_seconds: raw.timeout_seconds,
+                    max_tokens: raw.max_tokens,
+                    input_per_million_usd: raw.input_per_million_usd,
+                    output_per_million_usd: raw.output_per_million_usd,
+                    cached_input_per_million_usd: raw.cached_input_per_million_usd,
+                },
+            ))
+        })
+        .collect::<Result<_, _>>()?;
 
     Ok(Config {
         bot_name: s.bot_name,
@@ -429,6 +397,7 @@ pub fn load_from(
             agentic_chat: agentic_chat_cfg,
             runtime_cmd: runtime_cmd_cfg,
             webbuilder: webbuilder_cfg,
+            homebuilder: homebuilder_cfg,
             debug_logging: parsed.agents.debug_logging,
             uniweb_session_id: parsed
                 .agents
@@ -443,30 +412,11 @@ pub fn load_from(
                 .unwrap_or(false),
         },
         llm: LlmConfig {
-            provider: parsed.llm.provider,
-            openai: OpenAiConfig {
-                api_base_url: parsed.llm.openai.api_base_url,
-                model: parsed.llm.openai.model,
-                temperature: parsed.llm.openai.temperature,
-                timeout_seconds: parsed.llm.openai.timeout_seconds,
-                max_tokens: parsed.llm.openai.max_tokens,
-                input_per_million_usd: parsed.llm.openai.input_per_million_usd,
-                output_per_million_usd: parsed.llm.openai.output_per_million_usd,
-                cached_input_per_million_usd: parsed.llm.openai.cached_input_per_million_usd,
-            },
-            qwen: QwenConfig {
-                api_base_url: parsed.llm.qwen.api_base_url,
-                model: parsed.llm.qwen.model,
-                temperature: parsed.llm.qwen.temperature,
-                timeout_seconds: parsed.llm.qwen.timeout_seconds,
-                max_tokens: parsed.llm.qwen.max_tokens,
-                input_per_million_usd: parsed.llm.qwen.input_per_million_usd,
-                output_per_million_usd: parsed.llm.qwen.output_per_million_usd,
-                cached_input_per_million_usd: parsed.llm.qwen.cached_input_per_million_usd,
-            },
+            default: parsed.llm.provider,
+            providers,
             instruction: instruction_llm,
         },
-        llm_api_key: env::var("LLM_API_KEY").ok(),
+        openai_api_key: env::var("OPENAI_API_KEY").ok(),
         ui: UiConfig {
             svui: SvuiConfig {
                 enabled: parsed.ui.svui.enabled,

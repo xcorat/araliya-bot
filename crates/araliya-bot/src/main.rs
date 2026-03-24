@@ -242,9 +242,13 @@ async fn run() -> Result<(), error::AppError> {
         bus_handle.clone(),
         ManagementInfo {
             bot_id: identity.public_id.clone(),
-            llm_provider: config.llm.provider.clone(),
-            llm_model: config.llm.openai.model.clone(),
-            llm_timeout_seconds: config.llm.openai.timeout_seconds,
+            llm_provider: config.llm.default.clone(),
+            llm_model: config.llm.providers.get(&config.llm.default)
+                .map(|p| p.model.clone())
+                .unwrap_or_else(|| "dummy".to_string()),
+            llm_timeout_seconds: config.llm.providers.get(&config.llm.default)
+                .map(|p| p.timeout_seconds)
+                .unwrap_or(60),
         },
         comms_info.clone(),
         health_registry.clone(),
@@ -252,7 +256,7 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(feature = "subsystem-llm")]
     {
-        let llm = LlmSubsystem::new(&config.llm, config.llm_api_key.clone())
+        let llm = LlmSubsystem::new(&config.llm, config.openai_api_key.clone())
             .map_err(|e| error::AppError::Config(e.to_string()))?
             .with_health_reporter(health_registry.reporter("llm"));
         llm.spawn_health_checker(shutdown.clone());
@@ -282,11 +286,17 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let rates = araliya_llm::ModelRates {
-            input_per_million_usd: config.llm.openai.input_per_million_usd,
-            output_per_million_usd: config.llm.openai.output_per_million_usd,
-            cached_input_per_million_usd: config.llm.openai.cached_input_per_million_usd,
-        };
+        let rates = config.llm.providers.get(&config.llm.default)
+            .map(|p| araliya_llm::ModelRates {
+                input_per_million_usd: p.input_per_million_usd,
+                output_per_million_usd: p.output_per_million_usd,
+                cached_input_per_million_usd: p.cached_input_per_million_usd,
+            })
+            .unwrap_or(araliya_llm::ModelRates {
+                input_per_million_usd: 0.0,
+                output_per_million_usd: 0.0,
+                cached_input_per_million_usd: 0.0,
+            });
         let agents =
             AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
                 .with_llm_rates(rates)
@@ -353,7 +363,7 @@ async fn run() -> Result<(), error::AppError> {
             shutdown.clone(),
             #[cfg(feature = "subsystem-ui")]
             ui_handle,
-            #[cfg(feature = "plugin-webbuilder")]
+            #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             Some(identity.identity_dir.join("runtimes")),
             comms_info,
             araliya_supervisor::adapters::stdio::stdio_control_active(),
@@ -431,13 +441,17 @@ fn print_startup_summary(
     };
 
     #[cfg(feature = "subsystem-llm")]
-    let llm_line = format!(
-        "provider={} model={} temp={} timeout={}s",
-        config.llm.provider,
-        config.llm.openai.model,
-        config.llm.openai.temperature,
-        config.llm.openai.timeout_seconds
-    );
+    let llm_line = {
+        let provider = &config.llm.default;
+        if let Some(p) = config.llm.providers.get(provider) {
+            format!(
+                "provider={} model={} temp={} timeout={}s",
+                provider, p.model, p.temperature, p.timeout_seconds
+            )
+        } else {
+            format!("provider={}", provider)
+        }
+    };
     #[cfg(not(feature = "subsystem-llm"))]
     let llm_line = "disabled (not compiled)".to_string();
 

@@ -1,4 +1,9 @@
-//! Preview route — serves static files from `webbuilder` workspace dist dirs.
+//! Preview route — serves static files from builder workspace dist dirs.
+//!
+//! The `/preview/{runtime_name}/` route is generic: the URL segment is the full
+//! runtime name (e.g. `webbuilder-a1b2c3d4` or `homebuilder`).
+//!
+//! The `/home` prefix is handled separately via `nest_service` in `mod.rs`.
 
 use std::path::{Path, PathBuf};
 
@@ -42,8 +47,8 @@ async fn serve_preview_file(preview_root: &Path, session_id: &str, path: &str) -
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    let workspace_name = format!("webbuilder-{session_id}");
-    let dist_root = preview_root.join(&workspace_name).join("dist");
+    // The session_id in the URL is the full runtime name (e.g. "webbuilder-a1b2c3d4").
+    let dist_root = preview_root.join(session_id).join("dist");
 
     let requested = PathBuf::from(path.trim_start_matches('/'));
     let file_path = dist_root.join(&requested);
@@ -105,3 +110,4 @@ fn mime_from_extension(path: &Path) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+

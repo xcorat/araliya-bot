@@ -38,7 +38,7 @@ pub(crate) struct AxumState {
     pub channel_id: Arc<str>,
     pub comms: Arc<CommsState>,
     pub ui: OptionalUiHandle,
-    #[cfg(feature = "plugin-webbuilder")]
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     pub preview_root: Option<std::path::PathBuf>,
 }
 
@@ -49,7 +49,7 @@ pub struct AxumChannel {
     bind_addr: String,
     state: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
-    #[cfg(feature = "plugin-webbuilder")]
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     preview_root: Option<std::path::PathBuf>,
 }
 
@@ -59,14 +59,14 @@ impl AxumChannel {
         bind_addr: impl Into<String>,
         state: Arc<CommsState>,
         ui_handle: OptionalUiHandle,
-        #[cfg(feature = "plugin-webbuilder")] preview_root: Option<std::path::PathBuf>,
+        #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
             bind_addr: bind_addr.into(),
             state,
             ui_handle,
-            #[cfg(feature = "plugin-webbuilder")]
+            #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             preview_root,
         }
     }
@@ -83,7 +83,7 @@ impl Component for AxumChannel {
             self.bind_addr,
             self.state,
             self.ui_handle,
-            #[cfg(feature = "plugin-webbuilder")]
+            #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             self.preview_root,
             shutdown,
         ))
@@ -97,14 +97,14 @@ async fn run_axum(
     bind_addr: String,
     comms: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
-    #[cfg(feature = "plugin-webbuilder")] preview_root: Option<std::path::PathBuf>,
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<std::path::PathBuf>,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let axum_state = AxumState {
         channel_id: Arc::from(channel_id.as_str()),
         comms,
         ui: ui_handle,
-        #[cfg(feature = "plugin-webbuilder")]
+        #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
         preview_root,
     };
 
@@ -151,8 +151,7 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/sessions/{session_id}/files", get(api::session_files))
         .route("/api/session/{session_id}", get(api::session_detail))
         .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }))
-        .route("/", get(ui::root))
-        .route("/{*path}", get(ui::serve_path));
+        .route("/", get(ui::root));
 
     #[cfg(feature = "plugin-webbuilder")]
     let router = router
@@ -161,6 +160,23 @@ fn build_router(state: AxumState) -> Router {
             "/preview/{session_id}/{*path}",
             get(preview::preview_handler),
         );
+
+    // Mount homebuilder dist/ as a proper static file proxy at /home.
+    // Axum strips the /home prefix before delegating to ServeDir, so
+    // /home/assets/foo.js → dist/assets/foo.js with correct MIME types.
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
+    let router = {
+        use tower_http::services::ServeDir;
+        if let Some(ref preview_root) = state.preview_root {
+            let dist = preview_root.join("homebuilder").join("dist");
+            router.nest_service("/home", ServeDir::new(dist))
+        } else {
+            router
+        }
+    };
+
+    // Catch-all MUST be last so specific routes above take precedence.
+    let router = router.route("/{*path}", get(ui::serve_path));
 
     router.with_state(state)
 }

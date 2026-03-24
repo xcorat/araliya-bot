@@ -1,6 +1,6 @@
 # LLM Subsystem
 
-**Status:** v0.2.0-alpha — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · Qwen provider · per-session spend accumulation.
+**Status:** v0.2.0-alpha — `LlmResponse.thinking` (reasoning_content for Qwen3/QwQ/DeepSeek-R1) · `LlmUsage.reasoning_tokens` (o-series) · `StreamChunk` enum · `complete_stream()` on all providers · `llm/stream` bus method · `api_type`-based adapter selection · OpenAI Responses API provider · per-session spend accumulation.
 
 ---
 
@@ -31,10 +31,10 @@ src/
   llm/
     mod.rs              LlmProvider enum · LlmResponse · LlmUsage · ModelRates · StreamChunk (re-export)
     providers/
-      mod.rs            build(config) factory function
+      mod.rs            build_from_provider(cfg, api_key) factory function; ApiType enum
       dummy.rs          DummyProvider — returns "[echo] {input}", usage: None
-      openai_compatible.rs  reqwest HTTP client; reasoning_content extraction; SSE streaming; StreamChunk
-      qwen.rs           QwenProvider — wraps OpenAiCompatibleProvider with Qwen defaults
+      chat_completions.rs   ChatCompletionsProvider — reqwest HTTP client; /v1/chat/completions; SSE streaming; reasoning_content extraction
+      responses.rs      OpenAiResponsesProvider — /v1/responses wire format; reasoning_effort; SSE streaming
   subsystems/
     llm/
       mod.rs            LlmSubsystem — handle_request, tokio::spawn per call
@@ -94,8 +94,8 @@ Re-exported as `crate::llm::StreamChunk` and `crate::supervisor::bus::StreamChun
 ```rust
 pub enum LlmProvider {
     Dummy(DummyProvider),
-    OpenAiCompatible(OpenAiCompatibleProvider),
-    Qwen(QwenProvider),
+    ChatCompletions(ChatCompletionsProvider),
+    OpenAiResponses(OpenAiResponsesProvider),
 }
 
 impl LlmProvider {
@@ -222,53 +222,71 @@ Reasoning models expose their chain-of-thought separately from their final answe
 
 ## Current Providers
 
-`DummyProvider` requires no API key. Returns `"[echo] {input}"` with `usage: None`. Supports `complete_stream()` for test coverage.
+`DummyProvider` requires no API key. Returns `"[echo] {input}"` with `usage: None`. Supports `complete_stream()` for test coverage. Selected by `api_type = "dummy"` or when `default = "dummy"` with no providers entry.
 
-`OpenAiCompatibleProvider` uses `[llm.openai]` settings plus `LLM_API_KEY` from env/.env. Extracts `reasoning_content` and `reasoning_tokens`. Supports full SSE streaming via `complete_stream()`. Sends `max_completion_tokens` (not the deprecated `max_tokens`) in the request body — required by gpt-5-series and later OpenAI models which reject `max_tokens` with HTTP 400. Also omits `temperature` for the `gpt-5` family. Both fields are handled automatically based on the configured model prefix; no extra config is needed.
+`ChatCompletionsProvider` handles the `/v1/chat/completions` wire format. It works with OpenAI's hosted API, Ollama, LM Studio, llama.cpp, Qwen-compatible servers, and any other OpenAI-compatible endpoint. Reads `OPENAI_API_KEY` from env/.env for authentication; local servers that do not require a key are simply configured without it. Extracts `reasoning_content` and `reasoning_tokens`. Supports full SSE streaming via `complete_stream()`. Sends `max_completion_tokens` (not the deprecated `max_tokens`) in the request body — required by gpt-5-series and later OpenAI models. Omits `temperature` automatically for the `gpt-5` family. Selected by `api_type = "chat_completions"`.
 
-`QwenProvider` wraps `OpenAiCompatibleProvider` with Qwen-specific defaults and endpoint handling. Full streaming and reasoning content support.
+`OpenAiResponsesProvider` handles the `/v1/responses` wire format used by Codex and OpenAI reasoning models. Accepts a `reasoning_effort` field (`"none"`, `"low"`, `"medium"`, `"high"`). Supports SSE streaming. Selected by `api_type = "openai_responses"`.
 
 ---
 
 ## Configuration
 
+Provider names are user-defined keys under `[llm.providers.*]`. The `api_type` field selects which wire adapter is used; the provider name itself carries no meaning beyond being a lookup key.
+
 ```toml
 [llm]
-default = "openai"
+default = "openai"           # name of the active provider (must match a key in [llm.providers.*])
+# instruction = "fast"       # optional: name of a provider to use for llm/instruct requests
 
-[llm.openai]
+[llm.providers.openai]
+api_type = "chat_completions"
 api_base_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-5-nano"
 temperature = 0.2
-timeout_seconds = 60
+timeout_seconds = 600
 # Token pricing — USD per 1 million tokens. Defaults to 0.0 when not set.
-input_per_million_usd = 1.10
-output_per_million_usd = 4.40
-cached_input_per_million_usd = 0.275
+input_per_million_usd = 0.05
+output_per_million_usd = 0.40
+cached_input_per_million_usd = 0.005
 
-# Optional: separate small model for the agentic instruction pass.
-# Provider sub-sections ([llm.instruction.openai] / [llm.instruction.qwen])
-# are optional — absent fields are inherited from [llm.openai] / [llm.qwen].
-# [llm.instruction]
-# provider = "openai"
-# [llm.instruction.openai]
-# model = "gpt-5-nano"
-# temperature = 0.1
+[llm.providers.codex]
+api_type = "openai_responses"
+model = "gpt-5.3-codex"
+reasoning_effort = "none"    # "none" | "low" | "medium" | "high"
+timeout_seconds = 600
+
+[llm.providers.local]
+api_type = "chat_completions"
+api_base_url = "http://127.0.0.1:8081/v1/chat/completions"
+model = "qwen2.5-instruct"
+temperature = 0.2
+timeout_seconds = 60
+max_tokens = 8192
 ```
+
+`api_type` values:
+
+| `api_type` | Endpoint | Use for |
+|---|---|---|
+| `"chat_completions"` | `/v1/chat/completions` | OpenAI, Ollama, LM Studio, llama.cpp, Qwen, any OpenAI-compatible server |
+| `"openai_responses"` | `/v1/responses` | Codex models (`gpt-5.3-codex`), OpenAI reasoning models |
+| `"dummy"` | none | Testing without an API key |
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `llm.default` | string | `"dummy"` | Active provider. Supported: `"dummy"`, `"openai"`, `"qwen"`. |
-| `llm.openai.api_base_url` | string | OpenAI endpoint | Chat completions URL. Set to a local server for Ollama / LM Studio. |
-| `llm.openai.model` | string | `"gpt-5-nano"` | Model name sent in the request body. |
-| `llm.openai.temperature` | float | `0.2` | Sampling temperature (silently omitted for `gpt-5` family). |
-| `llm.openai.timeout_seconds` | integer | `60` | Per-request HTTP timeout. |
-| `llm.openai.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
-| `llm.openai.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
-| `llm.openai.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
-| `llm.instruction.provider` | string | — | Provider for `llm/instruct` requests. Inherits connection from main provider when sub-section is absent. |
-| `llm.instruction.openai.model` | string | inherited | Override model for the instruction pass (e.g. smaller/cheaper model). |
-| `llm.instruction.openai.temperature` | float | inherited | Override temperature for the instruction pass (lower = more deterministic JSON). |
+| `llm.default` | string | `"dummy"` | Name of the active provider — must be a key in `[llm.providers.*]`. Use `"dummy"` with no providers entry for testing. |
+| `llm.instruction` | string | none | Name of a provider in `[llm.providers.*]` to use for `llm/instruct` requests. Falls back to `default` when absent. |
+| `llm.providers.<name>.api_type` | string | `"chat_completions"` | Wire adapter selector. |
+| `llm.providers.<name>.api_base_url` | string | adapter default | Endpoint URL. Defaults to the standard OpenAI URL for the chosen `api_type`. Override for local servers. |
+| `llm.providers.<name>.model` | string | — | Model name sent in the request body. |
+| `llm.providers.<name>.temperature` | float | `0.2` | Sampling temperature. Automatically omitted for `gpt-5` family models. |
+| `llm.providers.<name>.reasoning_effort` | string | `"none"` | Reasoning effort for `openai_responses` adapter: `"none"`, `"low"`, `"medium"`, `"high"`. |
+| `llm.providers.<name>.timeout_seconds` | integer | `60` | Per-request HTTP timeout in seconds. |
+| `llm.providers.<name>.max_tokens` | integer | `0` | Maximum output tokens (0 = no limit). |
+| `llm.providers.<name>.input_per_million_usd` | float | `0.0` | Input token price (USD per 1M tokens). |
+| `llm.providers.<name>.output_per_million_usd` | float | `0.0` | Output token price (USD per 1M tokens). |
+| `llm.providers.<name>.cached_input_per_million_usd` | float | `0.0` | Cached input token price (USD per 1M tokens). |
 
 Pricing fields default to `0.0` so cost is silently omitted rather than wrong when not configured.
 
@@ -279,17 +297,17 @@ Pricing fields default to `0.0` so cost is silently omitted rather than wrong wh
 1. Create `src/llm/providers/{name}.rs` — implement `complete()` and `complete_stream()`.
 2. Add a variant to `LlmProvider` in `src/llm/mod.rs`.
 3. Add match arms to `LlmProvider::complete`, `complete_stream`, and `ping`.
-4. Add a match arm to `providers::build(config)` in `src/llm/providers/mod.rs`.
-5. Update `[llm] default = "{name}"` in `config/default.toml`.
+4. Add a new `ApiType` variant and a corresponding match arm in `providers::build_from_provider(cfg, api_key)` in `src/llm/providers/mod.rs`.
+5. Add a provider entry in `[llm.providers.*]` in `config/default.toml` (or a profile overlay) with the new `api_type` value and `default = "{name}"`.
 6. Pass secrets via environment variable or `.env` (never in config files).
 
 ---
 
 ## Planned Provider Support
 
-| Provider | Auth | Notes |
-|----------|------|-------|
-| OpenAI-compatible | `LLM_API_KEY` | Implemented (`default = "openai"`) |
-| Qwen | `LLM_API_KEY` | Implemented (`default = "qwen"`) |
-| Dummy | none | Implemented (`default = "dummy"`) |
-| Anthropic | `ANTHROPIC_API_KEY` | Planned |
+| Provider / adapter | Auth | Notes |
+|---|---|---|
+| `api_type = "chat_completions"` | `OPENAI_API_KEY` | Implemented — works with OpenAI, Ollama, LM Studio, llama.cpp, Qwen, and any OpenAI-compatible server |
+| `api_type = "openai_responses"` | `OPENAI_API_KEY` | Implemented — Codex and OpenAI reasoning models |
+| `api_type = "dummy"` | none | Implemented — no API key required |
+| Anthropic (`/v1/messages`) | `ANTHROPIC_API_KEY` | Planned |
