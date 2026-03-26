@@ -110,8 +110,7 @@ fn test_agent_prompts_co_located() {
 
 #[test]
 fn test_docs_agent_extends() {
-    let manifest =
-        fs::read_to_string(agents_dir().join("docs_agent").join("agent.toml")).unwrap();
+    let manifest = fs::read_to_string(agents_dir().join("docs_agent").join("agent.toml")).unwrap();
     assert!(
         manifest.contains(r#"extends = "docs""#),
         "docs_agent should extend docs"

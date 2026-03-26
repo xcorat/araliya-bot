@@ -84,7 +84,15 @@ async fn run_pty(
 
                         debug!(input = %input, "pty received line");
 
-                        match state.send_message(&channel_id, input, None, None).await {
+                        let result = tokio::select! {
+                            biased;
+                            _ = shutdown.cancelled() => {
+                                println!();
+                                break;
+                            }
+                            r = state.send_message(&channel_id, input, None, None) => r,
+                        };
+                        match result {
                             Err(e) => {
                                 warn!("send_message error: {e}, pty exiting");
                                 break;

@@ -26,6 +26,7 @@ use araliya_core::bus::health::HealthReporter;
 use araliya_core::bus::message::{BusError, BusPayload, BusResult, ERR_METHOD_NOT_FOUND};
 use araliya_core::config::{AgenticChatConfig, AgentsConfig, DocsAgentConfig};
 use araliya_core::error::AppError;
+use araliya_core::obs::ObservabilityHandle;
 use araliya_llm::ModelRates;
 
 use araliya_core::identity::{self, Identity};
@@ -106,6 +107,9 @@ pub struct AgentsState {
     /// Optional user agent definitions directory (`~/.araliya/agents/`).
     /// When present, user definitions override system ones by agent ID.
     pub user_agents_dir: Option<String>,
+    /// Observability handle — when set, the agentic loop emits structured
+    /// events (session_start, llm_call_complete, tool_call).
+    pub obs: Option<ObservabilityHandle>,
 }
 
 impl AgentsState {
@@ -140,6 +144,7 @@ impl AgentsState {
             debug_logging,
             agents_dir,
             user_agents_dir,
+            obs: None,
         }
     }
 
@@ -831,8 +836,7 @@ impl AgentsSubsystem {
         #[cfg(feature = "plugin-homebuilder")]
         if enabled_agents.contains("homebuilder") {
             let hb_cfg = config.homebuilder.unwrap_or_default();
-            let agent: Box<dyn Agent> =
-                Box::new(webbuilder::HomebuilderAgent::new(&hb_cfg));
+            let agent: Box<dyn Agent> = Box::new(webbuilder::HomebuilderAgent::new(&hb_cfg));
             agents.insert(
                 agent.id().to_string(),
                 AgentRegistration::new(AgentRuntimeClass::Agentic, agent),
@@ -980,6 +984,14 @@ impl AgentsSubsystem {
         Arc::get_mut(&mut self.state)
             .expect("AgentsState Arc must be exclusive at build time")
             .llm_rates = rates;
+        self
+    }
+
+    /// Attach an observability handle for structured event emissions.
+    pub fn with_observability(mut self, obs: ObservabilityHandle) -> Self {
+        Arc::get_mut(&mut self.state)
+            .expect("AgentsState Arc must be exclusive at build time")
+            .obs = Some(obs);
         self
     }
 

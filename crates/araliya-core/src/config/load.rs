@@ -286,6 +286,7 @@ pub fn load_from(
         WebBuilderAgentConfig {
             max_iterations: entry.max_iterations.unwrap_or(defaults.max_iterations),
             scaffold: entry.scaffold.clone().unwrap_or(defaults.scaffold),
+            theme_guides_dir: entry.theme_guides_dir.as_ref().map(PathBuf::from),
         }
     });
 
@@ -293,6 +294,13 @@ pub fn load_from(
         let defaults = HomebuildAgentConfig::default();
         HomebuildAgentConfig {
             max_iterations: entry.max_iterations.unwrap_or(defaults.max_iterations),
+            user_name: entry.user_name.clone().unwrap_or(defaults.user_name),
+            notes_dir: entry
+                .notes_dir
+                .as_ref()
+                .map(|s| PathBuf::from(s))
+                .or(defaults.notes_dir),
+            theme_guides_dir: entry.theme_guides_dir.as_ref().map(PathBuf::from),
         }
     });
 

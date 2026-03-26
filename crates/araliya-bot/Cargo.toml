@@ -27,7 +27,7 @@ sha2 = "0.10"
 base64 = "0.22"
 dirs = "5"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "registry"] }
 dotenvy = "0.15"
 rusqlite = { version = "0.37", optional = true, features = ["bundled"] }
 dialoguer  = { version = "0.11", optional = true }

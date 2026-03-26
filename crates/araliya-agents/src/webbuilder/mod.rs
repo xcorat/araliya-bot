@@ -13,26 +13,30 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 
 use araliya_core::bus::message::{BusPayload, BusResult, StreamReceiver};
-use araliya_core::config::WebBuilderAgentConfig;
 #[cfg(feature = "plugin-homebuilder")]
 use araliya_core::config::HomebuildAgentConfig;
+use araliya_core::config::WebBuilderAgentConfig;
 use araliya_llm::StreamChunk;
 
 use super::{Agent, AgentsState};
 
 mod loop_;
 mod tools;
+#[cfg(feature = "plugin-homebuilder")]
+pub(crate) mod init_home;
 
 // ── WebBuilderAgent ───────────────────────────────────────────────────────────
 
 pub(crate) struct WebBuilderAgent {
     max_iterations: usize,
+    theme_guides_dir: Option<std::path::PathBuf>,
 }
 
 impl WebBuilderAgent {
     pub fn new(cfg: &WebBuilderAgentConfig) -> Self {
         Self {
             max_iterations: cfg.max_iterations,
+            theme_guides_dir: cfg.theme_guides_dir.clone(),
         }
     }
 }
@@ -52,9 +56,10 @@ impl Agent for WebBuilderAgent {
         state: Arc<AgentsState>,
     ) {
         let max_iterations = self.max_iterations;
+        let theme_guides_dir = self.theme_guides_dir.clone();
         tokio::spawn(async move {
             // Run the streaming loop and collect the full response.
-            let loop_ = loop_::WebBuilderLoop::new(max_iterations);
+            let loop_ = loop_::WebBuilderLoop::new(max_iterations, theme_guides_dir);
             let stream_result = loop_
                 .run_stream(channel_id.clone(), content, session_id.clone(), state)
                 .await;
@@ -97,8 +102,9 @@ impl Agent for WebBuilderAgent {
         state: Arc<AgentsState>,
     ) {
         let max_iterations = self.max_iterations;
+        let theme_guides_dir = self.theme_guides_dir.clone();
         tokio::spawn(async move {
-            let loop_ = loop_::WebBuilderLoop::new(max_iterations);
+            let loop_ = loop_::WebBuilderLoop::new(max_iterations, theme_guides_dir);
             let result = loop_
                 .run_stream(channel_id, content, session_id, state)
                 .await;
@@ -113,14 +119,16 @@ impl Agent for WebBuilderAgent {
 /// page and serves it at `/home/` (and `/preview/homebuilder/`).
 #[cfg(feature = "plugin-homebuilder")]
 pub(crate) struct HomebuilderAgent {
-    max_iterations: usize,
+    user_name: String,
+    notes_dir: Option<String>,
 }
 
 #[cfg(feature = "plugin-homebuilder")]
 impl HomebuilderAgent {
     pub fn new(cfg: &HomebuildAgentConfig) -> Self {
         Self {
-            max_iterations: cfg.max_iterations,
+            user_name: cfg.user_name.clone(),
+            notes_dir: cfg.notes_dir.as_ref().map(|p| p.to_string_lossy().into_owned()),
         }
     }
 }
@@ -140,9 +148,11 @@ impl Agent for HomebuilderAgent {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
-        let max_iterations = self.max_iterations;
+        let user_name = self.user_name.clone();
+        let notes_dir = self.notes_dir.clone();
+
         tokio::spawn(async move {
-            let loop_ = loop_::HomebuilderLoop::new(max_iterations);
+            let loop_ = loop_::HomebuilderLoop::new(user_name, notes_dir);
             let stream_result = loop_
                 .run_stream(channel_id.clone(), content, session_id.clone(), state)
                 .await;
@@ -183,9 +193,11 @@ impl Agent for HomebuilderAgent {
         reply_tx: oneshot::Sender<BusResult>,
         state: Arc<AgentsState>,
     ) {
-        let max_iterations = self.max_iterations;
+        let user_name = self.user_name.clone();
+        let notes_dir = self.notes_dir.clone();
+
         tokio::spawn(async move {
-            let loop_ = loop_::HomebuilderLoop::new(max_iterations);
+            let loop_ = loop_::HomebuilderLoop::new(user_name, notes_dir);
             let result = loop_
                 .run_stream(channel_id, content, session_id, state)
                 .await;

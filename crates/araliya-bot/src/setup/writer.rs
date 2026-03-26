@@ -173,10 +173,7 @@ fn maybe_add_key(existing: &str, lines: &mut Vec<String>, key: &str, value: &str
 
 fn render_agents_block(profile: &BotProfile) -> (&'static str, String) {
     match profile {
-        BotProfile::BasicChat => (
-            "basic_chat",
-            "[agents.basic_chat]\nenabled = true\n".into(),
-        ),
+        BotProfile::BasicChat => ("basic_chat", "[agents.basic_chat]\nenabled = true\n".into()),
         BotProfile::SessionChat => (
             "chat",
             "[agents.chat]\nenabled = true\nmemory = [\"basic_session\"]\n".into(),
@@ -266,10 +263,7 @@ mod tests {
         write_config(&dummy_answers(), &path).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: toml::Value = toml::from_str(&content).unwrap();
-        assert_eq!(
-            parsed["agents"]["default"].as_str().unwrap(),
-            "basic_chat"
-        );
+        assert_eq!(parsed["agents"]["default"].as_str().unwrap(), "basic_chat");
     }
 
     #[test]

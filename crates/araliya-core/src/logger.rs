@@ -1,6 +1,8 @@
 //! Logging initialisation via tracing-subscriber.
 //!
-//! Call [`init`] once at startup, after runtime settings are resolved.
+//! Call [`init`] once at startup for a standard fmt subscriber, or use
+//! [`build_filter`] + [`build_writer`] to compose a custom layered
+//! subscriber (e.g. with an observability layer in the binary crate).
 
 use std::path::Path;
 
@@ -10,31 +12,30 @@ use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
 use crate::error::AppError;
 
-/// Initialise the global tracing subscriber.
+/// Build an [`EnvFilter`] from a level string and preference flag.
 ///
-/// `level` accepts standard level strings: `"error"`, `"warn"`, `"info"`,
-/// `"debug"`, `"trace"`.
-///
-/// If `prefer_level` is `true`, `level` takes precedence and `RUST_LOG` is only
-/// used as a fallback when `level` is invalid. If `prefer_level` is `false`,
-/// `RUST_LOG` takes precedence and `level` is the fallback.
-pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<(), AppError> {
-    let filter = if prefer_level {
+/// If `prefer_level` is `true`, `level` takes precedence and `RUST_LOG` is
+/// the fallback. If `false`, `RUST_LOG` wins and `level` is the fallback.
+pub fn build_filter(level: &str, prefer_level: bool) -> Result<EnvFilter, AppError> {
+    if prefer_level {
         match EnvFilter::try_new(level) {
-            Ok(filter) => filter,
+            Ok(filter) => Ok(filter),
             Err(level_err) => EnvFilter::try_from_default_env().map_err(|env_err| {
                 AppError::Logger(format!(
                     "invalid log level '{level}': {level_err}; RUST_LOG parse failed: {env_err}"
                 ))
-            })?,
+            }),
         }
     } else {
         EnvFilter::try_from_default_env()
             .or_else(|_| EnvFilter::try_new(level))
-            .map_err(|e| AppError::Logger(format!("invalid log level '{level}': {e}")))?
-    };
+            .map_err(|e| AppError::Logger(format!("invalid log level '{level}': {e}")))
+    }
+}
 
-    let writer = if let Some(path) = log_file {
+/// Build a [`BoxMakeWriter`] targeting a log file (append mode) or stderr.
+pub fn build_writer(log_file: Option<&Path>) -> Result<BoxMakeWriter, AppError> {
+    if let Some(path) = log_file {
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -42,10 +43,20 @@ pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<
             .map_err(|e| {
                 AppError::Logger(format!("failed to open log file '{}': {e}", path.display()))
             })?;
-        BoxMakeWriter::new(file)
+        Ok(BoxMakeWriter::new(file))
     } else {
-        BoxMakeWriter::new(std::io::stderr)
-    };
+        Ok(BoxMakeWriter::new(std::io::stderr))
+    }
+}
+
+/// Initialise the global tracing subscriber with a standard fmt layer.
+///
+/// For composing additional layers (e.g. an observability bridge), use
+/// [`build_filter`] + [`build_writer`] directly and call
+/// `tracing_subscriber::registry().with(filter).with(fmt).with(extra).try_init()`.
+pub fn init(level: &str, prefer_level: bool, log_file: Option<&Path>) -> Result<(), AppError> {
+    let filter = build_filter(level, prefer_level)?;
+    let writer = build_writer(log_file)?;
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -94,5 +105,23 @@ mod tests {
             Err(AppError::Logger(msg)) if msg.contains("set subscriber") => {}
             Err(e) => panic!("unexpected error: {e}"),
         }
+    }
+
+    #[test]
+    fn build_filter_prefers_level_when_flagged() {
+        let f = build_filter("debug", true);
+        assert!(f.is_ok());
+    }
+
+    #[test]
+    fn build_filter_fallback_when_not_flagged() {
+        let f = build_filter("info", false);
+        assert!(f.is_ok());
+    }
+
+    #[test]
+    fn build_writer_stderr_default() {
+        let w = build_writer(None);
+        assert!(w.is_ok());
     }
 }

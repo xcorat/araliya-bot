@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEEDLING — Design Guide v0.2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&family=Fraunces:ital,wght@0,200;1,200&display=swap" rel="stylesheet">
+<style>
+:root {
+  --void:   #080c0e;
+  --deep:   #0d1317;
+  --plate:  #111b1f;
+  --seam:   #1c2d33;
+  --hull:   #2a404a;
+  --oxide:  #3d5a65;
+  --haze:   #7a9aa5;
+  --mist:   #b8ced6;
+  --bone:   #e8eef0;
+  --ice:    #4db8cc;
+  --dew:    #7ed4e2;
+  --frost:  #b2eaf2;
+  --amber:  #c4892a;
+  --rust:   #b04820;
+  --signal: #2ac48a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{background:var(--void);color:var(--mist);scroll-behavior:smooth}
+body{font-family:'JetBrains Mono',monospace;font-weight:300;font-size:13px;line-height:1.7;max-width:1100px;margin:0 auto;padding:0 2rem 8rem}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.05) 2px,rgba(0,0,0,.05) 4px);pointer-events:none;z-index:999}
+h1,h2,h3{font-family:'Cormorant Garamond',serif;font-weight:300;letter-spacing:-.01em}
+.sec{border-top:1px solid var(--seam);padding:5rem 0 0;margin-top:5rem}
+.lbl{font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--oxide);margin-bottom:2rem}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--seam)}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam)}
+.cell{background:var(--plate);padding:2rem}
+
+/* HERO */
+.hero{min-height:92vh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 0 4rem;position:relative;overflow:hidden}
+.hero-bg{position:absolute;inset:0;opacity:.15}
+.hero-title{font-family:'Cormorant Garamond',serif;font-size:clamp(72px,12vw,160px);font-weight:300;line-height:.88;letter-spacing:-.035em;color:var(--bone);position:relative;z-index:2}
+.hero-title em{font-style:italic;color:var(--ice)}
+.hero-tag{font-family:'Fraunces',serif;font-size:clamp(14px,1.8vw,19px);font-weight:200;font-style:italic;color:var(--haze);max-width:460px;margin-top:1.5rem;line-height:1.55;position:relative;z-index:2}
+.hero-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--hull);margin-top:1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap;position:relative;z-index:2}
+.hero-sub span{color:var(--ice)}
+
+/* PALETTE */
+.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:2px;margin-top:1.5rem}
+.sw{aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;padding:11px;transition:transform .18s;cursor:default}
+.sw:hover{transform:scale(1.04);z-index:2}
+.sw-n{font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase}
+.sw-h{font-size:9px;opacity:.5;margin-top:2px}
+.sw-r{font-size:9px;opacity:.38;margin-top:4px;line-height:1.4}
+
+/* TYPE */
+.ts{background:var(--plate);border:1px solid var(--seam);padding:2rem}
+.tlbl{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--oxide);margin-bottom:1rem}
+
+/* WORD CLOUD */
+.wc{padding:3rem 0;display:flex;flex-wrap:wrap;gap:.35rem .85rem;align-items:baseline;line-height:1.0}
+.xl{font-family:'Cormorant Garamond',serif;font-size:62px;font-weight:300;color:var(--bone);line-height:.88}
+.lg{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:var(--mist)}
+.md{font-size:19px;font-weight:300;color:var(--haze)}
+.sm{font-size:13px;color:var(--oxide)}
+.xs{font-size:10px;letter-spacing:.08em;color:var(--seam)}
+.ci{color:var(--ice)!important}.cd{color:var(--dew)!important}.ca{color:var(--amber)!important}.cr{color:var(--rust)!important}.cs{color:var(--signal)!important}.it{font-style:italic}
+
+/* TONE */
+.tg{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--seam);margin-top:2rem}
+.tc{background:var(--plate);padding:2rem}
+.tc h3{font-size:20px;margin-bottom:.6rem;color:var(--bone)}
+.tc p{color:var(--haze);font-size:11px;line-height:1.8}
+.eg{margin-top:1.2rem;padding:.875rem 1rem;background:var(--deep);border-left:2px solid var(--ice);font-family:'Fraunces',serif;font-style:italic;font-weight:200;font-size:13px;color:var(--mist);line-height:1.7}
+.eg.bad{border-left-color:var(--rust);color:var(--haze);font-family:'JetBrains Mono',monospace;font-style:normal;font-size:11px}
+.do{border-top:2px solid var(--ice)}.dont{border-top:2px solid var(--rust)}
+
+/* SCREENS */
+.sr{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.screen{background:var(--plate);border:1px solid var(--seam);overflow:hidden;position:relative}
+.chrome{height:27px;background:var(--deep);border-bottom:1px solid var(--seam);display:flex;align-items:center;padding:0 10px;gap:5px}
+.dot{width:7px;height:7px;border-radius:50%}
+.d1{background:#5a2010}.d2{background:#5a4010}.d3{background:#104a5a}
+.curl{font-size:9px;color:var(--oxide);letter-spacing:.04em;margin-left:6px}
+.sb{padding:1.25rem}
+.sn{position:absolute;top:33px;right:10px;font-size:9px;color:var(--hull);letter-spacing:.1em}
+
+/* DOWNLOAD */
+.sr-ring{width:50px;height:50px;border-radius:50%;border:1px solid var(--ice);display:flex;align-items:center;justify-content:center;margin-bottom:.875rem;position:relative}
+.sr-ring::before{content:'';position:absolute;width:36px;height:36px;border-radius:50%;border:1px solid var(--seam)}
+.sr-core{width:15px;height:15px;border-radius:50%;background:var(--ice);opacity:.7}
+.dl-t{font-family:'Cormorant Garamond',serif;font-size:17px;color:var(--bone);margin-bottom:2px}
+.dl-btn{width:100%;background:var(--ice);color:var(--void);border:none;padding:7px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;cursor:pointer;text-transform:uppercase;font-weight:500;margin-top:.625rem}
+.tag{display:inline-block;font-size:9px;letter-spacing:.06em;padding:2px 6px;border:1px solid var(--seam);color:var(--oxide);margin:2px}
+
+/* TERMINAL */
+.term{background:var(--void);border:1px solid var(--seam);padding:1rem;font-size:10px;line-height:2}
+.p{color:var(--ice)}.cmd{color:var(--bone)}.out{color:var(--haze)}.q{color:var(--amber)}.ok{color:var(--ice)}.ic{color:var(--dew)}
+.cursor{display:inline-block;width:7px;height:12px;background:var(--ice);animation:blink 1s step-end infinite;vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* SETUP FLOW */
+.ss{display:grid;grid-template-columns:54px 1fr;gap:0 2rem}
+.spine{display:flex;flex-direction:column;align-items:center}
+.sn2{width:32px;height:32px;border-radius:50%;border:1px solid var(--seam);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--oxide);flex-shrink:0;background:var(--plate);z-index:1}
+.sn2.on{border-color:var(--ice);color:var(--ice);background:var(--deep)}
+.sl{width:1px;flex:1;background:var(--seam);min-height:2rem}
+.sc2{padding:2px 0 3rem}
+.st{font-family:'Cormorant Garamond',serif;font-size:21px;color:var(--bone);margin-bottom:.3rem}
+.sb2{color:var(--haze);font-size:11px;line-height:1.8;max-width:600px}
+.scode{margin-top:.75rem;background:var(--void);border:1px solid var(--seam);padding:.875rem;font-size:10px;line-height:2;overflow-x:auto}
+.choices{display:flex;flex-wrap:wrap;gap:5px;margin-top:.75rem}
+.choice{border:1px solid var(--seam);padding:6px 13px;font-size:10px;color:var(--haze);cursor:pointer;letter-spacing:.06em;background:transparent;font-family:'JetBrains Mono',monospace;transition:all .15s}
+.choice:hover,.choice.on{border-color:var(--ice);color:var(--ice);background:var(--deep)}
+
+/* COMPONENTS */
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--seam);margin-top:2rem}
+.cc{background:var(--plate);padding:2rem}
+.clbl{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--oxide);margin-bottom:1.25rem}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.pdot{width:5px;height:5px;border-radius:50%}
+.pa{border:1px solid var(--ice);color:var(--ice)}.pa .pdot{background:var(--ice);animation:pp 2s ease-in-out infinite}
+.ps{border:1px solid var(--dew);color:var(--dew)}.ps .pdot{background:var(--dew)}
+.pd{border:1px solid var(--oxide);color:var(--oxide)}.pd .pdot{background:var(--oxide)}
+@keyframes pp{0%,100%{opacity:1}50%{opacity:.18}}
+.nc{border:1px solid var(--seam);padding:.875rem;margin-bottom:5px;display:flex;align-items:flex-start;gap:10px}
+.nav{width:30px;height:30px;border-radius:50%;border:1px solid var(--seam);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--haze);background:var(--deep)}
+.nn{font-size:12px;color:var(--bone)}.nid{font-size:9px;color:var(--dew);word-break:break-all}.nm{font-size:10px;color:var(--oxide);margin-top:3px}
+.gb{height:1px;background:var(--seam);margin:7px 0;position:relative}
+.gf{height:100%;background:var(--ice)}.gf::after{content:'';position:absolute;right:0;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--ice)}
+.ap{border:1px solid var(--seam);background:var(--deep);padding:1rem;border-left:2px solid var(--ice)}
+.atag{font-size:9px;color:var(--ice);letter-spacing:.1em;display:block;margin-bottom:4px}
+.av{font-family:'Fraunces',serif;font-style:italic;font-weight:200;font-size:14px;color:var(--mist);line-height:1.7}
+
+/* HERO SCENE SPEC */
+.sw2{background:var(--plate);border:1px solid var(--seam)}
+.sc-cap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--seam)}
+.scb{background:var(--deep);padding:1.5rem}
+.sclbl{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--oxide);margin-bottom:.7rem}
+.scbody{font-size:11px;color:var(--haze);line-height:1.9}
+.scbody strong{color:var(--bone);font-weight:400}.scbody em{color:var(--ice);font-style:normal}
+
+/* NAMING */
+.nt{width:100%;border-collapse:collapse;margin-top:1.25rem}
+.nt th{text-align:left;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--oxide);padding:0 1rem .875rem 0;font-weight:400}
+.nt td{padding:.55rem 1rem .55rem 0;border-top:1px solid var(--seam);font-size:11px;vertical-align:top}
+.nt td:first-child{color:var(--dew);width:175px}.nt td:last-child{color:var(--haze)}
+
+/* PRINCIPLES */
+.pr{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam)}
+.pc{background:var(--plate);padding:2rem}
+.pn{font-family:'Cormorant Garamond',serif;font-size:50px;font-weight:300;color:var(--seam);line-height:.88;margin-bottom:.7rem}
+.pt{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--bone);margin-bottom:.35rem}
+.pb{font-size:11px;color:var(--oxide);line-height:1.7}
+
+/* ARCH */
+.acs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam)}
+.ac{background:var(--plate);padding:2rem}
+.act{color:var(--dew);font-size:10px;letter-spacing:.14em;margin-bottom:.7rem}
+.acn{font-family:'Cormorant Garamond',serif;font-size:21px;color:var(--bone);margin-bottom:.45rem}
+.acb{font-size:11px;color:var(--oxide);line-height:1.7}
+
+footer{margin-top:8rem;padding-top:2rem;border-top:1px solid var(--seam);display:flex;justify-content:space-between;align-items:flex-end;color:var(--hull);font-size:10px;letter-spacing:.1em}
+.fm{font-family:'Cormorant Garamond',serif;font-size:21px;color:var(--bone)}
+
+@keyframes np{0%,100%{r:3;opacity:.5}50%{r:5;opacity:1}}
+@keyframes dm{to{stroke-dashoffset:-20}}
+@media(max-width:700px){.sr,.tg,.cg,.pr,.acs,.sc-cap,.g2,.g3{grid-template-columns:1fr}.ss{grid-template-columns:42px 1fr}}
+</style>
+</head>
+<body>
+
+<!-- ══ HERO ══ -->
+<div class="hero">
+  <svg class="hero-bg" viewBox="0 0 1100 800" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <style>
+      .hp{fill:none;stroke:#4db8cc;stroke-width:.5;stroke-dasharray:4 7;animation:dm 10s linear infinite}
+      .hp:nth-child(2){animation-duration:14s;animation-delay:-4s;stroke:#7ed4e2;stroke-width:.3}
+      .hp:nth-child(3){animation-duration:18s;animation-delay:-9s}
+      .hp:nth-child(4){animation-duration:11s;animation-delay:-2s;stroke:#7ed4e2;stroke-width:.4}
+      .hp:nth-child(5){animation-duration:16s;animation-delay:-6s}
+      .hn{fill:#4db8cc;animation:np 3.5s ease-in-out infinite}
+      .hn:nth-child(7){animation-delay:-1.2s}.hn:nth-child(8){animation-delay:-2.4s}.hn:nth-child(9){animation-delay:-1.8s}
+    </style>
+    <path class="hp" d="M80,650Q200,540 360,510Q460,490 540,410Q620,320 720,340Q820,360 940,300"/>
+    <path class="hp" d="M40,740Q160,660 300,590Q400,540 450,460Q520,360 620,380Q720,400 840,320Q940,260 1060,280"/>
+    <path class="hp" d="M180,780Q280,700 420,650Q530,600 590,520Q660,420 760,440Q860,460 960,400"/>
+    <path class="hp" d="M0,580Q120,510 250,480Q350,450 420,390Q500,310 600,320Q700,335 800,270Q900,210 1040,230"/>
+    <path class="hp" d="M140,800Q240,730 380,700Q480,660 530,590Q600,500 700,520Q800,540 900,480"/>
+    <path class="hp" d="M360,510Q350,560 330,600"/>
+    <path class="hp" d="M540,410Q530,450 510,470"/>
+    <path class="hp" d="M720,340Q740,370 730,420"/>
+    <circle class="hn" cx="360" cy="510" r="3"/>
+    <circle class="hn" cx="540" cy="410" r="3"/>
+    <circle class="hn" cx="720" cy="340" r="4"/>
+    <circle class="hn" cx="300" cy="590" r="2.5"/>
+    <circle class="hn" cx="620" cy="380" r="3"/>
+    <circle class="hn" cx="450" cy="460" r="2"/>
+  </svg>
+  <div class="hero-title"><em>seed</em>ling</div>
+  <div class="hero-tag">A gardener for your digital presence.<br>Sovereign. Tended. Alive.</div>
+  <div class="hero-sub">
+    <span>rust</span> · <span>libp2p</span> · <span>crdt</span> · <span>kademlia-dht</span> · <span>agent-os</span>
+    <span style="color:var(--hull);margin-left:auto;font-style:italic">Design Guide — v0.2</span>
+  </div>
+</div>
+
+
+<!-- ══ 00 — PRINCIPLES ══ -->
+<div class="sec">
+  <div class="lbl">00 — Principles</div>
+  <div class="pr">
+    <div class="pc"><div class="pn">01</div><div class="pt">Substrate visible</div><div class="pb">Show the infrastructure. Never hide it.</div></div>
+    <div class="pc"><div class="pn">02</div><div class="pt">Tend, don't control</div><div class="pb">Agent suggests. You guide. No traps, no hunger.</div></div>
+    <div class="pc"><div class="pn">03</div><div class="pt">Signal over noise</div><div class="pb">Real pulse, real latency. Nothing simulated.</div></div>
+    <div class="pc"><div class="pn">04</div><div class="pt">Machine precision</div><div class="pb">Monospace. Minimal. Cold. No warmth as decoration.</div></div>
+    <div class="pc"><div class="pn">05</div><div class="pt">The seed is the covenant</div><div class="pb">The hash you verify is your trust with the network.</div></div>
+    <div class="pc"><div class="pn">06</div><div class="pt">Divergence is natural</div><div class="pb">CRDTs converge. Patience of distributed systems.</div></div>
+  </div>
+</div>
+
+
+<!-- ══ 01 — COLOR ══ -->
+<div class="sec">
+  <div class="lbl">01 — Color</div>
+  <p style="color:var(--oxide);font-size:11px;max-width:560px;margin-bottom:1.5rem">Coolant black. Oxidized steel. Ice signal against dark plate. Primary accent shifts from warm-organic (v0 phosphor/green) to cold-digital — <em style="color:var(--ice)">ice</em> and <em style="color:var(--dew)">dew</em> carry all active-state weight.</p>
+
+  <div class="pg">
+    <div class="sw" style="background:#080c0e;color:#2a404a"><div class="sw-n">Void</div><div class="sw-h">#080c0e</div><div class="sw-r">Primary bg</div></div>
+    <div class="sw" style="background:#0d1317;color:#2a404a"><div class="sw-n">Deep</div><div class="sw-h">#0d1317</div><div class="sw-r">Panels · inset</div></div>
+    <div class="sw" style="background:#111b1f;color:#3d5a65"><div class="sw-n">Plate</div><div class="sw-h">#111b1f</div><div class="sw-r">Cards · surface</div></div>
+    <div class="sw" style="background:#1c2d33;color:#3d5a65"><div class="sw-n">Seam</div><div class="sw-h">#1c2d33</div><div class="sw-r">Borders · dividers</div></div>
+    <div class="sw" style="background:#2a404a;color:#7a9aa5"><div class="sw-n">Hull</div><div class="sw-h">#2a404a</div><div class="sw-r">Heavy borders</div></div>
+    <div class="sw" style="background:#3d5a65;color:#b8ced6"><div class="sw-n">Oxide</div><div class="sw-h">#3d5a65</div><div class="sw-r">Labels · inactive</div></div>
+    <div class="sw" style="background:#7a9aa5;color:#080c0e"><div class="sw-n">Haze</div><div class="sw-h">#7a9aa5</div><div class="sw-r">Secondary text</div></div>
+    <div class="sw" style="background:#b8ced6;color:#080c0e"><div class="sw-n">Mist</div><div class="sw-h">#b8ced6</div><div class="sw-r">Body text</div></div>
+    <div class="sw" style="background:#e8eef0;color:#0d1317"><div class="sw-n">Bone</div><div class="sw-h">#e8eef0</div><div class="sw-r">Headings</div></div>
+    <div class="sw" style="background:#4db8cc;color:#080c0e"><div class="sw-n">Ice ★</div><div class="sw-h">#4db8cc</div><div class="sw-r">Primary accent · CTA · alive</div></div>
+    <div class="sw" style="background:#7ed4e2;color:#080c0e"><div class="sw-n">Dew ★</div><div class="sw-h">#7ed4e2</div><div class="sw-r">Ice hover · network data</div></div>
+    <div class="sw" style="background:#b2eaf2;color:#080c0e"><div class="sw-n">Frost</div><div class="sw-h">#b2eaf2</div><div class="sw-r">High signal emphasis</div></div>
+    <div class="sw" style="background:#c4892a;color:#080c0e"><div class="sw-n">Amber</div><div class="sw-h">#c4892a</div><div class="sw-r">Warning · agent</div></div>
+    <div class="sw" style="background:#b04820;color:#e8eef0"><div class="sw-n">Rust</div><div class="sw-h">#b04820</div><div class="sw-r">Error · also: the lang</div></div>
+    <div class="sw" style="background:#2ac48a;color:#080c0e"><div class="sw-n">Signal</div><div class="sw-h">#2ac48a</div><div class="sw-r">Confirmed · rooted</div></div>
+  </div>
+
+  <div class="g2" style="margin-top:2rem">
+    <div class="cell">
+      <div class="lbl">Semantics</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <tr style="border-bottom:1px solid var(--seam)"><td style="padding:7px 0;color:var(--ice)">● Ice / Dew</td><td style="color:var(--haze)">online · active · CTA · network</td></tr>
+        <tr style="border-bottom:1px solid var(--seam)"><td style="padding:7px 0;color:var(--amber)">● Amber</td><td style="color:var(--haze)">syncing · agent processing</td></tr>
+        <tr style="border-bottom:1px solid var(--seam)"><td style="padding:7px 0;color:var(--rust)">● Rust</td><td style="color:var(--haze)">error · disconnected · blight</td></tr>
+        <tr style="border-bottom:1px solid var(--seam)"><td style="padding:7px 0;color:var(--signal)">● Signal</td><td style="color:var(--haze)">confirmed · rooted · ok</td></tr>
+        <tr><td style="padding:7px 0;color:var(--oxide)">● Oxide</td><td style="color:var(--haze)">dormant · inactive · metadata</td></tr>
+      </table>
+    </div>
+    <div class="cell">
+      <div class="lbl">Never</div>
+      <ul style="font-size:11px;color:var(--haze);list-style:none;line-height:2.3">
+        <li>— Green as primary (v0 phosphor — retired)</li>
+        <li>— Warm backgrounds</li>
+        <li>— Decorative gradients</li>
+        <li>— Border radius &gt; 4px</li>
+        <li>— White (#fff) backgrounds</li>
+        <li>— Light mode</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ 02 — TYPOGRAPHY ══ -->
+<div class="sec">
+  <div class="lbl">02 — Typography</div>
+  <div class="g2">
+    <div class="ts">
+      <div class="tlbl">Display — Cormorant Garamond 300</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-weight:300;font-size:46px;color:var(--bone);line-height:.95;letter-spacing:-.02em">Your garden<br><em style="color:var(--ice)">is tending</em></div>
+      <div style="margin-top:1rem;font-size:11px;color:var(--oxide)">Headings · hero · display. Weight 300 only. Italics for emphasis.</div>
+    </div>
+    <div class="ts">
+      <div class="tlbl">Interface — JetBrains Mono 300/400</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:300;font-size:27px;color:var(--bone);line-height:1.2;letter-spacing:-.01em">Agent <span style="color:var(--ice)">online</span><br>Peers: <span style="color:var(--dew)">12</span></div>
+      <div style="margin-top:1rem;font-size:11px;color:var(--oxide)">Everything functional. The interface is the terminal.</div>
+    </div>
+  </div>
+  <div class="ts" style="margin-top:1px">
+    <div class="tlbl">Agent voice — Fraunces 200 Italic</div>
+    <div style="font-family:'Fraunces',serif;font-style:italic;font-weight:200;font-size:19px;color:var(--mist);line-height:1.6;max-width:680px">"Your presence hasn't been tended in <span style="color:var(--amber)">14 days</span>. <span style="color:var(--dew)">3 peers</span> hold your last record. Shall I propagate, or will you guide me first?"</div>
+    <div style="margin-top:.7rem;font-size:11px;color:var(--oxide)">Agent communication only — distinct from system output.</div>
+  </div>
+  <div style="margin-top:2rem">
+    <div class="lbl">Scale</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <tr style="border-bottom:1px solid var(--seam)"><td style="padding:10px 0;color:var(--oxide);width:90px">hero</td><td style="font-family:'Cormorant Garamond',serif;font-size:52px;font-weight:300;color:var(--bone);line-height:1">Aa</td><td style="color:var(--haze)">Cormorant 300 · 80–160px · clamp()</td></tr>
+      <tr style="border-bottom:1px solid var(--seam)"><td style="padding:10px 0;color:var(--oxide)">h1</td><td style="font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:var(--bone)">Seedling</td><td style="color:var(--haze)">Cormorant 300 · 30–44px</td></tr>
+      <tr style="border-bottom:1px solid var(--seam)"><td style="padding:10px 0;color:var(--oxide)">label</td><td style="font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--oxide)">Section</td><td style="color:var(--haze)">Mono 300 · 10px · 0.22em · uppercase</td></tr>
+      <tr style="border-bottom:1px solid var(--seam)"><td style="padding:10px 0;color:var(--oxide)">body</td><td style="font-size:13px;color:var(--mist)">Tending since init.</td><td style="color:var(--haze)">Mono 300 · 13px · 1.7 lh</td></tr>
+      <tr><td style="padding:10px 0;color:var(--oxide)">micro</td><td style="font-size:10px;color:var(--oxide)">peer_id: 12D3KooW…</td><td style="color:var(--haze)">Mono 300 · 10px · hashes · IDs</td></tr>
+    </table>
+  </div>
+</div>
+
+
+<!-- ══ 03 — VOCABULARY ══ -->
+<div class="sec">
+  <div class="lbl">03 — Language</div>
+  <div class="wc">
+    <span class="xl it ci">tend</span>
+    <span class="lg">sovereign</span>
+    <span class="md ca">rhizome</span>
+    <span class="xl">garden</span>
+    <span class="sm ci">kademlia</span>
+    <span class="lg it">presence</span>
+    <span class="md cr">rust</span>
+    <span class="xs">peer_id</span>
+    <span class="xl ci">root</span>
+    <span class="sm">merkle</span>
+    <span class="lg">seed</span>
+    <span class="md cd">gossip</span>
+    <span class="xl it ca">alive</span>
+    <span class="sm">crdt</span>
+    <span class="md">lattice</span>
+    <span class="lg ci">signal</span>
+    <span class="xs">propagate</span>
+    <span class="md">pruning</span>
+    <span class="xl">yours</span>
+    <span class="sm cr">entropy</span>
+    <span class="lg it">thread</span>
+    <span class="md cd">topology</span>
+    <span class="lg">converge</span>
+    <span class="xs">dht</span>
+    <span class="xl it">grow</span>
+    <span class="md ca">spore</span>
+    <span class="sm">federated</span>
+    <span class="lg">ground</span>
+    <span class="xs">libp2p</span>
+    <span class="xl cr">compost</span>
+    <span class="sm">quorum</span>
+    <span class="md cd">mesh</span>
+  </div>
+  <div style="margin-top:2rem">
+    <div class="lbl">Naming</div>
+    <table class="nt">
+      <tr><th>technical</th><th>seedling language</th></tr>
+      <tr><td>install</td><td>plant your seed</td></tr>
+      <tr><td>setup / onboarding</td><td>germination / first tending</td></tr>
+      <tr><td>config</td><td>shaping the soil</td></tr>
+      <tr><td>social profile</td><td>your presence / your garden</td></tr>
+      <tr><td>agent</td><td>your gardener</td></tr>
+      <tr><td>p2p peers</td><td>neighboring gardens</td></tr>
+      <tr><td>CRDT merge</td><td>convergence / reconciling</td></tr>
+      <tr><td>DHT lookup</td><td>reaching into the lattice</td></tr>
+      <tr><td>publish / update</td><td>tend / propagate</td></tr>
+      <tr><td>delete</td><td>compost / prune</td></tr>
+      <tr><td>error / crash</td><td>blight / wilt</td></tr>
+      <tr><td>private key</td><td>seed signature</td></tr>
+    </table>
+  </div>
+</div>
+
+
+<!-- ══ 04 — TONE ══ -->
+<div class="sec">
+  <div class="lbl">04 — Voice</div>
+  <div class="tg">
+    <div class="tc do">
+      <h3>Patient + precise</h3>
+      <p>No hand-holding. No exclamation points. The gardener has seen things grow and die.</p>
+      <div class="eg">"Your presence hasn't been tended in 14 days. Three peers hold your last signature. Shall I propagate, or will you guide the content first?"</div>
+    </div>
+    <div class="tc dont">
+      <h3>Never: urgent</h3>
+      <p>No "ACTION REQUIRED". No red banners. Status is informational, never coercive.</p>
+      <div class="eg bad">✗ "Your profile is OUT OF DATE! Update NOW!"<br><br>✗ "You have 7 unread notifications — don't miss out!"</div>
+    </div>
+    <div class="tc do">
+      <h3>Technical, not technocratic</h3>
+      <p>Show hashes, peer IDs, CRDT state. Frame through the garden. Both coexist.</p>
+      <div class="eg">"4 of 7 peers confirm the merge. The lattice is reconciling — the signal is propagating outward."</div>
+    </div>
+    <div class="tc dont">
+      <h3>Never: corporate-friendly</h3>
+      <p>No "Great!", no emojis in system output, no SaaS onboarding energy.</p>
+      <div class="eg bad">✗ "Welcome to Seedling! 🌱 We're so excited!"<br><br>✗ "Let's get you set up in just 3 easy steps!"</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ 05 — HERO SCENE SPEC ══ -->
+<div class="sec">
+  <div class="lbl">05 — Hero · 3D Scene Concept</div>
+  <p style="color:var(--haze);font-size:11px;max-width:640px;margin-bottom:2rem">Full-viewport 3D scene. The camera and geometry respond to the user — the product's metaphor is revealed through interaction, not copy.</p>
+
+  <div class="sw2">
+    <!-- Cross-section diagram -->
+    <svg width="100%" viewBox="0 0 1060 490" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- State labels -->
+      <text font-family="JetBrains Mono,monospace" font-size="9" fill="#3d5a65" letter-spacing="3" x="40" y="28">STATE A — initial</text>
+      <text font-family="JetBrains Mono,monospace" font-size="9" fill="#3d5a65" letter-spacing="3" x="580" y="28">STATE B — on click</text>
+      <line x1="530" y1="16" x2="530" y2="470" stroke="#1c2d33" stroke-width="1" stroke-dasharray="3 5"/>
+
+      <!-- ═ STATE A ═ -->
+      <!-- Ground plane (30° perspective) -->
+      <polygon points="40,285 490,285 460,370 10,370" fill="#111b1f" stroke="#1c2d33" stroke-width="1"/>
+      <!-- Grid lines on plane -->
+      <line x1="77"  y1="287" x2="49"  y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="154" y1="287" x2="126" y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="231" y1="287" x2="203" y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="308" y1="287" x2="280" y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="385" y1="287" x2="357" y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="462" y1="287" x2="434" y2="368" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+      <line x1="42"  y1="312" x2="490" y2="312" stroke="#1c2d33" stroke-width=".3" opacity=".4"/>
+      <line x1="37"  y1="339" x2="476" y2="339" stroke="#1c2d33" stroke-width=".3" opacity=".3"/>
+
+      <!-- Seed (underground, barely hinted) -->
+      <ellipse cx="265" cy="335" rx="13" ry="8" fill="#0d1317" stroke="#2a404a" stroke-width=".8" opacity=".8"/>
+      <ellipse cx="265" cy="335" rx="6" ry="4" fill="#1c2d33" opacity=".7"/>
+      <!-- root tendrils -->
+      <path d="M261,342 Q252,358 243,372" fill="none" stroke="#1c2d33" stroke-width=".7" opacity=".6"/>
+      <path d="M265,343 Q265,362 258,378" fill="none" stroke="#1c2d33" stroke-width=".7" opacity=".6"/>
+      <path d="M270,342 Q279,358 288,372" fill="none" stroke="#1c2d33" stroke-width=".7" opacity=".6"/>
+
+      <!-- Sapling 1 -->
+      <line x1="198" y1="285" x2="194" y2="256" stroke="#2a404a" stroke-width="1.1"/>
+      <path d="M194,268 Q183,260 181,250" fill="none" stroke="#2a404a" stroke-width=".7"/>
+      <path d="M194,262 Q205,253 207,244" fill="none" stroke="#2a404a" stroke-width=".7"/>
+      <!-- Sapling 2 -->
+      <line x1="326" y1="283" x2="323" y2="260" stroke="#2a404a" stroke-width="1.1"/>
+      <path d="M323,272 Q313,263 311,254" fill="none" stroke="#2a404a" stroke-width=".7"/>
+
+      <!-- Title text -->
+      <text font-family="Cormorant Garamond,serif" font-size="32" font-weight="300" fill="#e8eef0" x="74" y="226" opacity=".85">seed</text>
+      <text font-family="Cormorant Garamond,serif" font-size="32" font-style="italic" font-weight="300" fill="#4db8cc" x="128" y="226" opacity=".9">ling</text>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="74" y="244" opacity=".7" letter-spacing="1">your garden, yours.</text>
+
+      <!-- Camera angle -->
+      <path d="M420,430 Q450,418 460,398" fill="none" stroke="#3d5a65" stroke-width=".8" marker-end="url(#arr)"/>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="370" y="448">cam ≈ 30° elev.</text>
+
+      <!-- ═ TRANSITION ARROW ═ -->
+      <path d="M496,282 Q515,268 548,282" fill="none" stroke="#4db8cc" stroke-width="1" marker-end="url(#arr)" opacity=".55"/>
+      <text font-family="JetBrains Mono,monospace" font-size="9" fill="#4db8cc" x="505" y="260">click</text>
+
+      <!-- ═ STATE B ═ -->
+      <!-- Horizon line -->
+      <line x1="556" y1="315" x2="1020" y2="315" stroke="#1c2d33" stroke-width="1"/>
+      <!-- Ground fill -->
+      <rect x="556" y="315" width="464" height="150" fill="#111b1f"/>
+      <line x1="556" y1="336" x2="1020" y2="336" stroke="#1c2d33" stroke-width=".3" opacity=".5"/>
+      <line x1="556" y1="366" x2="1020" y2="366" stroke="#1c2d33" stroke-width=".3" opacity=".3"/>
+      <line x1="556" y1="406" x2="1020" y2="406" stroke="#1c2d33" stroke-width=".25" opacity=".2"/>
+
+      <!-- Seed (cross-section, underground) -->
+      <ellipse cx="788" cy="362" rx="15" ry="9" fill="#0d1317" stroke="#3d5a65" stroke-width=".8"/>
+      <ellipse cx="788" cy="362" rx="7" ry="5" fill="#4db8cc" opacity=".35"/>
+      <!-- seed hover ring -->
+      <ellipse cx="788" cy="362" rx="26" ry="17" fill="none" stroke="#4db8cc" stroke-width=".5" stroke-dasharray="3 4" opacity=".4"/>
+
+      <!-- Download root (grows from seed) -->
+      <path d="M788,371 Q788,394 788,418" fill="none" stroke="#4db8cc" stroke-width="1" stroke-dasharray="2 3" opacity=".65"/>
+      <rect x="748" y="419" width="80" height="20" fill="#0d1317" stroke="#4db8cc" stroke-width=".7" opacity=".85"/>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#4db8cc" x="788" y="433" text-anchor="middle" letter-spacing="2">DOWNLOAD</text>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="788" y="458" text-anchor="middle" opacity=".7">hover seed to reveal</text>
+
+      <!-- Main stalk -->
+      <line x1="788" y1="315" x2="788" y2="210" stroke="#2a404a" stroke-width="1.4"/>
+      <!-- Leaf left -->
+      <path d="M788,258 Q762,246 756,232 Q768,236 788,250Z" fill="#1c2d33" stroke="#2a404a" stroke-width=".7"/>
+      <!-- Leaf right -->
+      <path d="M788,242 Q814,228 822,215 Q810,221 788,236Z" fill="#1c2d33" stroke="#2a404a" stroke-width=".7"/>
+
+      <!-- Leaf callouts -->
+      <line x1="822" y1="230" x2="870" y2="218" stroke="#3d5a65" stroke-width=".5" stroke-dasharray="2 3"/>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="874" y="222">hover → nav routes</text>
+      <line x1="756" y1="245" x2="870" y2="268" stroke="#3d5a65" stroke-width=".5" stroke-dasharray="2 3"/>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="874" y="272">hover → about / docs</text>
+
+      <!-- Flanking saplings (network suggestion) -->
+      <line x1="678" y1="315" x2="675" y2="278" stroke="#2a404a" stroke-width=".9" opacity=".65"/>
+      <path d="M675,291 Q665,283 663,275" fill="none" stroke="#2a404a" stroke-width=".6" opacity=".65"/>
+      <path d="M675,283 Q685,275 687,267" fill="none" stroke="#2a404a" stroke-width=".6" opacity=".65"/>
+      <line x1="892" y1="315" x2="890" y2="281" stroke="#2a404a" stroke-width=".9" opacity=".65"/>
+      <path d="M890,293 Q880,285 878,277" fill="none" stroke="#2a404a" stroke-width=".6" opacity=".65"/>
+      <path d="M890,285 Q900,277 902,268" fill="none" stroke="#2a404a" stroke-width=".6" opacity=".65"/>
+
+      <!-- Camera indicator B -->
+      <path d="M600,432 Q590,412 598,400" fill="none" stroke="#3d5a65" stroke-width=".8" marker-end="url(#arr)"/>
+      <text font-family="JetBrains Mono,monospace" font-size="8" fill="#3d5a65" x="560" y="448">cam = 0° (horizontal)</text>
+    </svg>
+
+    <!-- Annotation blocks -->
+    <div class="sc-cap">
+      <div class="scb">
+        <div class="sclbl">State A — load</div>
+        <div class="scbody">Camera <em>≈ 30° above horizontal</em>.<br><br><strong>Dark matte plane</strong> — graphene/granite, perspective grid. Title floats above surface. Saplings barely visible. Seed hinted underground.</div>
+      </div>
+      <div class="scb">
+        <div class="sclbl">Transition — click anywhere</div>
+        <div class="scbody">Camera pivots: <em>30° → 0°</em>, 900ms ease-in-out-cubic.<br><br>Ground cross-section becomes visible. Seed exposed below horizon. Stalk rises. Two flanking saplings suggest network presence.</div>
+      </div>
+      <div class="scb">
+        <div class="sclbl">State B — revealed</div>
+        <div class="scbody"><em>Seed</em> (underground): hover grows a download root downward — CTA appears.<br><br><em>Stalk leaves</em>: hover each to reveal nav branches.<br><br><em>Flanking saplings</em>: suggest the wider lattice.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-top:1px">
+    <div class="cell">
+      <div class="lbl">Material</div>
+      <ul style="font-size:11px;color:var(--haze);list-style:none;line-height:2.3">
+        <li>— Ground: matte black · faint orthographic grid · no specularity</li>
+        <li>— Seed: dark ellipsoid · ice inner glow on hover</li>
+        <li>— Stalks + leaves: near-black geometry · ice outline on hover</li>
+        <li>— Sky (above horizon): void — pure black</li>
+        <li>— One cold directional light · no shadows</li>
+        <li>— Three.js / WebGL · CSS 3D fallback</li>
+      </ul>
+    </div>
+    <div class="cell">
+      <div class="lbl">Interaction rules</div>
+      <ul style="font-size:11px;color:var(--haze);list-style:none;line-height:2.3">
+        <li>— Transition: 900ms · ease-in-out-cubic</li>
+        <li>— Hover: ice outline traces shape · CTA grows from root</li>
+        <li>— Hover on proximity, not click</li>
+        <li>— Scroll past scene → fade to page content</li>
+        <li>— Mobile: tap ground → transition · tap seed → download</li>
+        <li>— Reduced motion: skip pivot · show State B immediately</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ 06 — SCREENS ══ -->
+<div class="sec">
+  <div class="lbl">06 — Web · Download · Init</div>
+  <div class="sr">
+
+    <div class="screen">
+      <div class="chrome"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div><div class="curl">seedling.garden</div></div>
+      <div class="sb">
+        <div class="sn">01 / land</div>
+        <svg width="100%" viewBox="0 0 220 126" xmlns="http://www.w3.org/2000/svg" style="margin-bottom:.875rem;display:block">
+          <polygon points="10,82 210,82 196,112 0,112" fill="#111b1f" stroke="#1c2d33" stroke-width=".5"/>
+          <line x1="50" y1="83" x2="37" y2="111" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+          <line x1="100" y1="83" x2="87" y2="111" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+          <line x1="150" y1="83" x2="137" y2="111" stroke="#1c2d33" stroke-width=".4" opacity=".7"/>
+          <line x1="10" y1="96" x2="210" y2="96" stroke="#1c2d33" stroke-width=".3" opacity=".4"/>
+          <line x1="110" y1="82" x2="110" y2="40" stroke="#2a404a" stroke-width="1.2"/>
+          <path d="M110,58 Q97,50 95,42" fill="none" stroke="#2a404a" stroke-width=".7"/>
+          <path d="M110,50 Q123,42 125,34" fill="none" stroke="#2a404a" stroke-width=".7"/>
+          <ellipse cx="110" cy="98" rx="10" ry="6" fill="none" stroke="#4db8cc" stroke-width=".5" stroke-dasharray="2 3" opacity=".5"/>
+          <text font-family="Cormorant Garamond,serif" font-size="20" font-weight="300" fill="#e8eef0" x="14" y="36">seed</text>
+          <text font-family="Cormorant Garamond,serif" font-size="20" font-style="italic" fill="#4db8cc" x="57" y="36">ling</text>
+          <text font-family="JetBrains Mono,monospace" font-size="7" fill="#3d5a65" x="10" y="122">click anywhere</text>
+        </svg>
+        <div><span class="tag">rust</span><span class="tag">libp2p</span><span class="tag">kademlia</span><span class="tag">crdt</span><span class="tag">no server</span></div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="chrome"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div><div class="curl">seedling.garden/seed</div></div>
+      <div class="sb">
+        <div class="sn">02 / seed</div>
+        <div class="sr-ring"><div class="sr-core"></div></div>
+        <div class="dl-t">The Seed</div>
+        <div style="font-size:9px;color:var(--oxide);margin-bottom:.5rem">v0.4.2 · linux x86_64 · 4.1 MB</div>
+        <div style="font-size:9px;color:var(--hull);margin-bottom:3px">sha256 — verify before planting</div>
+        <div style="font-size:9px;color:var(--dew);word-break:break-all;margin-bottom:.75rem">a7f2c91e4b8d3f56…9c2a</div>
+        <button class="dl-btn">Download seed</button>
+        <div style="display:flex;gap:3px;margin-top:4px">
+          <div style="flex:1;border:1px solid var(--seam);padding:5px;font-size:9px;color:var(--oxide);text-align:center">macOS</div>
+          <div style="flex:1;border:1px solid var(--seam);padding:5px;font-size:9px;color:var(--oxide);text-align:center">arm64</div>
+          <div style="flex:1;border:1px solid var(--seam);padding:5px;font-size:9px;color:var(--oxide);text-align:center">win</div>
+        </div>
+        <div style="margin-top:.75rem;font-size:9px;color:var(--hull)">cargo install seedling<br>brew install seedling-garden</div>
+      </div>
+    </div>
+
+    <div class="screen">
+      <div class="chrome"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div><div class="curl">terminal — seedling init</div></div>
+      <div class="term" style="border:none;border-top:none">
+        <span class="p">$</span> <span class="cmd">./seedling init</span><br><br>
+        <span class="out">  ░ verifying sig... </span><span class="ok">✓</span><br>
+        <span class="out">  ░ generating keypair</span><br>
+        <span class="out">  ░ peer_id: <span class="ic">12D3KooWBqm4...</span></span><br><br>
+        <span class="q">  → what to tend?</span><br><br>
+        <span class="out">  [x] professional presence</span><br>
+        <span class="out">  [x] creative threads</span><br>
+        <span class="out">  [ ] research notes</span><br><br>
+        <span class="ok">  ✓ taking root</span><br>
+        <span class="out">  ░ joining lattice...</span><br>
+        <span class="q">  → "tell me what to tend."</span><br>
+        <span class="p">$ </span><span class="cursor"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-top:2rem">
+    <div class="cell">
+      <div class="lbl">Site structure</div>
+      <div style="font-size:11px;color:var(--haze);line-height:2.5">
+        <span style="color:var(--oxide)">/</span>&ensp;&ensp;&ensp;&ensp;&ensp;&ensp;&ensp;3D hero scene<br>
+        <span style="color:var(--oxide)">/seed</span>&ensp;&ensp;&ensp;&ensp;Download · verify before plant<br>
+        <span style="color:var(--oxide)">/garden</span>&ensp;&ensp;&ensp;Philosophy<br>
+        <span style="color:var(--oxide)">/lattice</span>&ensp;&ensp;&ensp;Live network explorer<br>
+        <span style="color:var(--oxide)">/docs</span>&ensp;&ensp;&ensp;&ensp;Documentation · plain text<br>
+        <span style="color:var(--oxide)">/src</span>&ensp;&ensp;&ensp;&ensp;&ensp;→ github
+      </div>
+    </div>
+    <div class="cell">
+      <div class="lbl">Web rules</div>
+      <ul style="font-size:11px;color:var(--haze);list-style:none;line-height:2.3">
+        <li>— No hero images — geometry is the visual</li>
+        <li>— No modals, lightboxes, pop-ups</li>
+        <li>— No tracking, no analytics, no cookies</li>
+        <li>— SHA256 shown before the download button</li>
+        <li>— Network stats live via read-only DHT observer</li>
+        <li>— Max 2 web fonts, locally served after first load</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ 07 — INIT FLOW ══ -->
+<div class="sec">
+  <div class="lbl">07 — Init Flow</div>
+  <p style="color:var(--haze);font-size:11px;max-width:540px;margin-bottom:3rem">Five steps. No wizard chrome. The binary speaks; the gardener asks only what it needs.</p>
+
+  <div style="display:flex;flex-direction:column">
+
+    <div class="ss"><div class="spine"><div class="sn2 on">01</div><div class="sl"></div></div>
+    <div class="sc2"><div class="st">Signature verification</div><div class="sb2">Hash shown before execution. User invited to verify. No valid sig, no germination.</div>
+    <div class="scode"><span class="p">$</span> ./seedling init<br><span class="out"><br>  Binary:   </span><span class="ic">a7f2c91e4b8d3f56</span><br><span class="out">  Expected: </span><span class="ic">a7f2c91e4b8d3f56</span><br><span class="ok"><br>  ✓ Seed trusted.</span></div></div></div>
+
+    <div class="ss"><div class="spine"><div class="sn2 on">02</div><div class="sl"></div></div>
+    <div class="sc2"><div class="st">Identity &amp; keypair</div><div class="sb2">Ed25519 keypair. peer_id shown immediately. No email, no account. Seed phrase saved by user.</div>
+    <div class="scode"><span class="out">  peer_id: </span><span class="ic">12D3KooWBqm4xjPN...</span><br><br><span class="q">  → save your seed phrase</span><br><span class="out">  tundra · marrow · copper · solstice<br>  lattice · spore · threshold · drift</span></div></div></div>
+
+    <div class="ss"><div class="spine"><div class="sn2 on">03</div><div class="sl"></div></div>
+    <div class="sc2"><div class="st">Garden intent</div><div class="sb2">Shapes the initial CRDT schema. Not locked in — reshapeable by conversation.</div>
+    <div class="choices"><button class="choice on">professional presence</button><button class="choice on">creative threads</button><button class="choice">research &amp; notes</button><button class="choice">open source work</button><button class="choice">contact &amp; discovery</button></div></div></div>
+
+    <div class="ss"><div class="spine"><div class="sn2 on">04</div><div class="sl"></div></div>
+    <div class="sc2"><div class="st">Tending preferences</div><div class="sb2">The gardener's instincts. Adjustable later via conversation.</div>
+    <div class="scode"><span class="q">  → cadence?</span><br><span class="out">  [x] propagate immediately<br>  [ ] queue at dawn<br>  [ ] manual only</span><br><br><span class="q">  → discovery?</span><br><span class="out">  [x] by peer_id · [x] by name · [ ] invisible</span></div></div></div>
+
+    <div class="ss"><div class="spine"><div class="sn2 on">05</div></div>
+    <div class="sc2"><div class="st">First germination</div><div class="sb2">Joins the Kademlia DHT. Bootstraps to nearest peers. Garden joins the living network.</div>
+    <div class="scode"><span class="ok">  Taking root...</span><br><br><span class="out">  ░ kademlia routing: </span><span class="ic">building</span><br><span class="out">  ░ nearest peers: </span><span class="ic">4 found</span><br><span class="out">  ░ CRDT document: </span><span class="ic">init</span><br><br><span class="ok">  ✓ Your garden is alive.</span><br><span class="q">  → "tell me what to tend first."</span></div></div></div>
+
+  </div>
+</div>
+
+
+<!-- ══ 08 — COMPONENTS ══ -->
+<div class="sec">
+  <div class="lbl">08 — Components</div>
+  <div class="cg">
+
+    <div class="cc">
+      <div class="clbl">Status</div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <span class="pill pa"><span class="pdot"></span>gardener alive</span>
+        <span class="pill ps"><span class="pdot"></span>lattice syncing</span>
+        <span class="pill pd"><span class="pdot"></span>dormant — no peers</span>
+        <span class="pill" style="border:1px solid var(--amber);color:var(--amber)"><span class="pdot" style="background:var(--amber)"></span>propagating</span>
+        <span class="pill" style="border:1px solid var(--rust);color:var(--rust)"><span class="pdot" style="background:var(--rust)"></span>blight — check logs</span>
+      </div>
+    </div>
+
+    <div class="cc">
+      <div class="clbl">Peer node</div>
+      <div class="nc">
+        <div class="nav">◈</div>
+        <div><div class="nn">ada.seedling</div><div class="nid">12D3KooWBqm4xjPN...</div><div class="nm">4m ago · 6 mutual threads · trusted</div></div>
+      </div>
+      <div class="nc" style="opacity:.4">
+        <div class="nav">◇</div>
+        <div><div class="nn">unknown peer</div><div class="nid">12D3KooW9f2aXmNK...</div><div class="nm">routing only</div></div>
+      </div>
+    </div>
+
+    <div class="cc">
+      <div class="clbl">Convergence</div>
+      <div style="margin-bottom:1.5rem">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--oxide);margin-bottom:5px"><span>CRDT convergence</span><span style="color:var(--ice)">7 / 9</span></div>
+        <div class="gb"><div class="gf" style="width:77%"></div></div>
+        <div style="font-size:10px;color:var(--oxide);margin-top:4px">2 reconciling</div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--oxide);margin-bottom:5px"><span>presence freshness</span><span style="color:var(--amber)">3d old</span></div>
+        <div class="gb"><div class="gf" style="width:33%;background:var(--amber)"></div></div>
+        <div style="font-size:10px;color:var(--oxide);margin-top:4px">consider tending</div>
+      </div>
+    </div>
+
+    <div class="cc">
+      <div class="clbl">Agent prompt</div>
+      <div class="ap">
+        <span class="atag">gardener · thinking</span>
+        <span class="av">"Your threads haven't been tended in <span style="color:var(--amber)">21 days</span>. I found <span style="color:var(--dew)">3 new neighbors</span> in the lattice. Shall I reach toward them?"</span>
+      </div>
+      <div style="display:flex;gap:5px;margin-top:.875rem">
+        <button class="choice on" style="flex:1;padding:7px">reach</button>
+        <button class="choice" style="flex:1;padding:7px">guide me</button>
+        <button class="choice" style="flex:1;padding:7px">not now</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ══ 09 — ARCH LANGUAGE ══ -->
+<div class="sec">
+  <div class="lbl">09 — Technical → Garden</div>
+  <div class="acs">
+    <div class="ac"><div class="act">LIBP2P · KADEMLIA</div><div class="acn">The Lattice</div><div class="acb">DHT = lattice. Routing table = nearest neighbors. Peer discovery = "reaching into the lattice". Bootstrap nodes = anchor stones.</div></div>
+    <div class="ac"><div class="act">CRDT ENGINE</div><div class="acn">Convergence</div><div class="acb">Document = presence record. Merge = convergence. Conflicts = divergent states that will reconcile. State vector = garden clock.</div></div>
+    <div class="ac"><div class="act">AGENT-OS</div><div class="acn">The Gardener</div><div class="acb">Runtime = your gardener. Decision loop = tending. Scheduled tasks = pruning + propagation. Conversation = instruction.</div></div>
+  </div>
+</div>
+
+
+<!-- FOOTER -->
+<footer>
+  <div>
+    <div class="fm">seedling</div>
+    <div style="margin-top:4px;color:var(--seam)">Design Guide · v0.2</div>
+  </div>
+  <div style="text-align:right;color:var(--seam)">
+    rust · libp2p · crdt · kademlia<br>
+    your garden is yours
+  </div>
+</footer>
+
+</body>
+</html>

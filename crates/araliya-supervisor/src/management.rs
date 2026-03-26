@@ -4,16 +4,24 @@
 //! - `manage/http/get` — health/status JSON (used by HTTP `/health`).
 //! - `manage/http/tree` — component tree JSON for HTTP (e.g. GET /api/tree); no private data.
 //! - `manage/tree` — same tree for control/CLI consumers.
+//! - `manage/observe/snapshot` — last N observability events from the ring buffer.
+//! - `manage/observe/clear` — drain the ring buffer.
 
+use std::collections::VecDeque;
 use std::sync::{Arc, OnceLock};
 
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock};
+use tracing::{debug, warn};
 
 use crate::control::{ControlCommand, ControlHandle, ControlResponse};
 use araliya_core::bus::{
     BusError, BusHandle, BusHandler, BusPayload, BusResult, ComponentInfo, ComponentStatusResponse,
     HealthRegistry, ERR_METHOD_NOT_FOUND,
 };
+use araliya_core::obs::{ObsBus, ObsEvent};
+
+/// Default ring buffer capacity (last N events kept in memory).
+const DEFAULT_RING_CAPACITY: usize = 1000;
 
 /// Static info collected at startup and included in the health response.
 #[derive(Debug, Clone)]
@@ -32,6 +40,9 @@ pub struct ManagementSubsystem {
     comms_info: Arc<OnceLock<ComponentInfo>>,
     /// Shared registry of subsystem health states — read on every health request.
     health: HealthRegistry,
+    /// Ring buffer of recent observability events — written by the drain task,
+    /// read by `manage/observe/snapshot`.
+    ring: Arc<RwLock<VecDeque<ObsEvent>>>,
 }
 
 impl ManagementSubsystem {
@@ -41,14 +52,62 @@ impl ManagementSubsystem {
         info: ManagementInfo,
         comms_info: Arc<OnceLock<ComponentInfo>>,
         health: HealthRegistry,
+        obs_bus: ObsBus,
     ) -> Self {
+        let ring = Arc::new(RwLock::new(VecDeque::with_capacity(DEFAULT_RING_CAPACITY)));
+
+        // Spawn the drain task that subscribes to the obs bus and fills the ring buffer.
+        Self::spawn_obs_drain(obs_bus, ring.clone(), bus.clone());
+
         Self {
             control,
             bus,
             info,
             comms_info,
             health,
+            ring,
         }
+    }
+
+    /// Background task: subscribes to the obs bus and drains events into
+    /// the ring buffer. Also re-publishes each event as a bus notification
+    /// (`manage/observe/event`) so other subsystems can react.
+    fn spawn_obs_drain(obs_bus: ObsBus, ring: Arc<RwLock<VecDeque<ObsEvent>>>, bus: BusHandle) {
+        let mut rx = obs_bus.subscribe();
+
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => {
+                        // Push into ring buffer (bounded).
+                        {
+                            let mut buf = ring.write().await;
+                            if buf.len() >= DEFAULT_RING_CAPACITY {
+                                buf.pop_front();
+                            }
+                            buf.push_back(event.clone());
+                        }
+
+                        // Re-publish as a bus notification for other consumers.
+                        let json = serde_json::to_string(&event).unwrap_or_default();
+                        let _ = bus.notify(
+                            "manage/observe/event",
+                            BusPayload::JsonResponse { data: json },
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(
+                            skipped = n,
+                            "obs drain task lagged — {n} events dropped from ring buffer"
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        debug!("obs bus closed — drain task exiting");
+                        break;
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -88,6 +147,8 @@ impl BusHandler for ManagementSubsystem {
         const HTTP_TREE: &str = "manage/http/tree";
         const TREE: &str = "manage/tree";
         const HEALTH_REFRESH: &str = "manage/health/refresh";
+        const OBSERVE_SNAPSHOT: &str = "manage/observe/snapshot";
+        const OBSERVE_CLEAR: &str = "manage/observe/clear";
 
         // manage/status — management subsystem is always running.
         if method == "manage/status" {
@@ -95,6 +156,30 @@ impl BusHandler for ManagementSubsystem {
             let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
                 data: resp.to_json(),
             }));
+            return;
+        }
+
+        // ── Observability endpoints ─────────────────────────────────────
+        if method == OBSERVE_SNAPSHOT {
+            let ring = self.ring.clone();
+            tokio::spawn(async move {
+                let buf = ring.read().await;
+                let events: Vec<&ObsEvent> = buf.iter().collect();
+                let json = serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string());
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: json }));
+            });
+            return;
+        }
+
+        if method == OBSERVE_CLEAR {
+            let ring = self.ring.clone();
+            tokio::spawn(async move {
+                let mut buf = ring.write().await;
+                let cleared = buf.len();
+                buf.clear();
+                let json = serde_json::json!({"cleared": cleared}).to_string();
+                let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: json }));
+            });
             return;
         }
 

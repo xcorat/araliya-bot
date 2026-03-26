@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use araliya_core::error::AppError;
+use araliya_core::obs::ObsBus;
 use araliya_core::runtime::{Component, ComponentFuture};
 #[cfg(feature = "subsystem-ui")]
 use araliya_core::ui::UiServeHandle;
@@ -38,6 +39,8 @@ pub(crate) struct AxumState {
     pub channel_id: Arc<str>,
     pub comms: Arc<CommsState>,
     pub ui: OptionalUiHandle,
+    /// Observability bus — `None` when the binary was compiled without obs support.
+    pub obs_bus: Option<ObsBus>,
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     pub preview_root: Option<std::path::PathBuf>,
 }
@@ -49,6 +52,7 @@ pub struct AxumChannel {
     bind_addr: String,
     state: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
+    obs_bus: Option<ObsBus>,
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     preview_root: Option<std::path::PathBuf>,
 }
@@ -59,13 +63,16 @@ impl AxumChannel {
         bind_addr: impl Into<String>,
         state: Arc<CommsState>,
         ui_handle: OptionalUiHandle,
-        #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<std::path::PathBuf>,
+        obs_bus: Option<ObsBus>,
+        #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
+        preview_root: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
             bind_addr: bind_addr.into(),
             state,
             ui_handle,
+            obs_bus,
             #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             preview_root,
         }
@@ -83,6 +90,7 @@ impl Component for AxumChannel {
             self.bind_addr,
             self.state,
             self.ui_handle,
+            self.obs_bus,
             #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             self.preview_root,
             shutdown,
@@ -97,13 +105,17 @@ async fn run_axum(
     bind_addr: String,
     comms: Arc<CommsState>,
     ui_handle: OptionalUiHandle,
-    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<std::path::PathBuf>,
+    obs_bus: Option<ObsBus>,
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<
+        std::path::PathBuf,
+    >,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let axum_state = AxumState {
         channel_id: Arc::from(channel_id.as_str()),
         comms,
         ui: ui_handle,
+        obs_bus,
         #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
         preview_root,
     };
@@ -132,6 +144,9 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/health", get(api::health))
         .route("/api/health/refresh", post(api::health_refresh))
         .route("/api/tree", get(api::tree))
+        .route("/api/observe/events", get(api::observe_events))
+        .route("/api/observe/snapshot", get(api::observe_snapshot))
+        .route("/api/observe/clear", post(api::observe_clear))
         .route("/api/message", post(api::message))
         .route("/api/message/stream", post(api::message_stream))
         .route("/api/sessions", get(api::sessions))

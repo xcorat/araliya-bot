@@ -110,4 +110,3 @@ fn mime_from_extension(path: &Path) -> &'static str {
         _ => "application/octet-stream",
     }
 }
-

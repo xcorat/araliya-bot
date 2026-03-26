@@ -485,6 +485,16 @@
 				</div>
 			{/if}
 		</CardContent>
+		{#if node}
+			<div class="border-t px-3 py-2">
+				<a
+					href={`${uiBase}/status/observe/${encodeURIComponent(node.id)}`}
+					class="text-[10px] text-primary underline"
+				>
+					Open Observe Panel
+				</a>
+			</div>
+		{/if}
 	</Card>
 {/snippet}
 
@@ -584,6 +594,12 @@
 									Open KG Inspector
 								</a>
 							{/if}
+							<a
+								href={`${uiBase}/status/observe/${encodeURIComponent(inspectorAgentId)}`}
+								class="text-[10px] text-primary underline"
+							>
+								Open Observe Panel
+							</a>
 						</div>
 					{/if}
 				</div>

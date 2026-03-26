@@ -13,7 +13,7 @@
 		doCheckHealth,
 		resetSession
 	} from '$lib/state.svelte';
-	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft, Newspaper } from '@lucide/svelte';
+	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft, Newspaper, House } from '@lucide/svelte';
 	import { fireSidebarToggle } from '$lib/sidebar-bridge.svelte';
 
 	const health = $derived(getHealthStatus());
@@ -141,6 +141,14 @@
 				<Newspaper class="size-3" />
 				Newsroom
 			</button>
+			<a
+				href="/home"
+				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+				title="Home page"
+			>
+				<House class="size-3" />
+				Home
+			</a>
 		</div>
 
 		{#if sid}

@@ -35,6 +35,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use araliya_core::config::{LlmConfig, RouteConfig};
+use araliya_core::obs::ObservabilityHandle;
 use araliya_llm::providers;
 use araliya_llm::{LlmProvider, ModelRates, ProviderError};
 use tokio::sync::mpsc;
@@ -72,6 +73,7 @@ pub struct LlmSubsystem {
     /// Symbolic route hints → (provider, optional model) from `[llm.routes]`.
     routes: HashMap<String, RouteConfig>,
     reporter: Option<HealthReporter>,
+    obs: Option<ObservabilityHandle>,
 }
 
 impl LlmSubsystem {
@@ -130,12 +132,19 @@ impl LlmSubsystem {
             instruction_name: config.instruction.clone(),
             routes: config.routes.clone(),
             reporter: None,
+            obs: None,
         })
     }
 
     /// Attach a health reporter to this subsystem.
     pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
         self.reporter = Some(reporter);
+        self
+    }
+
+    /// Attach an observability handle for structured LLM event emissions.
+    pub fn with_observability(mut self, obs: ObservabilityHandle) -> Self {
+        self.obs = Some(obs);
         self
     }
 
@@ -200,38 +209,42 @@ impl LlmSubsystem {
         provider_override: Option<&str>,
         model_override: Option<&str>,
     ) -> Result<(LlmProvider, String), BusError> {
-        let (entry, resolved_model) = match provider_override {
-            // Route hint: "hint:<name>" resolves through the routes table.
-            Some(hint_str) if hint_str.starts_with("hint:") => {
-                let hint = &hint_str[5..];
-                let route = self.routes.get(hint).ok_or_else(|| {
-                    BusError::new(-32001, format!("unknown route hint: {hint}"))
-                })?;
-                let entry = self.pool.get(&route.provider).ok_or_else(|| {
-                    BusError::new(
-                        -32001,
-                        format!("route '{}' references unknown provider '{}'", hint, route.provider),
-                    )
-                })?;
-                let model = route.model.as_deref().unwrap_or(&entry.model);
-                (entry.clone(), model.to_string())
-            }
-            // Explicit provider name.
-            Some(name) => {
-                let entry = self.pool.get(name).ok_or_else(|| {
-                    BusError::new(-32001, format!("unknown provider: {name}"))
-                })?;
-                (entry.clone(), entry.model.clone())
-            }
-            // Active default.
-            None => {
-                let name = self.active_name();
-                let entry = self.pool.get(&name).ok_or_else(|| {
-                    BusError::new(-32001, format!("active provider '{}' not in pool", name))
-                })?;
-                (entry.clone(), entry.model.clone())
-            }
-        };
+        let (entry, resolved_model) =
+            match provider_override {
+                // Route hint: "hint:<name>" resolves through the routes table.
+                Some(hint_str) if hint_str.starts_with("hint:") => {
+                    let hint = &hint_str[5..];
+                    let route = self.routes.get(hint).ok_or_else(|| {
+                        BusError::new(-32001, format!("unknown route hint: {hint}"))
+                    })?;
+                    let entry = self.pool.get(&route.provider).ok_or_else(|| {
+                        BusError::new(
+                            -32001,
+                            format!(
+                                "route '{}' references unknown provider '{}'",
+                                hint, route.provider
+                            ),
+                        )
+                    })?;
+                    let model = route.model.as_deref().unwrap_or(&entry.model);
+                    (entry.clone(), model.to_string())
+                }
+                // Explicit provider name.
+                Some(name) => {
+                    let entry = self.pool.get(name).ok_or_else(|| {
+                        BusError::new(-32001, format!("unknown provider: {name}"))
+                    })?;
+                    (entry.clone(), entry.model.clone())
+                }
+                // Active default.
+                None => {
+                    let name = self.active_name();
+                    let entry = self.pool.get(&name).ok_or_else(|| {
+                        BusError::new(-32001, format!("active provider '{}' not in pool", name))
+                    })?;
+                    (entry.clone(), entry.model.clone())
+                }
+            };
         // model_override from the request always wins.
         let final_model = model_override
             .map(|m| m.to_string())
@@ -251,7 +264,9 @@ impl LlmSubsystem {
         self.pool
             .get(&name)
             .map(|e| e.provider.clone())
-            .unwrap_or(LlmProvider::Dummy(araliya_llm::providers::dummy::DummyProvider))
+            .unwrap_or(LlmProvider::Dummy(
+                araliya_llm::providers::dummy::DummyProvider,
+            ))
     }
 
     async fn run_check(provider: &LlmProvider, model: &str, reporter: &HealthReporter) {
@@ -341,9 +356,7 @@ impl BusHandler for LlmSubsystem {
                 tokio::spawn(async move {
                     let resp = match reporter {
                         Some(r) => match r.get_current().await {
-                            Some(h) if h.healthy => {
-                                ComponentStatusResponse::running(active_name)
-                            }
+                            Some(h) if h.healthy => ComponentStatusResponse::running(active_name),
                             Some(h) => ComponentStatusResponse::error(active_name, h.message),
                             None => ComponentStatusResponse::running(active_name),
                         },
@@ -451,8 +464,10 @@ impl BusHandler for LlmSubsystem {
                             } else {
                                 let _ = reply_tx.send(Err(BusError::new(
                                     -32001,
-                                    format!("unknown provider '{name}'; available: {:?}",
-                                        self.pool.keys().collect::<Vec<_>>()),
+                                    format!(
+                                        "unknown provider '{name}'; available: {:?}",
+                                        self.pool.keys().collect::<Vec<_>>()
+                                    ),
                                 )));
                             }
                         } else {
@@ -463,10 +478,8 @@ impl BusHandler for LlmSubsystem {
                         }
                     }
                     Err(e) => {
-                        let _ = reply_tx.send(Err(BusError::new(
-                            -32001,
-                            format!("invalid JSON: {e}"),
-                        )));
+                        let _ =
+                            reply_tx.send(Err(BusError::new(-32001, format!("invalid JSON: {e}"))));
                     }
                 }
             } else {
@@ -535,10 +548,8 @@ impl BusHandler for LlmSubsystem {
                 model_override,
             } = payload
             {
-                match self.resolve_provider(
-                    provider_override.as_deref(),
-                    model_override.as_deref(),
-                ) {
+                match self.resolve_provider(provider_override.as_deref(), model_override.as_deref())
+                {
                     Ok((provider, _model)) => {
                         debug!(%method, %channel_id, "dispatching streaming to llm provider");
                         tokio::spawn(async move {
@@ -576,10 +587,8 @@ impl BusHandler for LlmSubsystem {
                 provider_override,
                 model_override,
             } => {
-                match self.resolve_provider(
-                    provider_override.as_deref(),
-                    model_override.as_deref(),
-                ) {
+                match self.resolve_provider(provider_override.as_deref(), model_override.as_deref())
+                {
                     Ok((provider, _model)) => {
                         debug!(%method, %channel_id, "dispatching to llm provider");
                         tokio::spawn(async move {

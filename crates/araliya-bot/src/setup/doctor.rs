@@ -30,10 +30,7 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
     all_ok &= check(
         ".env file exists",
         env_path.exists(),
-        &format!(
-            "Missing: {} — run 'araliya-bot setup'",
-            env_path.display()
-        ),
+        &format!("Missing: {} — run 'araliya-bot setup'", env_path.display()),
     );
 
     // ── TOML structure ────────────────────────────────────────────────
@@ -42,11 +39,7 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
             Ok(content) => {
                 match toml::from_str::<toml::Value>(&content) {
                     Ok(parsed) => {
-                        all_ok &= check(
-                            "Config is valid TOML",
-                            true,
-                            "",
-                        );
+                        all_ok &= check("Config is valid TOML", true, "");
                         all_ok &= check(
                             "[supervisor] section present",
                             parsed.get("supervisor").is_some(),
@@ -77,27 +70,22 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
                                         // echo is fine if explicitly chosen
                                         true
                                     },
-                                    &format!("Default agent is 'echo' — consider running 'araliya-bot setup' to choose a profile"),
+                                    &format!(
+                                        "Default agent is 'echo' — consider running 'araliya-bot setup' to choose a profile"
+                                    ),
                                 );
                                 let _ = default; // suppress unused warning
                             }
                         }
                     }
                     Err(e) => {
-                        all_ok &= check(
-                            "Config is valid TOML",
-                            false,
-                            &format!("Parse error: {e}"),
-                        );
+                        all_ok &=
+                            check("Config is valid TOML", false, &format!("Parse error: {e}"));
                     }
                 }
             }
             Err(e) => {
-                all_ok &= check(
-                    "Config is readable",
-                    false,
-                    &format!("Read error: {e}"),
-                );
+                all_ok &= check("Config is readable", false, &format!("Read error: {e}"));
             }
         }
     }
@@ -110,7 +98,10 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
     // Also check the .env file directly in case it hasn't been sourced.
     let llm_key_in_env_file = if env_path.exists() {
         std::fs::read_to_string(env_path)
-            .map(|c| c.lines().any(|l| l.starts_with("OPENAI_API_KEY=") && l.len() > "OPENAI_API_KEY=".len()))
+            .map(|c| {
+                c.lines()
+                    .any(|l| l.starts_with("OPENAI_API_KEY=") && l.len() > "OPENAI_API_KEY=".len())
+            })
             .unwrap_or(false)
     } else {
         false
@@ -137,9 +128,10 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
         let tg_set = std::env::var("TELEGRAM_BOT_TOKEN")
             .map(|v| !v.is_empty())
             .unwrap_or(false);
-        let tg_in_file = env_path.exists() && std::fs::read_to_string(env_path)
-            .map(|c| c.lines().any(|l| l.starts_with("TELEGRAM_BOT_TOKEN=")))
-            .unwrap_or(false);
+        let tg_in_file = env_path.exists()
+            && std::fs::read_to_string(env_path)
+                .map(|c| c.lines().any(|l| l.starts_with("TELEGRAM_BOT_TOKEN=")))
+                .unwrap_or(false);
         all_ok &= check(
             "TELEGRAM_BOT_TOKEN is set (Telegram is enabled)",
             tg_set || tg_in_file,

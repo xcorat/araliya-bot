@@ -221,3 +221,38 @@ fn collect_entries<'a>(
         }
     })
 }
+
+// ── Theme guide tools ─────────────────────────────────────────────────────────
+
+/// Returns sorted filenames (not full paths) of `.html` files in the given directory.
+/// Returns an empty list if the directory is missing or unreadable.
+pub(crate) fn list_theme_guides(dir: &std::path::Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("html") {
+                p.file_name()?.to_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// Reads and returns the content of a named theme file inside `dir`.
+/// Returns `Err` if the name contains path separators (traversal guard) or
+/// if the file cannot be read.
+pub(crate) fn read_theme_guide(dir: &std::path::Path, name: &str) -> Result<String, String> {
+    if name.contains('/') || name.contains('\\') {
+        return Err(format!("invalid theme name: {name}"));
+    }
+    let path = dir.join(name);
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read theme {name}: {e}"))
+}

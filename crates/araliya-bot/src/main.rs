@@ -12,6 +12,7 @@
 //!   9. Run comms subsystem (drives console until shutdown)
 //!  10. Cancel token + join supervisor
 
+mod obs_layer;
 mod subsystems;
 
 #[cfg(feature = "setup")]
@@ -27,6 +28,7 @@ use araliya_core::bus::component::ComponentInfo;
 use araliya_core::bus::dispatch::BusHandler;
 use araliya_core::bus::handle::SupervisorBus;
 use araliya_core::bus::health::HealthRegistry;
+use araliya_core::obs::{ObsBus, ObsLevel};
 use araliya_core::{config, error, identity, logger};
 use araliya_supervisor::control::SupervisorControl;
 // CHECK: again! sub-agents should imply sub-memory, why do we need to have both?
@@ -129,13 +131,11 @@ fn run_setup_or_doctor(subcmd: &str, args: &[String]) -> anyhow::Result<()> {
     let (config_path, env_path, work_dir) = resolve_setup_paths(args);
 
     match subcmd {
-        "setup" => {
-            setup::run_setup(setup::SetupOpts {
-                config_path,
-                env_path,
-                work_dir,
-            })
-        }
+        "setup" => setup::run_setup(setup::SetupOpts {
+            config_path,
+            env_path,
+            work_dir,
+        }),
         "doctor" => {
             let all_ok = setup::run_doctor(setup::DoctorOpts {
                 config_path,
@@ -167,11 +167,29 @@ async fn run() -> Result<(), error::AppError> {
     let effective_log_level = args.log_level.unwrap_or(config.log_level.as_str());
     let force_cli_level = args.log_level.is_some();
 
-    logger::init(
-        effective_log_level,
-        force_cli_level,
-        args.log_file.as_deref(),
-    )?;
+    // Observability bus — created before the logger so the tracing layer can
+    // forward events.  Subsystems and the management ring buffer subscribe later.
+    let obs_bus = ObsBus::new();
+
+    // Build the subscriber with the obs layer composed in.  logger::init stays
+    // a plain tracing-subscriber setup in araliya-core; the obs bridge lives
+    // here in the binary crate to keep core dependency-light.
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+
+        let filter = logger::build_filter(effective_log_level, force_cli_level)?;
+        let writer = logger::build_writer(args.log_file.as_deref())?;
+        let fmt_layer = tracing_subscriber::fmt::layer().with_writer(writer);
+        let obs_layer = obs_layer::ObsTracingLayer::new(&obs_bus, ObsLevel::Info);
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt_layer)
+            .with(obs_layer)
+            .try_init()
+            .map_err(|e| error::AppError::Logger(format!("failed to set subscriber: {e}")))?;
+    }
 
     info!(
         bot_name = %config.bot_name,
@@ -216,12 +234,25 @@ async fn run() -> Result<(), error::AppError> {
     let bus_handle = bus.handle.clone();
     let control_handle = control.handle.clone();
 
-    // Ctrl-C handler — cancels the token so all tasks shut down.
+    // Ctrl-C handler — first press initiates graceful shutdown; 7 presses force-exits.
     let ctrlc_token = shutdown.clone();
     tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            info!("ctrl-c received — initiating shutdown");
-            ctrlc_token.cancel();
+        let mut count = 0u32;
+        loop {
+            if tokio::signal::ctrl_c().await.is_err() {
+                break;
+            }
+            count += 1;
+            if count == 1 {
+                info!("ctrl-c received — initiating shutdown");
+                ctrlc_token.cancel();
+                eprintln!("\nShutting down… (press Ctrl-C ×7 to force exit)");
+            } else if count >= 7 {
+                eprintln!("\nForce exit.");
+                std::process::exit(1);
+            } else {
+                eprintln!("Ctrl-C ×{count} — {} more to force exit", 7 - count);
+            }
         }
     });
 
@@ -243,22 +274,30 @@ async fn run() -> Result<(), error::AppError> {
         ManagementInfo {
             bot_id: identity.public_id.clone(),
             llm_provider: config.llm.default.clone(),
-            llm_model: config.llm.providers.get(&config.llm.default)
+            llm_model: config
+                .llm
+                .providers
+                .get(&config.llm.default)
                 .map(|p| p.model.clone())
                 .unwrap_or_else(|| "dummy".to_string()),
-            llm_timeout_seconds: config.llm.providers.get(&config.llm.default)
+            llm_timeout_seconds: config
+                .llm
+                .providers
+                .get(&config.llm.default)
                 .map(|p| p.timeout_seconds)
                 .unwrap_or(60),
         },
         comms_info.clone(),
         health_registry.clone(),
+        obs_bus.clone(),
     )));
 
     #[cfg(feature = "subsystem-llm")]
     {
         let llm = LlmSubsystem::new(&config.llm, config.openai_api_key.clone())
             .map_err(|e| error::AppError::Config(e.to_string()))?
-            .with_health_reporter(health_registry.reporter("llm"));
+            .with_health_reporter(health_registry.reporter("llm"))
+            .with_observability(obs_bus.handle());
         llm.spawn_health_checker(shutdown.clone());
         handlers.push(Box::new(llm));
         configured_handlers.push("llm".to_string());
@@ -286,7 +325,10 @@ async fn run() -> Result<(), error::AppError> {
 
     #[cfg(all(feature = "subsystem-agents", feature = "subsystem-memory"))]
     {
-        let rates = config.llm.providers.get(&config.llm.default)
+        let rates = config
+            .llm
+            .providers
+            .get(&config.llm.default)
             .map(|p| araliya_llm::ModelRates {
                 input_per_million_usd: p.input_per_million_usd,
                 output_per_million_usd: p.output_per_million_usd,
@@ -300,7 +342,8 @@ async fn run() -> Result<(), error::AppError> {
         let agents =
             AgentsSubsystem::new(config.agents.clone(), bus_handle.clone(), memory.clone())?
                 .with_llm_rates(rates)
-                .with_health_reporter(health_registry.reporter("agents"));
+                .with_health_reporter(health_registry.reporter("agents"))
+                .with_observability(obs_bus.handle());
         #[cfg(feature = "plugin-docs")]
         agents.init_docs().await?;
 
@@ -367,6 +410,8 @@ async fn run() -> Result<(), error::AppError> {
             Some(identity.identity_dir.join("runtimes")),
             comms_info,
             araliya_supervisor::adapters::stdio::stdio_control_active(),
+            #[cfg(feature = "channel-axum")]
+            Some(obs_bus.clone()),
         );
         comms.join().await?;
     }

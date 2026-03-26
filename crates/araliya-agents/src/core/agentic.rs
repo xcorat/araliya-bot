@@ -22,6 +22,7 @@ use tracing::warn;
 
 use araliya_core::bus::message::{BusError, BusPayload, BusResult, StreamReceiver};
 use araliya_core::error::AppError;
+use araliya_core::obs::{ObsEvent, ObsLevel, ObservabilityHandle};
 use araliya_llm::StreamChunk;
 use araliya_memory::handle::SessionHandle;
 
@@ -194,6 +195,7 @@ impl AgenticLoop {
         if let Ok(BusPayload::CommsMessage {
             content: ref reply,
             ref usage,
+            ref timing,
             ..
         }) = result
         {
@@ -203,10 +205,29 @@ impl AgenticLoop {
                     self.agent_id
                 );
             }
-            if let Some(u) = usage
-                && let Err(e) = turn.handle.accumulate_spend(u, &state.llm_rates).await
-            {
-                warn!("{}: accumulate_spend failed: {e}", self.agent_id);
+            if let Some(u) = usage {
+                if let Err(e) = turn.handle.accumulate_spend(u, &state.llm_rates).await {
+                    warn!("{}: accumulate_spend failed: {e}", self.agent_id);
+                }
+                if let Some(obs) = &state.obs {
+                    obs.emit(
+                        ObsEvent::now(
+                            ObsLevel::Info,
+                            "agents",
+                            "llm_call_complete",
+                            Some(turn.handle.session_id.clone()),
+                            None,
+                            None,
+                        )
+                        .with_fields(serde_json::json!({
+                            "agent_id": &self.agent_id,
+                            "input_tokens": u.input_tokens,
+                            "output_tokens": u.output_tokens,
+                            "total_ms": timing.as_ref().map(|t| t.total_ms),
+                            "mode": "buffered",
+                        })),
+                    );
+                }
             }
         }
 
@@ -273,6 +294,7 @@ impl AgenticLoop {
 
         let agent_id = self.agent_id.clone();
         let llm_rates = state.llm_rates.clone();
+        let obs = state.obs.clone();
         let debug_logging = self.debug_logging;
         let debug_n = turn.debug_n;
         let handle = turn.handle;
@@ -284,6 +306,7 @@ impl AgenticLoop {
                 handle,
                 agent_id,
                 llm_rates,
+                obs,
                 debug_logging,
                 debug_n,
             )
@@ -319,6 +342,23 @@ impl AgenticLoop {
                 )));
             }
         };
+
+        if let Some(obs) = &state.obs {
+            obs.emit(
+                ObsEvent::now(
+                    ObsLevel::Info,
+                    "agents",
+                    "session_start",
+                    Some(handle.session_id.clone()),
+                    None,
+                    None,
+                )
+                .with_fields(serde_json::json!({
+                    "agent_id": &self.agent_id,
+                    "channel_id": &channel_id,
+                })),
+            );
+        }
 
         if let Err(e) = handle.transcript_append("user", &content).await {
             warn!("{}: transcript_append(user) failed: {e}", self.agent_id);
@@ -462,6 +502,24 @@ impl AgenticLoop {
         for call in tool_calls {
             let tool_name = call.tool.clone();
             let action_name = call.action.clone();
+
+            if let Some(obs) = &state.obs {
+                obs.emit(
+                    ObsEvent::now(
+                        ObsLevel::Info,
+                        "agents",
+                        "tool_call",
+                        Some(handle.session_id.clone()),
+                        None,
+                        None,
+                    )
+                    .with_fields(serde_json::json!({
+                        "agent_id": &self.agent_id,
+                        "tool": &tool_name,
+                        "action": &action_name,
+                    })),
+                );
+            }
 
             // Memory tools and local tools (in-process, blocking) — checked first.
             // Memory tools take priority; local tools are checked second.
@@ -751,12 +809,14 @@ impl AgenticLoop {
 ///
 /// If the browser disconnects (`fwd_tx` send fails), the task continues
 /// draining the LLM stream to ensure the full response is still persisted.
+#[allow(clippy::too_many_arguments)]
 async fn tee_and_persist(
     mut llm_rx: mpsc::Receiver<StreamChunk>,
     fwd_tx: mpsc::Sender<StreamChunk>,
     handle: SessionHandle,
     agent_id: String,
     llm_rates: araliya_llm::ModelRates,
+    obs: Option<ObservabilityHandle>,
     debug_logging: bool,
     debug_n: usize,
 ) {
@@ -767,17 +827,37 @@ async fn tee_and_persist(
         match &chunk {
             StreamChunk::Content(delta) => content_buf.push_str(delta),
             StreamChunk::Thinking(_) => { /* forward only */ }
-            StreamChunk::Done { usage, .. } => {
+            StreamChunk::Done { usage, timing } => {
                 // Persist transcript.
                 if !content_buf.is_empty() {
                     if let Err(e) = handle.transcript_append("assistant", &content_buf).await {
                         warn!("{agent_id}: transcript_append(assistant) failed: {e}");
                     }
                 }
-                // Accumulate spend.
+                // Accumulate spend and emit observability event.
                 if let Some(u) = usage {
                     if let Err(e) = handle.accumulate_spend(u, &llm_rates).await {
                         warn!("{agent_id}: accumulate_spend failed: {e}");
+                    }
+                    if let Some(ref obs) = obs {
+                        obs.emit(
+                            ObsEvent::now(
+                                ObsLevel::Info,
+                                "agents",
+                                "llm_call_complete",
+                                Some(handle.session_id.clone()),
+                                None,
+                                None,
+                            )
+                            .with_fields(serde_json::json!({
+                                "agent_id": &agent_id,
+                                "input_tokens": u.input_tokens,
+                                "output_tokens": u.output_tokens,
+                                "ttft_ms": timing.as_ref().and_then(|t| t.ttft_ms),
+                                "total_ms": timing.as_ref().map(|t| t.total_ms),
+                                "mode": "streaming",
+                            })),
+                        );
                     }
                 }
                 // Debug: record final response.

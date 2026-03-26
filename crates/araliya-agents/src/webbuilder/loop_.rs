@@ -105,6 +105,7 @@ npm install
 /// Vite emits relative asset paths (`./assets/...`).  Required for homebuilder
 /// because the page is served under `/home/` — relative paths let the browser
 /// resolve `./assets/foo.js` → `/home/assets/foo.js` correctly.
+#[allow(dead_code)]
 const SCAFFOLD_HOMEBUILDER: &str = r#"
 set -e
 cat > package.json << 'PKGJSON'
@@ -192,6 +193,11 @@ enum WbCommand {
     RunCmd {
         command: String,
     },
+    ReadTheme {
+        /// Theme filename to load (e.g. `"seedling-design-guide.html"`),
+        /// or `"list"` to list available themes.
+        name: String,
+    },
     Finish {
         #[serde(default)]
         message: String,
@@ -213,11 +219,12 @@ struct LlmResponse {
 
 pub(crate) struct WebBuilderLoop {
     pub max_iterations: usize,
+    pub theme_guides_dir: Option<std::path::PathBuf>,
 }
 
 impl WebBuilderLoop {
-    pub fn new(max_iterations: usize) -> Self {
-        Self { max_iterations }
+    pub fn new(max_iterations: usize, theme_guides_dir: Option<std::path::PathBuf>) -> Self {
+        Self { max_iterations, theme_guides_dir }
     }
 
     /// Kick off the build loop asynchronously and return a streaming result
@@ -231,8 +238,13 @@ impl WebBuilderLoop {
     ) -> BusResult {
         let (tx, rx) = mpsc::channel::<StreamChunk>(128);
         let max_iters = self.max_iterations;
+        let theme_guides_dir = self.theme_guides_dir.clone();
 
         tokio::spawn(async move {
+            let themes = theme_guides_dir
+                .as_deref()
+                .map(tools::list_theme_guides)
+                .unwrap_or_default();
             run_loop(
                 channel_id,
                 content,
@@ -240,9 +252,10 @@ impl WebBuilderLoop {
                 max_iters,
                 "webbuilder",
                 None, // runtime_name derived from session
-                webbuilder_system_prompt(),
+                webbuilder_system_prompt(&themes),
                 None, // finish URL derived from runtime_name
                 SCAFFOLD_VITE_SVELTE,
+                theme_guides_dir,
                 state,
                 tx,
             )
@@ -259,17 +272,20 @@ impl WebBuilderLoop {
 
 /// Singleton variant of [`WebBuilderLoop`] for the `homebuilder` agent.
 ///
-/// Uses the fixed runtime name `"homebuilder"` (one workspace per bot instance)
-/// and serves the built page at `/home/`.
+/// **NEW:** Uses static initialization — writes deterministic HTML/CSS/JS on first run.
+/// No LLM, no npm, no build step. Idempotent.
+///
+/// User identity is optionally created/loaded from `{work_dir}/users/user-*/`.
 #[cfg(feature = "plugin-homebuilder")]
 pub(crate) struct HomebuilderLoop {
-    pub max_iterations: usize,
+    pub user_name: String,
+    pub notes_dir: Option<String>,
 }
 
 #[cfg(feature = "plugin-homebuilder")]
 impl HomebuilderLoop {
-    pub fn new(max_iterations: usize) -> Self {
-        Self { max_iterations }
+    pub fn new(user_name: String, notes_dir: Option<String>) -> Self {
+        Self { user_name, notes_dir }
     }
 
     pub async fn run_stream(
@@ -280,29 +296,258 @@ impl HomebuilderLoop {
         state: Arc<AgentsState>,
     ) -> BusResult {
         let (tx, rx) = mpsc::channel::<StreamChunk>(128);
-        let max_iters = self.max_iterations;
+        let user_name = self.user_name.clone();
+        let notes_dir = self.notes_dir.clone();
 
         tokio::spawn(async move {
-            run_loop(
-                channel_id,
-                content,
-                session_id,
-                max_iters,
-                "homebuilder",
-                Some("homebuilder"), // fixed singleton runtime name
-                homebuilder_system_prompt(),
-                Some("/home/"),      // fixed finish URL alias
-                SCAFFOLD_HOMEBUILDER,
-                state,
-                tx,
-            )
-            .await;
+            // Derive dist_dir
+            let memory_root = state.memory.memory_root().to_path_buf();
+            let identity_dir = memory_root.parent().expect("memory has parent");
+            let dist_dir = identity_dir.join("runtimes").join("homebuilder").join("dist");
+
+            // Route: if page already exists, use LLM modification path; else init
+            if dist_dir.join("index.html").exists() {
+                run_llm_modify(channel_id, content, dist_dir, state, tx).await;
+            } else {
+                run_static_init(
+                    channel_id,
+                    session_id,
+                    user_name,
+                    notes_dir,
+                    state,
+                    tx,
+                )
+                .await;
+            }
         });
 
         Ok(BusPayload::LlmStreamResult {
             rx: StreamReceiver(rx),
         })
     }
+}
+
+/// Static initialization flow for homebuilder.
+/// Emits step events and completes without calling the LLM.
+#[cfg(feature = "plugin-homebuilder")]
+async fn run_static_init(
+    _channel_id: String,
+    _session_id: Option<String>,
+    user_name: String,
+    notes_dir: Option<String>,
+    state: Arc<AgentsState>,
+    tx: mpsc::Sender<StreamChunk>,
+) {
+    use std::path::PathBuf;
+
+    // Step 1: Emit init event
+    emit_step(
+        &tx,
+        serde_json::json!({
+            "type": "init",
+            "message": "Initializing homebuilder welcome page..."
+        }),
+    )
+    .await;
+
+    // Step 2: Derive dist_dir from identity_dir.
+    // memory_root is {identity_dir}/memory; preview root is {identity_dir}/runtimes
+    // which matches the preview_root passed to AxumChannel in main.rs.
+    let memory_root = state.memory.memory_root().to_path_buf();
+    let identity_dir = memory_root.parent().expect("memory has parent");
+    let dist_dir = identity_dir.join("runtimes").join("homebuilder").join("dist");
+
+    // Step 3: Generate static page (idempotent)
+    if let Err(e) = super::init_home::write_static_page(
+        &dist_dir,
+        &user_name,
+        notes_dir.as_deref(),
+    ) {
+        emit_step(
+            &tx,
+            serde_json::json!({
+                "type": "error",
+                "message": format!("failed to write page: {}", e)
+            }),
+        )
+        .await;
+        return;
+    }
+
+    emit_step(
+        &tx,
+        serde_json::json!({
+            "type": "file_write",
+            "path": "dist/index.html"
+        }),
+    )
+    .await;
+
+    // Step 4: Optionally create/load user identity (stored under work_dir = identity_dir/..)
+    let work_dir = identity_dir.parent().expect("identity_dir has parent");
+    let work_dir_str = work_dir.to_string_lossy().into_owned();
+    if let Err(e) = araliya_core::user_identity::create_or_load(
+        &work_dir_str,
+        if user_name.is_empty() { None } else { Some(user_name) },
+        notes_dir.map(PathBuf::from),
+    ) {
+        tracing::warn!("failed to create user identity: {}", e);
+        // Non-fatal: continue even if identity setup fails
+    }
+
+    // Step 5: Emit completion
+    emit_step(
+        &tx,
+        serde_json::json!({
+            "type": "done",
+            "preview_url": "/home/",
+            "message": "Welcome page ready at /home/"
+        }),
+    )
+    .await;
+}
+
+/// LLM-driven modification flow for homebuilder.
+/// Reads current page files, passes them + user request to LLM, writes back modified files.
+#[cfg(feature = "plugin-homebuilder")]
+async fn run_llm_modify(
+    channel_id: String,
+    content: String,
+    dist_dir: std::path::PathBuf,
+    state: Arc<AgentsState>,
+    tx: mpsc::Sender<StreamChunk>,
+) {
+    use std::path::Path;
+
+    // Step 1: Emit init event
+    emit_step(
+        &tx,
+        serde_json::json!({
+            "type": "init",
+            "message": "Modifying page..."
+        }),
+    )
+    .await;
+
+    // Step 2: Read current files
+    let read_file = |path: &Path| match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => "(file not found)".to_string(),
+    };
+
+    let html = read_file(&dist_dir.join("index.html"));
+    let css = read_file(&dist_dir.join("style.css"));
+    let js = read_file(&dist_dir.join("app.js"));
+
+    // Step 3: Build user prompt with current files + request
+    let user_prompt = format!(
+        "Current page files:\n\n=== index.html ===\n{}\n\n=== style.css ===\n{}\n\n=== app.js ===\n{}\n\nUser request:\n{}\n\nRespond with JSON as specified.",
+        html, css, js, content
+    );
+
+    // Step 4: Call LLM
+    let llm_result = state
+        .complete_via_llm_with_system(&channel_id, &user_prompt, Some(HOMEBUILDER_MODIFY_SYSTEM))
+        .await;
+
+    let llm_text = match llm_result {
+        Ok(BusPayload::CommsMessage { content, .. }) => content,
+        _ => {
+            emit_step(
+                &tx,
+                serde_json::json!({
+                    "type": "error",
+                    "message": "LLM call failed"
+                }),
+            )
+            .await;
+            let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+            return;
+        }
+    };
+
+    // Step 5: Parse LLM response
+    let response = match parse_llm_response(&llm_text) {
+        Some(r) => r,
+        None => {
+            emit_step(
+                &tx,
+                serde_json::json!({
+                    "type": "error",
+                    "message": "Invalid JSON response from LLM"
+                }),
+            )
+            .await;
+            let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+            return;
+        }
+    };
+
+    // Step 6: Execute write_file commands
+    for cmd in response.commands {
+        if let WbCommand::WriteFile { path, content } = cmd {
+            // Path validation: must be relative, no ..
+            if path.contains("..") || path.contains("/") && path.starts_with("/") {
+                emit_step(
+                    &tx,
+                    serde_json::json!({
+                        "type": "error",
+                        "message": format!("Invalid path: {path}")
+                    }),
+                )
+                .await;
+                continue;
+            }
+
+            let full_path = dist_dir.join(&path);
+
+            // Ensure parent directory exists
+            if let Some(parent) = full_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+
+            match std::fs::write(&full_path, &content) {
+                Ok(_) => {
+                    emit_step(
+                        &tx,
+                        serde_json::json!({
+                            "type": "file_write",
+                            "path": path
+                        }),
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    emit_step(
+                        &tx,
+                        serde_json::json!({
+                            "type": "error",
+                            "message": format!("Failed to write {path}: {e}")
+                        }),
+                    )
+                    .await;
+                }
+            }
+        }
+    }
+
+    // Step 7: Emit completion
+    let message = if response.message.is_empty() {
+        "Page updated.".to_string()
+    } else {
+        response.message
+    };
+    emit_step(
+        &tx,
+        serde_json::json!({
+            "type": "done",
+            "preview_url": "/home/",
+            "message": message
+        }),
+    )
+    .await;
+
+    let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────
@@ -351,7 +596,9 @@ const JSON_FORMAT_RULES: &str = r#"IMPORTANT: Always respond with a JSON object 
   "message": "Brief description of what you are doing",
   "commands": [
     {"type": "write_file", "path": "relative/path/to/file", "content": "file content here"},
-    {"type": "run_cmd", "command": "npm run build"}
+    {"type": "run_cmd", "command": "npm run build"},
+    {"type": "read_theme", "name": "seedling-design-guide.html"},
+    {"type": "read_theme", "name": "list"}
   ],
   "finish": false
 }
@@ -365,17 +612,28 @@ Rules:
 - When finish is true, include a final "message" summarising what was built.
 - The main component is src/App.svelte. You can create additional .svelte files in src/.
 - Use Svelte 5 rune syntax ($state, $derived, $effect).
-- Keep the index.html and vite.config.js as-is unless specifically required to change them."#;
+- Keep the index.html and vite.config.js as-is unless specifically required to change them.
+- Use "read_theme" with name "list" to list available design guides. Use "read_theme" with a filename to load a guide's CSS palette and component reference into context."#;
 
 /// System prompt for the webbuilder agent.
-pub(crate) fn webbuilder_system_prompt() -> String {
+/// `themes` is the list of available design guide filenames (may be empty).
+pub(crate) fn webbuilder_system_prompt(themes: &[String]) -> String {
+    let theme_hint = if themes.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n\nAvailable design themes (use read_theme to load): {}\n",
+            themes.join(", ")
+        )
+    };
     format!(
-        "You are a Svelte web page builder agent. You work iteratively to build and improve static Svelte 5 + Vite pages.\n\nYou have a pre-scaffolded Vite + Svelte 5 project. You can write files and run shell commands to build the page.\n\n{JSON_FORMAT_RULES}\n"
+        "You are a Svelte web page builder agent. You work iteratively to build and improve static Svelte 5 + Vite pages.\n\nYou have a pre-scaffolded Vite + Svelte 5 project. You can write files and run shell commands to build the page.{theme_hint}\n\n{JSON_FORMAT_RULES}\n"
     )
 }
 
-/// System prompt for the homebuilder agent.
+/// System prompt for the homebuilder agent (unused — kept for reference).
 #[cfg(feature = "plugin-homebuilder")]
+#[allow(dead_code)]
 pub(crate) fn homebuilder_system_prompt() -> String {
     format!(
         r#"You are a landing-page builder for an AI bot called Araliya.
@@ -398,6 +656,28 @@ CRITICAL BUILD RULES (do not change these):
 "#
     )
 }
+
+/// System prompt for modifying an existing homebuilder page via LLM.
+#[cfg(feature = "plugin-homebuilder")]
+const HOMEBUILDER_MODIFY_SYSTEM: &str = r#"You are modifying an existing Araliya homebuilder page.
+You will receive the current HTML, CSS, and JS files. Modify them according to the user's request.
+
+Respond with ONLY a JSON object:
+{
+  "message": "Brief description of the change",
+  "commands": [
+    {"type": "write_file", "path": "index.html", "content": "...full modified file..."},
+    {"type": "write_file", "path": "style.css", "content": "..."}
+  ],
+  "finish": true
+}
+
+Rules:
+- Only include files you actually changed.
+- Always write full file contents (not diffs).
+- Preserve the Seedling dark marine palette (--void/#080c0e bg, --ice/#4db8cc accent) unless asked to change it.
+- Do not add external dependencies or CDN links.
+- Keep the /ui/ navigation link."#;
 
 /// Build the per-turn context prompt.
 fn context_prompt(
@@ -443,6 +723,7 @@ async fn run_loop(
     system: String,
     fixed_finish_url: Option<&'static str>,
     scaffold_script: &'static str,
+    theme_guides_dir: Option<std::path::PathBuf>,
     state: Arc<AgentsState>,
     tx: mpsc::Sender<StreamChunk>,
 ) {
@@ -714,6 +995,36 @@ async fn run_loop(
                             step_summary.push_str(&format!(" FAILED cmd={command}: {e};"));
                         }
                     }
+                }
+
+                WbCommand::ReadTheme { name } => {
+                    let result = if let Some(ref dir) = theme_guides_dir {
+                        if name == "list" {
+                            let names = tools::list_theme_guides(dir);
+                            if names.is_empty() {
+                                "(no theme guides available)".to_string()
+                            } else {
+                                names.join("\n")
+                            }
+                        } else {
+                            match tools::read_theme_guide(dir, &name) {
+                                Ok(content) => content,
+                                Err(e) => format!("error: {e}"),
+                            }
+                        }
+                    } else {
+                        "(no theme guides configured)".to_string()
+                    };
+                    emit_step(
+                        &tx,
+                        serde_json::json!({
+                            "type": "theme_loaded",
+                            "name": name,
+                        }),
+                    )
+                    .await;
+                    history.push(format!("=== Theme: {name} ===\n{result}"));
+                    step_summary.push_str(&format!(" theme={name};"));
                 }
 
                 WbCommand::Finish { message } => {

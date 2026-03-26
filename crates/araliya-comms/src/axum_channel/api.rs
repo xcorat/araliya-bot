@@ -6,7 +6,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{
-        sse::{Event, Sse},
+        sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
     Json,
@@ -16,6 +16,7 @@ use std::convert::Infallible;
 use futures_util::stream;
 use serde::Deserialize;
 use serde_json::json;
+use tokio_stream::StreamExt;
 use tracing::warn;
 
 use araliya_core::types::llm::StreamChunk;
@@ -475,4 +476,83 @@ pub(super) async fn session_files(
         )
             .into_response(),
     }
+}
+
+pub(super) async fn observe_snapshot(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(3),
+        state.comms.management_observe_snapshot(),
+    )
+    .await
+    {
+        Ok(Ok(body)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "observe snapshot request failed: {e}");
+            (StatusCode::BAD_GATEWAY, "management adapter error\n").into_response()
+        }
+        Err(_) => {
+            warn!(channel_id = %state.channel_id, "observe snapshot request timed out");
+            (StatusCode::GATEWAY_TIMEOUT, "management adapter timeout\n").into_response()
+        }
+    }
+}
+
+pub(super) async fn observe_clear(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(3),
+        state.comms.management_observe_clear(),
+    )
+    .await
+    {
+        Ok(Ok(body)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "observe clear request failed: {e}");
+            (StatusCode::BAD_GATEWAY, "management adapter error\n").into_response()
+        }
+        Err(_) => {
+            warn!(channel_id = %state.channel_id, "observe clear request timed out");
+            (StatusCode::GATEWAY_TIMEOUT, "management adapter timeout\n").into_response()
+        }
+    }
+}
+
+/// `GET /api/observe/events` — Server-Sent Events stream of observability events.
+///
+/// Each event is a JSON-serialized [`araliya_core::obs::ObsEvent`].
+///
+/// When the ring buffer overflows and events are dropped, a special
+/// `event: lagged` message is sent carrying `{"skipped": N}` so the client
+/// knows to re-fetch the snapshot from `manage/observe/snapshot` if needed.
+pub(super) async fn observe_events(State(state): State<AxumState>) -> impl IntoResponse {
+    let Some(obs_bus) = &state.obs_bus else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "observability bus not enabled")
+            .into_response();
+    };
+
+    let rx = obs_bus.subscribe();
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|r| match r {
+        Ok(event) => serde_json::to_string(&event)
+            .ok()
+            .map(|data| Ok::<Event, Infallible>(Event::default().data(data))),
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+            // Notify the client how many events were skipped — it can re-fetch the snapshot.
+            Some(Ok(Event::default()
+                .event("lagged")
+                .data(format!(r#"{{"skipped":{n}}}"#))))
+        }
+    });
+
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

@@ -11,7 +11,8 @@ import type {
 	SessionDebugResponse,
 	TreeNode,
 	ApiError,
-	SessionMode
+	SessionMode,
+	ObsEvent
 } from './types';
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -155,4 +156,16 @@ export async function getSessionDebug(
 	);
 	if (!response.ok) return handleError(response);
 	return readResponse<SessionDebugResponse>(response);
+}
+
+export async function fetchObserveSnapshot(baseUrl: string): Promise<ObsEvent[]> {
+	const response = await fetch(`${baseUrl}/api/observe/snapshot`);
+	if (!response.ok) return handleError(response);
+	return readResponse<ObsEvent[]>(response);
+}
+
+export async function clearObserveEvents(baseUrl: string): Promise<{ cleared: number }> {
+	const response = await fetch(`${baseUrl}/api/observe/clear`, { method: 'POST' });
+	if (!response.ok) return handleError(response);
+	return readResponse<{ cleared: number }>(response);
 }

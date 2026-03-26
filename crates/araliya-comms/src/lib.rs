@@ -27,6 +27,8 @@ use araliya_core::bus::{
     ERR_METHOD_NOT_FOUND,
 };
 use araliya_core::config::Config;
+#[cfg(feature = "channel-axum")]
+use araliya_core::obs::ObsBus;
 use araliya_core::runtime::{spawn_components, Component, SubsystemHandle};
 
 // ── CommsStatusHandler ───────────────────────────────────────────────────────
@@ -118,14 +120,20 @@ impl BusHandler for CommsStatusHandler {
 // ── start ───────────────────────────────────────────────────────────────────
 
 /// Spawn all configured comms channels and return a [`SubsystemHandle`].
+#[allow(clippy::too_many_arguments)]
 pub fn start(
     config: &Config,
     bus: BusHandle,
     shutdown: CancellationToken,
     #[cfg(feature = "subsystem-ui")] ui_handle: Option<UiServeHandle>,
-    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<std::path::PathBuf>,
+    #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<
+        std::path::PathBuf,
+    >,
     comms_info: Arc<OnceLock<ComponentInfo>>,
     stdio_control_active: bool,
+    // Observability bus — forwarded to the Axum channel for the SSE stream endpoint.
+    // Pass `None` to disable live event streaming (e.g. in minimal builds).
+    #[cfg(feature = "channel-axum")] obs_bus: Option<ObsBus>,
 ) -> SubsystemHandle {
     let (event_tx, event_rx) = mpsc::channel::<CommsEvent>(32);
     let state = Arc::new(CommsState::new(bus, event_tx));
@@ -195,6 +203,7 @@ pub fn start(
                 config.comms.axum_channel.bind.clone(),
                 state.clone(),
                 ui,
+                obs_bus,
                 #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
                 preview_root.clone(),
             )));

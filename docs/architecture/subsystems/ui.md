@@ -43,6 +43,8 @@ Current key paths:
 | `/ui/status/[nodeId]` | Status component detail pane |
 | `/ui/status/[nodeId]/details` | Explicit details pane |
 | `/ui/status/[nodeId]/memory` | Memory inspector pane (MVP) |
+| `/ui/status/observe` | Event Log pane — all events with tabs, filters, search |
+| `/ui/status/observe/[filter]` | Event Log filtered by agent_id or session_id prefix |
 | `/ui/docs/...` | Documentation view |
 
 Status memory inspector MVP notes:
@@ -51,6 +53,15 @@ Status memory inspector MVP notes:
 - Displays files grouped by session (session-scoped folders), not a single flattened file list.
 - Opens an inspector card below the lists when selecting a store or file link.
 - File content preview is intentionally deferred; current MVP shows metadata and working-memory preview where available.
+
+Event Log (observe panel) features:
+
+- **Tabs:** "All" (all events) | "Logs" (tracing-bridge / stdout events with `span_id`) | "Events" (subsystem-emitted domain events with `session_id`)
+- **Search filter:** Text search on message and target fields (real-time)
+- **Level filter:** Multi-select dropdown for log levels (TRACE/DEBUG/INFO/WARN/ERROR)
+- **Table layout:** Sticky column headers with Time, Level, Source, Message, Session, Span, Fields
+- **Timestamps:** Formatted as HH:MM:SS.mmm in dedicated column
+- **Auto-scroll:** Toggle, auto-restores when user scrolls back to bottom (40px threshold)
 
 ---
 

@@ -94,25 +94,21 @@ impl OpenAiResponsesProvider {
 
         let response = check_status(response).await?;
 
-        let parsed = response
-            .json::<ResponsesResponse>()
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to deserialize Responses API response");
-                ProviderError::Request(format!("failed to parse response body: {e}"))
-            })?;
+        let parsed = response.json::<ResponsesResponse>().await.map_err(|e| {
+            error!(error = %e, "failed to deserialize Responses API response");
+            ProviderError::Request(format!("failed to parse response body: {e}"))
+        })?;
 
         let text = extract_text(&parsed.output)
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| ProviderError::Request("empty or missing output_text in response".into()))?;
+            .ok_or_else(|| {
+                ProviderError::Request("empty or missing output_text in response".into())
+            })?;
 
         let usage = parsed.usage.map(|u| LlmUsage {
             input_tokens: u.input_tokens,
             output_tokens: u.output_tokens,
-            cached_input_tokens: u
-                .input_tokens_details
-                .map(|d| d.cached_tokens)
-                .unwrap_or(0),
+            cached_input_tokens: u.input_tokens_details.map(|d| d.cached_tokens).unwrap_or(0),
             reasoning_tokens: u
                 .output_tokens_details
                 .and_then(|d| d.reasoning_tokens)
@@ -224,7 +220,10 @@ impl OpenAiResponsesProvider {
                 }
 
                 // Text delta: Responses API SSE uses output[].content[].text
-                if let Some(delta) = chunk_val["delta"]["text"].as_str().filter(|s| !s.is_empty()) {
+                if let Some(delta) = chunk_val["delta"]["text"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                {
                     if ttft_ms.is_none() {
                         ttft_ms = Some(req_start.elapsed().as_millis() as u64);
                     }
@@ -253,9 +252,10 @@ impl OpenAiResponsesProvider {
         if let Some(key) = &self.api_key {
             req = req.bearer_auth(key);
         }
-        req.send().await.map(|_| ()).map_err(|e| {
-            ProviderError::Request(format!("ping failed: {e}"))
-        })
+        req.send()
+            .await
+            .map(|_| ())
+            .map_err(|e| ProviderError::Request(format!("ping failed: {e}")))
     }
 }
 
@@ -332,12 +332,14 @@ fn extract_text(output: &[OutputItem]) -> Option<String> {
         .filter_map(|c| c.text.as_deref())
         .collect::<Vec<_>>()
         .join("");
-    if text.is_empty() { None } else { Some(text.trim().to_string()) }
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.trim().to_string())
+    }
 }
 
-async fn check_status(
-    response: reqwest::Response,
-) -> Result<reqwest::Response, ProviderError> {
+async fn check_status(response: reqwest::Response) -> Result<reqwest::Response, ProviderError> {
     if response.status().is_success() {
         return Ok(response);
     }

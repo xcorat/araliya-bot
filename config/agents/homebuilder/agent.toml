@@ -3,3 +3,6 @@ enabled = false
 
 [homebuilder]
 max_iterations = 12
+user_name = ""
+notes_dir = ""
+theme_guides_dir = "config/agents/homebuilder/theme-guides"

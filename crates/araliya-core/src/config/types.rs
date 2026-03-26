@@ -239,6 +239,8 @@ pub struct WebBuilderAgentConfig {
     /// Scaffold type used for the initial workspace setup.
     /// Currently only `"vite-svelte"` is supported.
     pub scaffold: String,
+    /// Optional directory of HTML design guide files to expose as a theme tool.
+    pub theme_guides_dir: Option<PathBuf>,
 }
 
 impl Default for WebBuilderAgentConfig {
@@ -246,6 +248,7 @@ impl Default for WebBuilderAgentConfig {
         Self {
             max_iterations: 10,
             scaffold: "vite-svelte".to_string(),
+            theme_guides_dir: None,
         }
     }
 }
@@ -254,12 +257,24 @@ impl Default for WebBuilderAgentConfig {
 #[derive(Debug, Clone)]
 pub struct HomebuildAgentConfig {
     /// Maximum LLM-tool iteration cycles before the agent gives up (default: 10).
+    /// Kept for compat; unused by static init.
     pub max_iterations: usize,
+    /// Display name for the user (default: "").
+    pub user_name: String,
+    /// Optional path to a markdown notes folder to serve (default: None).
+    pub notes_dir: Option<PathBuf>,
+    /// Optional directory of HTML design guide files to expose as a theme tool.
+    pub theme_guides_dir: Option<PathBuf>,
 }
 
 impl Default for HomebuildAgentConfig {
     fn default() -> Self {
-        Self { max_iterations: 10 }
+        Self {
+            max_iterations: 10,
+            user_name: String::new(),
+            notes_dir: None,
+            theme_guides_dir: None,
+        }
     }
 }
 

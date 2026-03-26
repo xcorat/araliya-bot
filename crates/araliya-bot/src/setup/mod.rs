@@ -304,11 +304,7 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
                 Some(token)
             }
             Err(e) => {
-                println!(
-                    "  {}  Token validation failed: {}",
-                    style("⚠").yellow(),
-                    e
-                );
+                println!("  {}  Token validation failed: {}", style("⚠").yellow(), e);
                 let save_anyway = Confirm::new()
                     .with_prompt("Save the token anyway?")
                     .default(false)
@@ -338,7 +334,11 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
     let answers = Answers {
         bot_name: bot_name.clone(),
         work_dir,
-        config_dir: opts.config_path.parent().unwrap_or(&opts.config_path).to_path_buf(),
+        config_dir: opts
+            .config_path
+            .parent()
+            .unwrap_or(&opts.config_path)
+            .to_path_buf(),
         llm_provider: prov.variant.clone(),
         openai_api_key,
         llm_model: llm_model.clone(),
@@ -375,11 +375,7 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
     println!("  Start (interactive terminal):");
     println!(
         "    {}",
-        style(format!(
-            "araliya-bot -i -f {}",
-            opts.config_path.display()
-        ))
-        .bold()
+        style(format!("araliya-bot -i -f {}", opts.config_path.display())).bold()
     );
     println!();
     if enable_http {
@@ -444,26 +440,19 @@ fn banner() {
 }
 
 fn section(title: &str) {
-    println!(
-        "{} {}",
-        style("──").cyan(),
-        style(title).bold()
-    );
+    println!("{} {}", style("──").cyan(), style(title).bold());
     println!();
 }
 
 /// Call the Telegram getMe API and return the bot username on success.
 fn validate_telegram_token(token: &str) -> Result<String> {
     let url = format!("https://api.telegram.org/bot{token}/getMe");
-    let resp = reqwest::blocking::get(&url)
-        .context("HTTP request to Telegram API failed")?;
+    let resp = reqwest::blocking::get(&url).context("HTTP request to Telegram API failed")?;
     let status = resp.status();
     let body: serde_json::Value = resp.json().context("invalid JSON from Telegram")?;
 
     if !status.is_success() || !body["ok"].as_bool().unwrap_or(false) {
-        let desc = body["description"]
-            .as_str()
-            .unwrap_or("unknown error");
+        let desc = body["description"].as_str().unwrap_or("unknown error");
         anyhow::bail!("{desc}");
     }
 

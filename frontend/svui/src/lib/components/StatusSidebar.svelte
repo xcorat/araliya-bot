@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { ChartPie, GitBranch } from '@lucide/svelte';
+	import { Activity, ChartPie, Database, GitBranch } from '@lucide/svelte';
+	import { base } from '$app/paths';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import MainProcessInfoCard from '$lib/components/MainProcessInfoCard.svelte';
 	import ComponentTreeNode from '$lib/components/ComponentTreeNode.svelte';
@@ -59,6 +60,36 @@
 			</Sidebar.SidebarGroupContent>
 		</Sidebar.SidebarGroup>
 	</Sidebar.SidebarContent>
+
+	<Sidebar.SidebarSeparator class="group-data-[collapsible=icon]:hidden" />
+
+	<!-- Quick links -->
+	<Sidebar.SidebarGroup class="group-data-[collapsible=icon]:hidden shrink-0">
+		<Sidebar.SidebarGroupContent class="px-2 pb-2">
+			<Sidebar.SidebarMenu>
+				<Sidebar.SidebarMenuItem>
+					<Sidebar.SidebarMenuButton class="text-xs gap-1.5">
+						{#snippet child({ props })}
+							<a href="{base || ''}/status/memory" {...props}>
+								<Database class="size-3.5" />
+								Memory
+							</a>
+						{/snippet}
+					</Sidebar.SidebarMenuButton>
+				</Sidebar.SidebarMenuItem>
+				<Sidebar.SidebarMenuItem>
+					<Sidebar.SidebarMenuButton class="text-xs gap-1.5">
+						{#snippet child({ props })}
+							<a href="{base || ''}/status/observe" {...props}>
+								<Activity class="size-3.5" />
+								Event Log
+							</a>
+						{/snippet}
+					</Sidebar.SidebarMenuButton>
+				</Sidebar.SidebarMenuItem>
+			</Sidebar.SidebarMenu>
+		</Sidebar.SidebarGroupContent>
+	</Sidebar.SidebarGroup>
 
 	<Sidebar.SidebarRail />
 </Sidebar.Sidebar>

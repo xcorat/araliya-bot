@@ -422,6 +422,42 @@ impl CommsState {
         }
     }
 
+    pub async fn management_observe_snapshot(&self) -> Result<String, AppError> {
+        match self
+            .bus
+            .request("manage/observe/snapshot", BusPayload::Empty)
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
+        }
+    }
+
+    pub async fn management_observe_clear(&self) -> Result<String, AppError> {
+        match self
+            .bus
+            .request("manage/observe/clear", BusPayload::Empty)
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
+        }
+    }
+
     pub fn report_event(&self, event: CommsEvent) {
         if let Err(e) = self.event_tx.try_send(event) {
             warn!("comms event dropped: {e}");

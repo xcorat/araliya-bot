@@ -203,6 +203,15 @@ pub(super) struct RawAgentEntry {
     /// Scaffold type for the `webbuilder` agent (e.g. `"vite-svelte"`).
     #[serde(default)]
     pub scaffold: Option<String>,
+    /// Display name for the `homebuilder` agent user profile (default: "").
+    #[serde(default)]
+    pub user_name: Option<String>,
+    /// Optional path to a markdown notes folder for the `homebuilder` agent.
+    #[serde(default)]
+    pub notes_dir: Option<String>,
+    /// Optional directory of HTML design guide files for the `webbuilder`/`homebuilder` agents.
+    #[serde(default)]
+    pub theme_guides_dir: Option<String>,
     /// Query params for the `gdelt_news` agent.
     #[serde(default)]
     pub gdelt_query: Option<RawGdeltAgentQuery>,

@@ -224,3 +224,18 @@ export interface SessionDebugResponse {
 	session_id: string;
 	turns: SessionDebugTurn[];
 }
+
+// ── Observability types ─────────────────────────────────────
+
+export type ObsLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface ObsEvent {
+	level: ObsLevel;
+	target: string;
+	message: string;
+	fields: Record<string, unknown> | null;
+	session_id?: string;
+	request_id?: string;
+	span_id?: string;
+	ts_unix_ms: number;
+}

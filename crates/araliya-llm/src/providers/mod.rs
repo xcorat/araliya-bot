@@ -3,10 +3,9 @@
 //! `build(config, api_key)` is the factory — called at startup.
 //! `api_type` in each provider config selects the wire adapter.
 
-pub mod dummy;
 pub mod chat_completions;
+pub mod dummy;
 pub mod openai_responses;
-
 
 use araliya_core::config::{ApiType, LlmConfig, ProviderConfig};
 
