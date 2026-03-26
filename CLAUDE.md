@@ -33,6 +33,13 @@ pnpm dev       # Dev server at http://localhost:5173
 
 # Docker
 docker-compose up --build
+
+# Homebuilder (static init → LLM modification flow)
+cargo build -p araliya-agents --features plugin-homebuilder
+./target/debug/araliya-bot --config config/agents/homebuilder/agent.toml -i
+# Then in REPL: /chat initialize the home page
+# Then: /chat change the title text to something more fitting
+# Visit http://localhost:8080/home/ (refresh to see changes)
 ```
 
 ## Testing & Linting

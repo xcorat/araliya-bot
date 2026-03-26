@@ -2,6 +2,10 @@
 /logs
 /tmp
 .cursor
+.claude/
+.cloud_parent/
+/CLAUDE.md
+
 
 /.env
 /.env.*
