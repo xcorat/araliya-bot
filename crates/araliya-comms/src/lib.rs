@@ -37,11 +37,17 @@ use araliya_core::runtime::{spawn_components, Component, SubsystemHandle};
 /// for the comms subsystem and its channel children.
 pub struct CommsStatusHandler {
     comms_info: Arc<OnceLock<ComponentInfo>>,
+    reporter: Option<araliya_core::bus::health::HealthReporter>,
 }
 
 impl CommsStatusHandler {
     pub fn new(comms_info: Arc<OnceLock<ComponentInfo>>) -> Self {
-        Self { comms_info }
+        Self { comms_info, reporter: None }
+    }
+
+    pub fn with_health_reporter(mut self, reporter: araliya_core::bus::health::HealthReporter) -> Self {
+        self.reporter = Some(reporter);
+        self
     }
 }
 
@@ -129,6 +135,7 @@ pub fn start(
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<
         std::path::PathBuf,
     >,
+    #[cfg(feature = "plugin-homebuilder")] notes_dir: Option<std::path::PathBuf>,
     comms_info: Arc<OnceLock<ComponentInfo>>,
     stdio_control_active: bool,
     // Observability bus — forwarded to the Axum channel for the SSE stream endpoint.
@@ -206,6 +213,8 @@ pub fn start(
                 obs_bus,
                 #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
                 preview_root.clone(),
+                #[cfg(feature = "plugin-homebuilder")]
+                notes_dir,
             )));
         }
     }

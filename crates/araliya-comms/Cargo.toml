@@ -17,11 +17,12 @@ teloxide = { version = "0.13", optional = true, default-features = false, featur
 futures-util = { version = "0.3", optional = true }
 tower-http = { version = "0.6", features = ["fs"], optional = true }
 tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+pulldown-cmark = { version = "0.13", optional = true }
 
 [features]
 channel-pty = []
 channel-http = []
-channel-axum = ["dep:axum", "dep:futures-util", "dep:tower-http", "dep:tokio-stream"]
+channel-axum = ["dep:axum", "dep:futures-util", "dep:tower-http", "dep:tokio-stream", "dep:pulldown-cmark"]
 channel-telegram = ["dep:teloxide"]
 subsystem-ui = []
 plugin-webbuilder = []

@@ -15,7 +15,12 @@ use araliya_core::error::AppError;
 /// - `dist/app.js` — minimal interactivity
 ///
 /// If `dist/index.html` already exists, this is a no-op (idempotent).
-pub fn write_static_page(dist_dir: &Path, user_name: &str, notes_dir: Option<&str>) -> Result<(), AppError> {
+pub fn write_static_page(
+    dist_dir: &Path,
+    user_name: &str,
+    notes_dir: Option<&str>,
+    public_id: Option<&str>,
+) -> Result<(), AppError> {
     let index_path = dist_dir.join("index.html");
 
     // Idempotent: skip if already exists
@@ -28,7 +33,7 @@ pub fn write_static_page(dist_dir: &Path, user_name: &str, notes_dir: Option<&st
         .map_err(|e| AppError::Config(format!("cannot create dist dir: {e}")))?;
 
     // Write index.html
-    let html = generate_html(user_name, notes_dir);
+    let html = generate_html(user_name, notes_dir, public_id);
     std::fs::write(&index_path, html)
         .map_err(|e| AppError::Config(format!("cannot write index.html: {e}")))?;
 
@@ -45,37 +50,46 @@ pub fn write_static_page(dist_dir: &Path, user_name: &str, notes_dir: Option<&st
     Ok(())
 }
 
-fn generate_html(user_name: &str, notes_dir: Option<&str>) -> String {
-    let user_section = if user_name.is_empty() {
+fn generate_html(user_name: &str, notes_dir: Option<&str>, public_id: Option<&str>) -> String {
+    let user_section = if user_name.is_empty() && public_id.is_none() {
         r#"<div class="card">
-      <h3>👤 User Profile</h3>
+      <h3>User Profile</h3>
       <p>No user identity yet. <button class="action-btn">Create Identity</button></p>
     </div>"#
             .to_string()
     } else {
+        let name_html = if user_name.is_empty() {
+            String::new()
+        } else {
+            format!("<p>Name: <strong>{}</strong></p>", escape_html(user_name))
+        };
+        let id_html = if let Some(pid) = public_id {
+            format!("<p class=\"pub-id\">ID: <code>{}</code></p>", escape_html(pid))
+        } else {
+            String::new()
+        };
         format!(
             r#"<div class="card">
-      <h3>👤 User Profile</h3>
-      <p>Logged in as: <strong>{}</strong></p>
+      <h3>User Profile</h3>
+      {name_html}{id_html}
       <button class="action-btn">Manage</button>
-    </div>"#,
-            escape_html(user_name)
+    </div>"#
         )
     };
 
     let notes_section = if let Some(dir) = notes_dir {
         format!(
             r#"<div class="card">
-      <h3>📝 Notes</h3>
+      <h3>Notes</h3>
       <p>Serving markdown from: <code>{}</code></p>
-      <button class="action-btn">Browse Notes</button>
+      <a href="/notes/" class="action-btn">Browse Notes</a>
     </div>"#,
             escape_html(dir)
         )
     } else {
         r#"<div class="card">
-      <h3>📝 Notes</h3>
-      <p>No notes folder configured. Set <code>notes_dir</code> in config to enable.</p>
+      <h3>Notes</h3>
+      <p>No notes folder configured. Set <code>notes_dir</code> in homebuilder config to enable.</p>
     </div>"#
             .to_string()
     };
@@ -92,12 +106,12 @@ fn generate_html(user_name: &str, notes_dir: Option<&str>) -> String {
 <body>
   <div class="container">
     <header>
-      <h1>🤖 Araliya</h1>
-      <p class="subtitle">Your personal AI assistant and knowledge platform</p>
+      <h1>Araliya</h1>
+      <p class="subtitle">personal AI assistant &amp; knowledge platform</p>
     </header>
 
     <nav>
-      <a href="/ui/" class="nav-link">→ Go to Chat UI</a>
+      <a href="/ui/" class="nav-link">Chat UI</a>
     </nav>
 
     <main>
@@ -109,13 +123,13 @@ fn generate_html(user_name: &str, notes_dir: Option<&str>) -> String {
         {}
 
         <div class="card">
-          <h3>📱 Social Media</h3>
-          <p>Download and sync your social media data. <strong>(Coming soon)</strong></p>
+          <h3>Social Media</h3>
+          <p>Download and sync your social media data (legally mandated archives). <strong>Coming soon.</strong></p>
         </div>
 
         <div class="card">
-          <h3>📢 Publishing</h3>
-          <p>Publish content to your websites. <strong>(Coming soon)</strong></p>
+          <h3>Publishing</h3>
+          <p>Publish content to your websites and domains. <strong>Coming soon.</strong></p>
         </div>
       </section>
     </main>
@@ -265,6 +279,12 @@ main {
   color: var(--haze);
 }
 
+.pub-id code {
+  font-size: 0.85em;
+  color: var(--ice);
+  letter-spacing: 0.08em;
+}
+
 .card code {
   background: var(--seam);
   padding: 0.2rem 0.4rem;
@@ -368,7 +388,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let dist = tmp.path().join("dist");
 
-        write_static_page(&dist, "Alice", Some("/home/alice/notes"))
+        write_static_page(&dist, "Alice", Some("/home/alice/notes"), Some("ab12cd34"))
             .expect("write page");
 
         assert!(dist.join("index.html").exists());
@@ -378,6 +398,7 @@ mod tests {
         let html = std::fs::read_to_string(dist.join("index.html")).expect("read html");
         assert!(html.contains("Alice"));
         assert!(html.contains("/home/alice/notes"));
+        assert!(html.contains("ab12cd34"));
     }
 
     #[test]
@@ -385,10 +406,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let dist = tmp.path().join("dist");
 
-        write_static_page(&dist, "Alice", None).expect("first write");
+        write_static_page(&dist, "Alice", None, None).expect("first write");
         let html1 = std::fs::read_to_string(dist.join("index.html")).expect("read html");
 
-        write_static_page(&dist, "Bob", None).expect("second write");
+        write_static_page(&dist, "Bob", None, None).expect("second write");
         let html2 = std::fs::read_to_string(dist.join("index.html")).expect("read html");
 
         // Should not change on second call
@@ -399,8 +420,8 @@ mod tests {
 
     #[test]
     fn test_html_escaping() {
-        let html = generate_html("<script>alert('xss')</script>", None);
-        assert!(!html.contains("<script>"));
+        let html = generate_html("<script>alert('xss')</script>", None, None);
+        assert!(!html.contains("<script>alert"));
         assert!(html.contains("&lt;script&gt;"));
     }
 }

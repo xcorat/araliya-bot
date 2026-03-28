@@ -43,6 +43,8 @@ pub(crate) struct AxumState {
     pub obs_bus: Option<ObsBus>,
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     pub preview_root: Option<std::path::PathBuf>,
+    #[cfg(feature = "plugin-homebuilder")]
+    pub notes_dir: Option<std::path::PathBuf>,
 }
 
 // ── AxumChannel ───────────────────────────────────────────────────────────────
@@ -55,6 +57,8 @@ pub struct AxumChannel {
     obs_bus: Option<ObsBus>,
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
     preview_root: Option<std::path::PathBuf>,
+    #[cfg(feature = "plugin-homebuilder")]
+    notes_dir: Option<std::path::PathBuf>,
 }
 
 impl AxumChannel {
@@ -66,6 +70,8 @@ impl AxumChannel {
         obs_bus: Option<ObsBus>,
         #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
         preview_root: Option<std::path::PathBuf>,
+        #[cfg(feature = "plugin-homebuilder")]
+        notes_dir: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
@@ -75,6 +81,8 @@ impl AxumChannel {
             obs_bus,
             #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             preview_root,
+            #[cfg(feature = "plugin-homebuilder")]
+            notes_dir,
         }
     }
 }
@@ -93,6 +101,8 @@ impl Component for AxumChannel {
             self.obs_bus,
             #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             self.preview_root,
+            #[cfg(feature = "plugin-homebuilder")]
+            self.notes_dir,
             shutdown,
         ))
     }
@@ -109,6 +119,7 @@ async fn run_axum(
     #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))] preview_root: Option<
         std::path::PathBuf,
     >,
+    #[cfg(feature = "plugin-homebuilder")] notes_dir: Option<std::path::PathBuf>,
     shutdown: CancellationToken,
 ) -> Result<(), AppError> {
     let axum_state = AxumState {
@@ -118,6 +129,8 @@ async fn run_axum(
         obs_bus,
         #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
         preview_root,
+        #[cfg(feature = "plugin-homebuilder")]
+        notes_dir,
     };
 
     let router = build_router(axum_state);
@@ -151,6 +164,8 @@ fn build_router(state: AxumState) -> Router {
         .route("/api/message/stream", post(api::message_stream))
         .route("/api/sessions", get(api::sessions))
         .route("/api/agents", get(api::agents))
+        .route("/api/llm/providers", get(api::llm_providers))
+        .route("/api/llm/default", post(api::llm_set_default))
         .route("/api/agents/{agent_id}/session", get(api::agent_session))
         .route("/api/agents/{agent_id}/spend", get(api::agent_spend))
         .route("/api/agents/{agent_id}/kg", get(api::agent_kg))
@@ -185,6 +200,18 @@ fn build_router(state: AxumState) -> Router {
         if let Some(ref preview_root) = state.preview_root {
             let dist = preview_root.join("homebuilder").join("dist");
             router.nest_service("/home", ServeDir::new(dist))
+        } else {
+            router
+        }
+    };
+
+    // Notes route: serve markdown files from notes_dir as HTML.
+    #[cfg(feature = "plugin-homebuilder")]
+    let router = {
+        if state.notes_dir.is_some() {
+            router
+                .route("/notes/", get(api::notes_index))
+                .route("/notes/{*path}", get(api::notes_serve))
         } else {
             router
         }

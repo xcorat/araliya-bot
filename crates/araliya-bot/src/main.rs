@@ -14,6 +14,7 @@
 
 mod obs_layer;
 mod subsystems;
+mod db;
 
 #[cfg(feature = "setup")]
 mod setup;
@@ -157,6 +158,7 @@ async fn run() -> Result<(), error::AppError> {
     let args = parse_cli_args();
 
     let mut config = config::load(args.config_path.as_deref())?;
+    db::load_providers(&mut config);
 
     // Without -i, no stdio channels are active (daemon-safe default).
     // TODO: warn in this case that pty is available only when interactive.
@@ -349,7 +351,7 @@ async fn run() -> Result<(), error::AppError> {
 
         // Share agent identity dirs with the memory bus handler.
         let agent_id_dirs = Arc::new(agents.agent_identity_dirs());
-        handlers.push(Box::new(MemoryBusHandler::new(agent_id_dirs)));
+        handlers.push(Box::new(MemoryBusHandler::new(agent_id_dirs).with_health_reporter(health_registry.reporter("memory"))));
         configured_handlers.push("memory".to_string());
 
         handlers.push(Box::new(agents));
@@ -369,7 +371,7 @@ async fn run() -> Result<(), error::AppError> {
     // same OnceLock; the handler reads it lazily on each status request.
     #[cfg(feature = "subsystem-comms")]
     {
-        handlers.push(Box::new(CommsStatusHandler::new(comms_info.clone())));
+        handlers.push(Box::new(CommsStatusHandler::new(comms_info.clone()).with_health_reporter(health_registry.reporter("comms"))));
         configured_handlers.push("comms".to_string());
     }
 
@@ -408,6 +410,8 @@ async fn run() -> Result<(), error::AppError> {
             ui_handle,
             #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
             Some(identity.identity_dir.join("runtimes")),
+            #[cfg(feature = "plugin-homebuilder")]
+            config.agents.homebuilder.as_ref().and_then(|hb| hb.notes_dir.clone()),
             comms_info,
             araliya_supervisor::adapters::stdio::stdio_control_active(),
             #[cfg(feature = "channel-axum")]

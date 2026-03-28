@@ -35,6 +35,11 @@ pub(super) struct MessageRequest {
     mode: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub(super) struct SetDefaultRequest {
+    provider: String,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn json_error(code: &str, msg: impl std::fmt::Display) -> Json<serde_json::Value> {
@@ -249,6 +254,54 @@ pub(super) async fn agents(State(state): State<AxumState>) -> Response {
         Err(_) => (
             StatusCode::GATEWAY_TIMEOUT,
             json_error("timeout", "agents request timed out"),
+        )
+            .into_response(),
+    }
+}
+
+pub(super) async fn llm_providers(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(Duration::from_secs(10), state.comms.request_llm_providers()).await {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "llm providers request failed: {e}");
+            (StatusCode::BAD_GATEWAY, json_error("internal", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "llm providers request timed out"),
+        )
+            .into_response(),
+    }
+}
+
+pub(super) async fn llm_set_default(
+    State(state): State<AxumState>,
+    Json(req): Json<SetDefaultRequest>,
+) -> Response {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        state.comms.set_llm_default(&req.provider),
+    )
+    .await
+    {
+        Ok(Ok(data)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "llm set_default request failed: {e}");
+            (StatusCode::BAD_GATEWAY, json_error("internal", e)).into_response()
+        }
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            json_error("timeout", "llm set_default request timed out"),
         )
             .into_response(),
     }
@@ -555,4 +608,126 @@ pub(super) async fn observe_events(State(state): State<AxumState>) -> impl IntoR
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
+}
+
+// ── Notes routes ─────────────────────────────────────────────────────────────
+
+/// `GET /notes/` — list all markdown files in notes_dir.
+#[cfg(feature = "plugin-homebuilder")]
+pub(crate) async fn notes_index(State(state): State<super::AxumState>) -> Response {
+    use axum::http::header;
+
+    let Some(notes_dir) = &state.notes_dir else {
+        return (StatusCode::NOT_FOUND, "notes not configured").into_response();
+    };
+
+    let entries = match collect_note_entries(notes_dir) {
+        Ok(e) => e,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+
+    let links: String = entries
+        .iter()
+        .map(|name| format!(r#"<li><a href="/notes/{name}">{name}</a></li>"#))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let html = format!(
+        r#"<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Notes</title>
+<style>body{{font-family:monospace;background:#080c0e;color:#b8ced6;padding:2rem;max-width:800px;margin:0 auto}}
+a{{color:#4db8cc}}h1{{color:#e8eef0;margin-bottom:1.5rem}}li{{margin:.5rem 0}}</style>
+</head><body><h1>Notes</h1><ul>{links}</ul><p><a href="/home/">← Home</a></p></body></html>"#
+    );
+
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
+}
+
+/// `GET /notes/{*path}` — serve a single note; render `.md` as HTML.
+#[cfg(feature = "plugin-homebuilder")]
+pub(crate) async fn notes_serve(
+    State(state): State<super::AxumState>,
+    Path(path): Path<String>,
+) -> Response {
+    use axum::http::header;
+
+    let Some(notes_dir) = &state.notes_dir else {
+        return (StatusCode::NOT_FOUND, "notes not configured").into_response();
+    };
+
+    // Security: reject path traversal attempts
+    if path.contains("..") || path.contains('\0') {
+        return (StatusCode::BAD_REQUEST, "invalid path").into_response();
+    }
+
+    let file_path = notes_dir.join(&path);
+
+    // Only serve files inside notes_dir (double-check after joining)
+    let canonical = match file_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::NOT_FOUND, "not found").into_response(),
+    };
+    let notes_canonical = notes_dir.canonicalize().unwrap_or_else(|_| notes_dir.clone());
+    if !canonical.starts_with(&notes_canonical) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+
+    let content = match std::fs::read_to_string(&canonical) {
+        Ok(c) => c,
+        Err(_) => return (StatusCode::NOT_FOUND, "not found").into_response(),
+    };
+
+    if path.ends_with(".md") {
+        let html_body = render_markdown(&content);
+        let filename = file_path.file_name().and_then(|n| n.to_str()).unwrap_or(&path);
+        let page = format!(
+            r#"<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>{filename}</title>
+<style>body{{font-family:monospace;background:#080c0e;color:#b8ced6;padding:2rem;max-width:800px;margin:0 auto;line-height:1.7}}
+a{{color:#4db8cc}}h1,h2,h3{{color:#e8eef0}}code,pre{{background:#111b1f;padding:.2em .4em;border-radius:2px;color:#7ed4e2}}
+pre code{{padding:0}}blockquote{{border-left:3px solid #1c2d33;padding-left:1rem;color:#7a9aa5}}</style>
+</head><body>{html_body}<p><a href="/notes/">← Notes</a></p></body></html>"#
+        );
+        ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], page).into_response()
+    } else {
+        // Serve non-markdown files as plain text
+        (
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            content,
+        )
+            .into_response()
+    }
+}
+
+#[cfg(feature = "plugin-homebuilder")]
+fn collect_note_entries(dir: &std::path::Path) -> Result<Vec<String>, String> {
+    let read = std::fs::read_dir(dir)
+        .map_err(|e| format!("cannot read notes dir: {e}"))?;
+    let mut names: Vec<String> = read
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // Only list markdown and text files
+            if name.ends_with(".md") || name.ends_with(".txt") {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Render a markdown string to an HTML fragment using pulldown-cmark.
+#[cfg(feature = "plugin-homebuilder")]
+fn render_markdown(md: &str) -> String {
+    use pulldown_cmark::{html, Options, Parser};
+    let opts = Options::ENABLE_TABLES
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_STRIKETHROUGH;
+    let parser = Parser::new_ext(md, opts);
+    let mut html_out = String::with_capacity(md.len() * 2);
+    html::push_html(&mut html_out, parser);
+    html_out
 }

@@ -350,18 +350,33 @@ async fn run_static_init(
     )
     .await;
 
-    // Step 2: Derive dist_dir from identity_dir.
-    // memory_root is {identity_dir}/memory; preview root is {identity_dir}/runtimes
-    // which matches the preview_root passed to AxumChannel in main.rs.
+    // Step 2: Derive dirs from identity_dir.
+    // memory_root is {identity_dir}/memory; runtimes root is {identity_dir}/runtimes.
     let memory_root = state.memory.memory_root().to_path_buf();
     let identity_dir = memory_root.parent().expect("memory has parent");
     let dist_dir = identity_dir.join("runtimes").join("homebuilder").join("dist");
 
-    // Step 3: Generate static page (idempotent)
+    // Step 3: Create/load user identity so we can show public_id on the page.
+    let work_dir = identity_dir.parent().expect("identity_dir has parent");
+    let work_dir_str = work_dir.to_string_lossy().into_owned();
+    let public_id = match araliya_core::user_identity::create_or_load(
+        &work_dir_str,
+        if user_name.is_empty() { None } else { Some(user_name.clone()) },
+        notes_dir.as_ref().map(|s| PathBuf::from(s)),
+    ) {
+        Ok(u) => Some(u.identity.public_id),
+        Err(e) => {
+            tracing::warn!("failed to create user identity: {}", e);
+            None
+        }
+    };
+
+    // Step 4: Generate static page (idempotent), passing public_id for display.
     if let Err(e) = super::init_home::write_static_page(
         &dist_dir,
         &user_name,
         notes_dir.as_deref(),
+        public_id.as_deref(),
     ) {
         emit_step(
             &tx,
@@ -382,18 +397,6 @@ async fn run_static_init(
         }),
     )
     .await;
-
-    // Step 4: Optionally create/load user identity (stored under work_dir = identity_dir/..)
-    let work_dir = identity_dir.parent().expect("identity_dir has parent");
-    let work_dir_str = work_dir.to_string_lossy().into_owned();
-    if let Err(e) = araliya_core::user_identity::create_or_load(
-        &work_dir_str,
-        if user_name.is_empty() { None } else { Some(user_name) },
-        notes_dir.map(PathBuf::from),
-    ) {
-        tracing::warn!("failed to create user identity: {}", e);
-        // Non-fatal: continue even if identity setup fails
-    }
 
     // Step 5: Emit completion
     emit_step(
