@@ -42,10 +42,16 @@ pub struct CommsStatusHandler {
 
 impl CommsStatusHandler {
     pub fn new(comms_info: Arc<OnceLock<ComponentInfo>>) -> Self {
-        Self { comms_info, reporter: None }
+        Self {
+            comms_info,
+            reporter: None,
+        }
     }
 
-    pub fn with_health_reporter(mut self, reporter: araliya_core::bus::health::HealthReporter) -> Self {
+    pub fn with_health_reporter(
+        mut self,
+        reporter: araliya_core::bus::health::HealthReporter,
+    ) -> Self {
         self.reporter = Some(reporter);
         self
     }

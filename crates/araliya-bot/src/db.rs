@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 
-use araliya_core::config::{ApiType, ProviderConfig, resolve_api_key, Config};
+use araliya_core::config::{ApiType, Config, ProviderConfig, resolve_api_key};
 use rusqlite::Connection;
 
 /// Initializes the dynamic SQLite configuration database and loads any
@@ -11,9 +11,11 @@ use rusqlite::Connection;
 /// and overrides/augments the base TOML configuration.
 pub fn load_providers(config: &mut Config) {
     let data_dir = dirs::data_local_dir().unwrap_or_else(|| {
-        dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join(".local/share")
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join(".local/share")
     });
-    
+
     let araliya_dir = data_dir.join("araliya");
     if let Err(e) = std::fs::create_dir_all(&araliya_dir) {
         error!(error = %e, path = %araliya_dir.display(), "failed to create araliya appdata directory");
@@ -85,19 +87,22 @@ pub fn load_providers(config: &mut Config) {
 
         let resolved_api_key = resolve_api_key(api_key, api_key_file);
 
-        Ok((name, ProviderConfig {
-            api_type,
-            api_base_url,
-            model,
-            temperature: temperature as f32,
-            api_key: resolved_api_key,
-            reasoning_effort,
-            timeout_seconds: timeout_seconds as u64,
-            max_tokens: max_tokens as usize,
-            input_per_million_usd: input_cost,
-            output_per_million_usd: output_cost,
-            cached_input_per_million_usd: cached_input_cost,
-        }))
+        Ok((
+            name,
+            ProviderConfig {
+                api_type,
+                api_base_url,
+                model,
+                temperature: temperature as f32,
+                api_key: resolved_api_key,
+                reasoning_effort,
+                timeout_seconds: timeout_seconds as u64,
+                max_tokens: max_tokens as usize,
+                input_per_million_usd: input_cost,
+                output_per_million_usd: output_cost,
+                cached_input_per_million_usd: cached_input_cost,
+            },
+        ))
     }) {
         Ok(it) => it,
         Err(e) => {

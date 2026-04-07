@@ -147,8 +147,12 @@ async fn handle_connection(
             api::handle_message(&mut socket, &state, &channel_id, body).await
         }
         ("GET", "/api/sessions") => api::handle_sessions(&mut socket, &state, &channel_id).await,
-        ("GET", "/api/llm/providers") => api::handle_llm_providers(&mut socket, &state, &channel_id).await,
-        ("POST", "/api/llm/default") => api::handle_llm_set_default(&mut socket, &state, &channel_id, body).await,
+        ("GET", "/api/llm/providers") => {
+            api::handle_llm_providers(&mut socket, &state, &channel_id).await
+        }
+        ("POST", "/api/llm/default") => {
+            api::handle_llm_set_default(&mut socket, &state, &channel_id, body).await
+        }
         ("GET", _) if session_memory.is_some() => {
             api::handle_session_memory(&mut socket, &state, &channel_id, session_memory.unwrap())
                 .await

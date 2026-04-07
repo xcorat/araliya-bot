@@ -588,7 +588,10 @@ pub(super) async fn observe_clear(State(state): State<AxumState>) -> Response {
 /// knows to re-fetch the snapshot from `manage/observe/snapshot` if needed.
 pub(super) async fn observe_events(State(state): State<AxumState>) -> impl IntoResponse {
     let Some(obs_bus) = &state.obs_bus else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "observability bus not enabled")
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "observability bus not enabled",
+        )
             .into_response();
     };
 
@@ -667,7 +670,9 @@ pub(crate) async fn notes_serve(
         Ok(p) => p,
         Err(_) => return (StatusCode::NOT_FOUND, "not found").into_response(),
     };
-    let notes_canonical = notes_dir.canonicalize().unwrap_or_else(|_| notes_dir.clone());
+    let notes_canonical = notes_dir
+        .canonicalize()
+        .unwrap_or_else(|_| notes_dir.clone());
     if !canonical.starts_with(&notes_canonical) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
@@ -679,7 +684,10 @@ pub(crate) async fn notes_serve(
 
     if path.ends_with(".md") {
         let html_body = render_markdown(&content);
-        let filename = file_path.file_name().and_then(|n| n.to_str()).unwrap_or(&path);
+        let filename = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&path);
         let page = format!(
             r#"<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>{filename}</title>
@@ -701,8 +709,7 @@ pre code{{padding:0}}blockquote{{border-left:3px solid #1c2d33;padding-left:1rem
 
 #[cfg(feature = "plugin-homebuilder")]
 fn collect_note_entries(dir: &std::path::Path) -> Result<Vec<String>, String> {
-    let read = std::fs::read_dir(dir)
-        .map_err(|e| format!("cannot read notes dir: {e}"))?;
+    let read = std::fs::read_dir(dir).map_err(|e| format!("cannot read notes dir: {e}"))?;
     let mut names: Vec<String> = read
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -723,9 +730,7 @@ fn collect_note_entries(dir: &std::path::Path) -> Result<Vec<String>, String> {
 #[cfg(feature = "plugin-homebuilder")]
 fn render_markdown(md: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
-    let opts = Options::ENABLE_TABLES
-        | Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_STRIKETHROUGH;
+    let opts = Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_STRIKETHROUGH;
     let parser = Parser::new_ext(md, opts);
     let mut html_out = String::with_capacity(md.len() * 2);
     html::push_html(&mut html_out, parser);

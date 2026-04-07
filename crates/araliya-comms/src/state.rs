@@ -275,7 +275,11 @@ impl CommsState {
     }
 
     pub async fn request_llm_providers(&self) -> Result<String, AppError> {
-        match self.bus.request("llm/list_providers", BusPayload::Empty).await {
+        match self
+            .bus
+            .request("llm/list_providers", BusPayload::Empty)
+            .await
+        {
             Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
             Ok(Err(e)) => Err(AppError::Comms(format!(
                 "llm error {}: {}",

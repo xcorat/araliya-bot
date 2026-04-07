@@ -70,8 +70,7 @@ impl AxumChannel {
         obs_bus: Option<ObsBus>,
         #[cfg(any(feature = "plugin-homebuilder", feature = "plugin-webbuilder"))]
         preview_root: Option<std::path::PathBuf>,
-        #[cfg(feature = "plugin-homebuilder")]
-        notes_dir: Option<std::path::PathBuf>,
+        #[cfg(feature = "plugin-homebuilder")] notes_dir: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             channel_id: channel_id.into(),
@@ -110,6 +109,7 @@ impl Component for AxumChannel {
 
 // ── Server loop ───────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn run_axum(
     channel_id: String,
     bind_addr: String,

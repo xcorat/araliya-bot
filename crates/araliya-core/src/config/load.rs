@@ -298,7 +298,7 @@ pub fn load_from(
             notes_dir: entry
                 .notes_dir
                 .as_ref()
-                .map(|s| PathBuf::from(s))
+                .map(PathBuf::from)
                 .or(defaults.notes_dir),
             theme_guides_dir: entry.theme_guides_dir.as_ref().map(PathBuf::from),
         }
@@ -506,7 +506,9 @@ pub fn resolve_api_key(api_key: Option<String>, api_key_file: Option<String>) ->
     if let Some(key) = api_key {
         if let Some(secret_name) = key.strip_prefix("secret:") {
             let data_dir = dirs::data_local_dir().unwrap_or_else(|| {
-                dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join(".local/share")
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("/tmp"))
+                    .join(".local/share")
             });
             let secret_path = data_dir.join("araliya/secrets").join(secret_name);
             match fs::read_to_string(&secret_path) {
@@ -516,7 +518,7 @@ pub fn resolve_api_key(api_key: Option<String>, api_key_file: Option<String>) ->
                 }
             }
         } else if key.starts_with("${") && key.ends_with('}') {
-            let env_var = &key[2..key.len()-1];
+            let env_var = &key[2..key.len() - 1];
             if let Ok(val) = env::var(env_var) {
                 return Some(val);
             } else {

@@ -20,10 +20,10 @@ use araliya_llm::StreamChunk;
 
 use super::{Agent, AgentsState};
 
-mod loop_;
-mod tools;
 #[cfg(feature = "plugin-homebuilder")]
 pub(crate) mod init_home;
+mod loop_;
+mod tools;
 
 // ── WebBuilderAgent ───────────────────────────────────────────────────────────
 
@@ -128,7 +128,10 @@ impl HomebuilderAgent {
     pub fn new(cfg: &HomebuildAgentConfig) -> Self {
         Self {
             user_name: cfg.user_name.clone(),
-            notes_dir: cfg.notes_dir.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            notes_dir: cfg
+                .notes_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned()),
         }
     }
 }

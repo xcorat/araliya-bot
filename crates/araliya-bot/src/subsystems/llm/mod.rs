@@ -269,12 +269,20 @@ impl LlmSubsystem {
             ))
     }
 
-    async fn run_check(provider_name: &str, provider: &LlmProvider, model: &str, reporter: &HealthReporter) {
+    async fn run_check(
+        provider_name: &str,
+        provider: &LlmProvider,
+        model: &str,
+        reporter: &HealthReporter,
+    ) {
         match provider.ping().await {
             Ok(()) => {
                 debug!(model, "llm provider reachable");
                 reporter
-                    .set_healthy_with("ok", Some(serde_json::json!({ "provider": provider_name, "model": model })))
+                    .set_healthy_with(
+                        "ok",
+                        Some(serde_json::json!({ "provider": provider_name, "model": model })),
+                    )
                     .await;
             }
             Err(e) => {

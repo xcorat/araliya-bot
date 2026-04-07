@@ -82,11 +82,11 @@ pub fn create_or_load(
 
     // Merge in provided values
     let mut dirty = false;
-    if let Some(name) = display_name {
-        if profile.display_name.as_deref() != Some(name.as_str()) {
-            profile.display_name = Some(name);
-            dirty = true;
-        }
+    if let Some(name) = display_name
+        && profile.display_name.as_deref() != Some(name.as_str())
+    {
+        profile.display_name = Some(name);
+        dirty = true;
     }
     if let Some(dir) = notes_dir.as_ref() {
         let dir_str = dir.to_string_lossy().into_owned();
@@ -136,7 +136,9 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     loop {
         let leap = is_leap(y);
         let dy = if leap { 366 } else { 365 };
-        if d < dy { break; }
+        if d < dy {
+            break;
+        }
         d -= dy;
         y += 1;
     }
@@ -148,7 +150,9 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     };
     let mut month = 1u64;
     for &dm in months {
-        if d < dm { break; }
+        if d < dm {
+            break;
+        }
         d -= dm;
         month += 1;
     }
@@ -156,7 +160,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 }
 
 fn is_leap(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 #[cfg(test)]
@@ -168,13 +172,11 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let work_dir = tmp.path().to_string_lossy().into_owned();
 
-        let user1 = create_or_load(&work_dir, Some("Alice".into()), None)
-            .expect("create user");
+        let user1 = create_or_load(&work_dir, Some("Alice".into()), None).expect("create user");
         assert_eq!(user1.display_name, Some("Alice".into()));
 
         // Reload — should still see Alice, public_id stays same
-        let user2 = create_or_load(&work_dir, None, None)
-            .expect("load user");
+        let user2 = create_or_load(&work_dir, None, None).expect("load user");
         assert_eq!(user1.identity.public_id, user2.identity.public_id);
         assert_eq!(user2.display_name, Some("Alice".into()));
     }

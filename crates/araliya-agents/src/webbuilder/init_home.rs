@@ -64,7 +64,10 @@ fn generate_html(user_name: &str, notes_dir: Option<&str>, public_id: Option<&st
             format!("<p>Name: <strong>{}</strong></p>", escape_html(user_name))
         };
         let id_html = if let Some(pid) = public_id {
-            format!("<p class=\"pub-id\">ID: <code>{}</code></p>", escape_html(pid))
+            format!(
+                "<p class=\"pub-id\">ID: <code>{}</code></p>",
+                escape_html(pid)
+            )
         } else {
             String::new()
         };

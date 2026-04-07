@@ -62,20 +62,14 @@ pub fn run(config_path: &Path, env_path: &Path) -> anyhow::Result<bool> {
                         );
 
                         // Check that default agent is not the bare echo placeholder
-                        if let Some(agents) = parsed.get("agents") {
-                            if let Some(default) = agents.get("default").and_then(|v| v.as_str()) {
-                                all_ok &= check(
-                                    "Default agent is configured",
-                                    default != "echo" || {
-                                        // echo is fine if explicitly chosen
-                                        true
-                                    },
-                                    &format!(
-                                        "Default agent is 'echo' — consider running 'araliya-bot setup' to choose a profile"
-                                    ),
-                                );
-                                let _ = default; // suppress unused warning
-                            }
+                        if let Some(agents) = parsed.get("agents")
+                            && let Some(_default) = agents.get("default").and_then(|v| v.as_str())
+                        {
+                            all_ok &= check(
+                                "Default agent is configured",
+                                true,
+                                "Default agent is 'echo' — consider running 'araliya-bot setup' to choose a profile",
+                            );
                         }
                     }
                     Err(e) => {

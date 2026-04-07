@@ -463,11 +463,17 @@ pub(super) async fn handle_llm_providers(
         Ok(Err(e)) => {
             warn!(%channel_id, "llm providers request failed: {e}");
             let err_body = serde_json::json!({ "error": "internal", "message": format!("{e}") });
-            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes()).await
+            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({ "error": "timeout", "message": "llm providers request timed out" });
-            super::write_json_response(socket, "504 Gateway Timeout", err_body.to_string().as_bytes()).await
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
         }
     }
 }
@@ -478,20 +484,28 @@ pub(super) async fn handle_llm_set_default(
     channel_id: &str,
     body: Vec<u8>,
 ) -> Result<(), AppError> {
-    let body_str = String::from_utf8(body).map_err(|_| AppError::Comms("request body is not valid utf-8".to_string()))?;
+    let body_str = String::from_utf8(body)
+        .map_err(|_| AppError::Comms("request body is not valid utf-8".to_string()))?;
     let req: serde_json::Value = serde_json::from_str(&body_str).unwrap_or(serde_json::json!({}));
     let provider = req.get("provider").and_then(|v| v.as_str()).unwrap_or("");
-    let result = tokio::time::timeout(Duration::from_secs(10), state.set_llm_default(provider)).await;
+    let result =
+        tokio::time::timeout(Duration::from_secs(10), state.set_llm_default(provider)).await;
     match result {
         Ok(Ok(data)) => super::write_json_response(socket, "200 OK", data.as_bytes()).await,
         Ok(Err(e)) => {
             warn!(%channel_id, "llm set_default request failed: {e}");
             let err_body = serde_json::json!({ "error": "internal", "message": format!("{e}") });
-            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes()).await
+            super::write_json_response(socket, "502 Bad Gateway", err_body.to_string().as_bytes())
+                .await
         }
         Err(_) => {
             let err_body = serde_json::json!({ "error": "timeout", "message": "llm set_default request timed out" });
-            super::write_json_response(socket, "504 Gateway Timeout", err_body.to_string().as_bytes()).await
+            super::write_json_response(
+                socket,
+                "504 Gateway Timeout",
+                err_body.to_string().as_bytes(),
+            )
+            .await
         }
     }
 }

@@ -224,7 +224,10 @@ pub(crate) struct WebBuilderLoop {
 
 impl WebBuilderLoop {
     pub fn new(max_iterations: usize, theme_guides_dir: Option<std::path::PathBuf>) -> Self {
-        Self { max_iterations, theme_guides_dir }
+        Self {
+            max_iterations,
+            theme_guides_dir,
+        }
     }
 
     /// Kick off the build loop asynchronously and return a streaming result
@@ -285,7 +288,10 @@ pub(crate) struct HomebuilderLoop {
 #[cfg(feature = "plugin-homebuilder")]
 impl HomebuilderLoop {
     pub fn new(user_name: String, notes_dir: Option<String>) -> Self {
-        Self { user_name, notes_dir }
+        Self {
+            user_name,
+            notes_dir,
+        }
     }
 
     pub async fn run_stream(
@@ -303,21 +309,16 @@ impl HomebuilderLoop {
             // Derive dist_dir
             let memory_root = state.memory.memory_root().to_path_buf();
             let identity_dir = memory_root.parent().expect("memory has parent");
-            let dist_dir = identity_dir.join("runtimes").join("homebuilder").join("dist");
+            let dist_dir = identity_dir
+                .join("runtimes")
+                .join("homebuilder")
+                .join("dist");
 
             // Route: if page already exists, use LLM modification path; else init
             if dist_dir.join("index.html").exists() {
                 run_llm_modify(channel_id, content, dist_dir, state, tx).await;
             } else {
-                run_static_init(
-                    channel_id,
-                    session_id,
-                    user_name,
-                    notes_dir,
-                    state,
-                    tx,
-                )
-                .await;
+                run_static_init(channel_id, session_id, user_name, notes_dir, state, tx).await;
             }
         });
 
@@ -354,15 +355,22 @@ async fn run_static_init(
     // memory_root is {identity_dir}/memory; runtimes root is {identity_dir}/runtimes.
     let memory_root = state.memory.memory_root().to_path_buf();
     let identity_dir = memory_root.parent().expect("memory has parent");
-    let dist_dir = identity_dir.join("runtimes").join("homebuilder").join("dist");
+    let dist_dir = identity_dir
+        .join("runtimes")
+        .join("homebuilder")
+        .join("dist");
 
     // Step 3: Create/load user identity so we can show public_id on the page.
     let work_dir = identity_dir.parent().expect("identity_dir has parent");
     let work_dir_str = work_dir.to_string_lossy().into_owned();
     let public_id = match araliya_core::user_identity::create_or_load(
         &work_dir_str,
-        if user_name.is_empty() { None } else { Some(user_name.clone()) },
-        notes_dir.as_ref().map(|s| PathBuf::from(s)),
+        if user_name.is_empty() {
+            None
+        } else {
+            Some(user_name.clone())
+        },
+        notes_dir.as_ref().map(PathBuf::from),
     ) {
         Ok(u) => Some(u.identity.public_id),
         Err(e) => {
@@ -464,7 +472,12 @@ async fn run_llm_modify(
                 }),
             )
             .await;
-            let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+            let _ = tx
+                .send(StreamChunk::Done {
+                    usage: None,
+                    timing: None,
+                })
+                .await;
             return;
         }
     };
@@ -481,7 +494,12 @@ async fn run_llm_modify(
                 }),
             )
             .await;
-            let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+            let _ = tx
+                .send(StreamChunk::Done {
+                    usage: None,
+                    timing: None,
+                })
+                .await;
             return;
         }
     };
@@ -550,7 +568,12 @@ async fn run_llm_modify(
     )
     .await;
 
-    let _ = tx.send(StreamChunk::Done { usage: None, timing: None }).await;
+    let _ = tx
+        .send(StreamChunk::Done {
+            usage: None,
+            timing: None,
+        })
+        .await;
 }
 
 // ── Main loop ─────────────────────────────────────────────────────────────────

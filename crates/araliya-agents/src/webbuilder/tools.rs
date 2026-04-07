@@ -253,6 +253,5 @@ pub(crate) fn read_theme_guide(dir: &std::path::Path, name: &str) -> Result<Stri
         return Err(format!("invalid theme name: {name}"));
     }
     let path = dir.join(name);
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("cannot read theme {name}: {e}"))
+    std::fs::read_to_string(&path).map_err(|e| format!("cannot read theme {name}: {e}"))
 }

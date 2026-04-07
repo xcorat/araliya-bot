@@ -221,9 +221,8 @@ fn render_agents_block(
         }
         BotProfile::Homebuilder => {
             let user_name = homebuilder_user_name.unwrap_or("");
-            let mut block = format!(
-                "[agents.homebuilder]\nenabled = true\nuser_name = \"{user_name}\"\n"
-            );
+            let mut block =
+                format!("[agents.homebuilder]\nenabled = true\nuser_name = \"{user_name}\"\n");
             if let Some(notes) = homebuilder_notes_dir {
                 block.push_str(&format!("notes_dir = \"{notes}\"\n"));
             }
@@ -289,7 +288,7 @@ mod tests {
         assert!(parsed.get("agents").is_some());
 
         let axum = &parsed["comms"]["axum_channel"];
-        assert_eq!(axum["enabled"].as_bool().unwrap(), true);
+        assert!(axum["enabled"].as_bool().unwrap());
     }
 
     #[test]

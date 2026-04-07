@@ -32,7 +32,10 @@ impl MemoryBusHandler {
         }
     }
 
-    pub fn with_health_reporter(mut self, reporter: araliya_core::bus::health::HealthReporter) -> Self {
+    pub fn with_health_reporter(
+        mut self,
+        reporter: araliya_core::bus::health::HealthReporter,
+    ) -> Self {
         let r = reporter.clone();
         tokio::spawn(async move {
             r.set_healthy_with(
