@@ -1,0 +1,56 @@
+# Full feature set overlay — extends default.toml with all built-in agents and tools.
+# Only keys that differ from default.toml are listed here.
+
+[meta]
+base = "default.toml"
+
+[agents]
+default = "chat"
+debug_logging = true
+
+# Enable all optional agents
+[agents.basic_chat]
+enabled = true
+
+[agents.chat]
+enabled = true
+
+[agents.gmail]
+enabled = true
+
+[agents.news]
+enabled = true
+
+[agents.docs]
+enabled = true
+docsdir = "docs/"
+index = "index.md"
+
+[agents.docs_agent]
+enabled = true
+
+[agents.agentic-chat]
+enabled = true
+
+[agents.webbuilder]
+enabled = true
+
+[agents.homebuilder]
+enabled = true
+user_name = "Araliya"
+
+[agents.newsroom]
+enabled = true
+
+[agents.news_aggregator]
+enabled = true
+
+# Enable all subsystems and channels
+[comms.telegram]
+enabled = false  # Still requires TELEGRAM_BOT_TOKEN env var, disabled by default
+
+[runtimes]
+enabled = true
+
+[ui.svui]
+enabled = true
