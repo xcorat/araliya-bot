@@ -348,27 +348,30 @@ main() {
     ok "araliya-bot is on your PATH"
   fi
 
-  # ── launch setup wizard ──────────────────────────────────────────
-  step "Running setup wizard"
-  echo "  (Configure bot name, LLM provider, agent profile, and channels)"
-  echo ""
-
-  "$INSTALL_DIR/araliya-bot" setup \
-    --config "$CONFIG_DIR/config.toml" \
-    --env    "$CONFIG_DIR/.env" \
-    --work-dir "$WORK_DIR" \
-    || { err "Setup wizard failed"; exit 1; }
-
   # ── done ─────────────────────────────────────────────────────────
-  printf "\n${GREEN}${BOLD}✓ Araliya Bot is ready!${NC}\n\n"
-  echo "  Start (interactive terminal):"
-  printf "    ${BOLD}araliya-bot -i -f $CONFIG_DIR/config.toml${NC}\n\n"
-  echo "  Start (headless / HTTP API):"
-  printf "    ${BOLD}araliya-bot -f $CONFIG_DIR/config.toml${NC}\n\n"
-  echo "  Validate config at any time:"
+  printf "\n${GREEN}${BOLD}✓ Installation complete!${NC}\n\n"
+  printf "  ${BOLD}Next steps:${NC}\n\n"
+  printf "  1. Configure the bot (interactive setup):\n"
+  printf "     ${BOLD}araliya-bot setup -f $CONFIG_DIR/config.toml${NC}\n\n"
+  printf "  2. Start (interactive terminal):\n"
+  printf "     ${BOLD}araliya-bot -i -f $CONFIG_DIR/config.toml${NC}\n\n"
+  printf "  3. Start (headless — serves web UI + API):\n"
+  printf "     ${BOLD}araliya-bot -f $CONFIG_DIR/config.toml${NC}\n\n"
+  printf "  ${BOLD}Other commands:${NC}\n\n"
+  printf "  • Validate config:\n"
   printf "    ${BOLD}araliya-bot doctor -f $CONFIG_DIR/config.toml${NC}\n\n"
-  echo "  Uninstall:"
+  printf "  • Reconfigure at any time:\n"
+  printf "    ${BOLD}araliya-bot setup -f $CONFIG_DIR/config.toml${NC}\n\n"
+  printf "  ${BOLD}Locations:${NC}\n\n"
+  printf "  • Binary: ${BOLD}$INSTALL_DIR/araliya-bot${NC}\n"
+  printf "  • Config: ${BOLD}$CONFIG_DIR/config.toml${NC}\n"
+  printf "  • Secrets: ${BOLD}$CONFIG_DIR/.env${NC}\n"
+  printf "  • Runtime data: ${BOLD}$WORK_DIR${NC}\n\n"
+  printf "  ${BOLD}Uninstall:${NC}\n\n"
+  printf "  • Remove binary only:\n"
   printf "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/uninstall.sh | bash${NC}\n\n"
+  printf "  • Remove everything (with prompts):\n"
+  printf "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/uninstall.sh | bash -s -- --purge${NC}\n\n"
 }
 
 main
