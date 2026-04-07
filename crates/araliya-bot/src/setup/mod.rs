@@ -213,6 +213,16 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
             variant: BotProfile::Docs,
         },
         ProfileDef {
+            label: "Docs + KG agent",
+            hint: "RAG with knowledge-graph extraction",
+            variant: BotProfile::DocsKg,
+        },
+        ProfileDef {
+            label: "Homebuilder",
+            hint: "AI-generated personal landing page",
+            variant: BotProfile::Homebuilder,
+        },
+        ProfileDef {
             label: "Newsroom",
             hint: "persistent GDELT news monitoring",
             variant: BotProfile::Newsroom,
@@ -237,6 +247,63 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
         .context("profile select")?;
 
     let profile = profiles[profile_idx].variant.clone();
+
+    // ── Step 3b: Profile-specific extras ─────────────────────────────
+    let homebuilder_user_name: Option<String>;
+    let homebuilder_notes_dir: Option<String>;
+    let docs_dir: Option<String>;
+
+    match &profile {
+        BotProfile::Homebuilder => {
+            println!(
+                "  {}",
+                style("Your name appears on the generated landing page.").dim()
+            );
+            println!();
+
+            let user_name: String = Input::new()
+                .with_prompt("Your display name")
+                .interact_text()
+                .context("homebuilder user name prompt")?;
+
+            let notes: String = Input::new()
+                .with_prompt("Markdown notes directory (leave blank to skip)")
+                .allow_empty(true)
+                .interact_text()
+                .context("homebuilder notes dir prompt")?;
+
+            homebuilder_user_name = Some(user_name);
+            homebuilder_notes_dir = if notes.trim().is_empty() {
+                None
+            } else {
+                Some(notes)
+            };
+            docs_dir = None;
+        }
+        BotProfile::Docs | BotProfile::DocsKg => {
+            println!(
+                "  {}",
+                style("Path to the local directory of documents to index.").dim()
+            );
+            println!();
+
+            let dir: String = Input::new()
+                .with_prompt("Docs directory")
+                .default("docs/".into())
+                .interact_text()
+                .context("docs dir prompt")?;
+
+            docs_dir = Some(dir);
+            homebuilder_user_name = None;
+            homebuilder_notes_dir = None;
+        }
+        _ => {
+            homebuilder_user_name = None;
+            homebuilder_notes_dir = None;
+            docs_dir = None;
+        }
+    }
+
     println!();
 
     // ── Step 4: Channels ──────────────────────────────────────────────
@@ -348,6 +415,9 @@ pub fn run_setup(opts: SetupOpts) -> Result<()> {
         http_bind: http_bind.clone(),
         enable_telegram: enable_telegram_final,
         telegram_token,
+        homebuilder_user_name,
+        homebuilder_notes_dir,
+        docs_dir,
     };
 
     writer::write_config(&answers, &opts.config_path)

@@ -37,6 +37,108 @@ need() {
   fi
 }
 
+# ── use-case → tier selection (skipped when ARALIYA_TIER is pre-set) ──────────
+pick_use_case() {
+  if [[ -n "${ARALIYA_TIER:-}" ]]; then
+    ok "Tier override: $ARALIYA_TIER (skipping use-case menu)"
+    return
+  fi
+
+  printf "\n${BOLD}What do you want to use Araliya Bot for?${NC}\n\n"
+  printf "  1) Basic chat           — direct LLM, no memory\n"
+  printf "  2) Homebuilder          — AI-generated personal landing page\n"
+  printf "  3) Docs / KG agent      — RAG over a local docs directory\n"
+  printf "  4) Full feature set     — all built-in agents and tools\n"
+  printf "  5) Build from source    — custom feature selection\n"
+  printf "\n"
+
+  while true; do
+    printf "Enter choice [1-5]: "
+    read -r choice </dev/tty
+    case "$choice" in
+      1) TIER="minimal";  ok "Basic chat → minimal tier";  break ;;
+      2) TIER="default";  ok "Homebuilder → default tier"; break ;;
+      3) TIER="default";  ok "Docs / KG agent → default tier"; break ;;
+      4) TIER="full";     ok "Full feature set → full tier"; break ;;
+      5) TIER="__source"; ok "Will build from source";      break ;;
+      *) warn "Please enter a number between 1 and 5." ;;
+    esac
+  done
+}
+
+# ── build from source path ────────────────────────────────────────────────────
+build_from_source() {
+  step "Build from source"
+
+  if ! command -v git &>/dev/null; then
+    err "'git' is required to build from source. Install it and re-run."
+    exit 1
+  fi
+
+  if ! command -v cargo &>/dev/null; then
+    warn "'cargo' (Rust toolchain) not found."
+    printf "  Install via rustup:  ${BOLD}curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${NC}\n"
+    printf "  Then re-run this installer.\n"
+    exit 1
+  fi
+
+  BUILD_DIR="${TMPDIR:-/tmp}/araliya-src-$$"
+  ok "Cloning into $BUILD_DIR"
+  git clone --depth=1 "https://github.com/${REPO}.git" "$BUILD_DIR"
+
+  printf "\n${BOLD}Select features to include:${NC}\n\n"
+  printf "  Agents (space-separated numbers, e.g. 1 3 5):\n"
+  printf "    1) basic-chat      — direct LLM pass-through\n"
+  printf "    2) chat            — session-aware multi-turn\n"
+  printf "    3) homebuilder     — personal landing-page generator\n"
+  printf "    4) docs            — RAG over local docs\n"
+  printf "    5) docs-agent      — public-facing docs variant\n"
+  printf "    6) webbuilder      — iterative Svelte page builder\n"
+  printf "    7) agentic-chat    — dual-pass with tool use\n"
+  printf "  Channels:\n"
+  printf "    8) axum/http       — web UI + REST API\n"
+  printf "    9) telegram        — Telegram bot channel\n"
+  printf "\n"
+  printf "Enter numbers (default: 1 2 8): "
+  read -r feature_choices </dev/tty
+  feature_choices="${feature_choices:-1 2 8}"
+
+  FEATURES="subsystem-agents,subsystem-memory,subsystem-llm,subsystem-comms,channel-pty"
+  for n in $feature_choices; do
+    case "$n" in
+      1) FEATURES="$FEATURES,plugin-basic-chat" ;;
+      2) FEATURES="$FEATURES,plugin-chat" ;;
+      3) FEATURES="$FEATURES,plugin-homebuilder,subsystem-runtimes,subsystem-ui,ui-svui" ;;
+      4) FEATURES="$FEATURES,plugin-docs,idocstore" ;;
+      5) FEATURES="$FEATURES,plugin-docs-agent,idocstore" ;;
+      6) FEATURES="$FEATURES,plugin-webbuilder,subsystem-runtimes,subsystem-ui,ui-svui" ;;
+      7) FEATURES="$FEATURES,plugin-agentic-chat" ;;
+      8) FEATURES="$FEATURES,channel-axum,subsystem-ui,ui-svui" ;;
+      9) FEATURES="$FEATURES,channel-telegram" ;;
+      *) warn "Unknown option '$n' — skipped." ;;
+    esac
+  done
+
+  ok "Building with features: $FEATURES"
+  (cd "$BUILD_DIR" && cargo build --release --locked --bin araliya-bot --no-default-features --features "$FEATURES")
+
+  mkdir -p "$INSTALL_DIR"
+  cp "$BUILD_DIR/target/release/araliya-bot" "$INSTALL_DIR/araliya-bot"
+  chmod +x "$INSTALL_DIR/araliya-bot"
+  ok "Binary → $INSTALL_DIR/araliya-bot"
+
+  # Seed config dir from the cloned repo
+  mkdir -p "$CONFIG_DIR" "$WORK_DIR"
+  if [[ ! -f "$CONFIG_DIR/config.toml" ]]; then
+    cp "$BUILD_DIR/config/default.toml" "$CONFIG_DIR/config.toml"
+    ok "Default config → $CONFIG_DIR/config.toml"
+  else
+    warn "Config already exists — skipping (run 'araliya-bot setup' to reconfigure)"
+  fi
+
+  rm -rf "$BUILD_DIR"
+}
+
 # ── download abstraction (curl or wget) ───────────────────────────────
 setup_fetch() {
   if command -v curl &>/dev/null; then
@@ -60,6 +162,9 @@ main() {
   need tar
   setup_fetch
   ok "tar found"
+
+  # ── use-case selection ───────────────────────────────────────────
+  pick_use_case
 
   OS="$(uname -s)"
   ARCH_RAW="$(uname -m)"
@@ -87,6 +192,36 @@ main() {
   esac
 
   ok "Platform: $PLATFORM / $ARCH"
+
+  # ── source-build branch ──────────────────────────────────────────
+  if [[ "$TIER" == "__source" ]]; then
+    build_from_source
+
+    # PATH check
+    step "Checking PATH"
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+      warn "$INSTALL_DIR is not in your PATH."
+      echo "  Add this line to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+      printf "    ${BOLD}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}\n\n"
+    else
+      ok "araliya-bot is on your PATH"
+    fi
+
+    step "Running setup wizard"
+    echo "  (Configure bot name, LLM provider, agent profile, and channels)"
+    echo ""
+    "$INSTALL_DIR/araliya-bot" setup \
+      --config "$CONFIG_DIR/config.toml" \
+      --env    "$CONFIG_DIR/.env" \
+      --work-dir "$WORK_DIR"
+
+    printf "\n${GREEN}${BOLD}✓ Araliya Bot is ready!${NC}\n\n"
+    echo "  Start (interactive terminal):"
+    printf "    ${BOLD}araliya-bot -i -f $CONFIG_DIR/config.toml${NC}\n\n"
+    echo "  Validate config:"
+    printf "    ${BOLD}araliya-bot doctor -f $CONFIG_DIR/config.toml${NC}\n\n"
+    return
+  fi
 
   case "$TIER" in
     minimal|default|full) ;;

@@ -26,6 +26,14 @@ pub struct Answers {
     pub http_bind: String,
     pub enable_telegram: bool,
     pub telegram_token: Option<String>,
+
+    // ── Profile-specific extras ───────────────────────────────────────
+    /// Homebuilder: display name shown on the generated landing page.
+    pub homebuilder_user_name: Option<String>,
+    /// Homebuilder: path to markdown notes directory.
+    pub homebuilder_notes_dir: Option<String>,
+    /// Docs / DocsKg: path to local docs directory.
+    pub docs_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,6 +52,8 @@ pub enum BotProfile {
     SessionChat,
     AgenticChat,
     Docs,
+    DocsKg,
+    Homebuilder,
     Newsroom,
     Custom,
 }

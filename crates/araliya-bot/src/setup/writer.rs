@@ -17,7 +17,12 @@ use super::answers::{Answers, BotProfile};
 pub fn write_config(answers: &Answers, path: &Path) -> Result<()> {
     fs::create_dir_all(path.parent().unwrap_or(path))?;
 
-    let (default_agent, agents_block) = render_agents_block(&answers.profile);
+    let (default_agent, agents_block) = render_agents_block(
+        &answers.profile,
+        answers.docs_dir.as_deref(),
+        answers.homebuilder_user_name.as_deref(),
+        answers.homebuilder_notes_dir.as_deref(),
+    );
 
     let axum_enabled = answers.enable_http;
     let tg_enabled = answers.enable_telegram;
@@ -171,7 +176,12 @@ fn maybe_add_key(existing: &str, lines: &mut Vec<String>, key: &str, value: &str
     lines.push(format!("{key}={value}"));
 }
 
-fn render_agents_block(profile: &BotProfile) -> (&'static str, String) {
+fn render_agents_block(
+    profile: &BotProfile,
+    docs_dir: Option<&str>,
+    homebuilder_user_name: Option<&str>,
+    homebuilder_notes_dir: Option<&str>,
+) -> (&'static str, String) {
     match profile {
         BotProfile::BasicChat => ("basic_chat", "[agents.basic_chat]\nenabled = true\n".into()),
         BotProfile::SessionChat => (
@@ -187,15 +197,38 @@ fn render_agents_block(profile: &BotProfile) -> (&'static str, String) {
             )
             .into(),
         ),
-        BotProfile::Docs => (
-            "docs",
-            concat!(
-                "[agents.chat]\nenabled = true\nmemory = [\"basic_session\"]\n\n",
-                "[agents.docs]\nenabled = true\ndocsdir = \"docs/\"\nindex = \"index.md\"\n",
-                "memory = [\"basic_session\"]\n"
+        BotProfile::Docs => {
+            let dir = docs_dir.unwrap_or("docs/");
+            (
+                "docs",
+                format!(
+                    "[agents.chat]\nenabled = true\nmemory = [\"basic_session\"]\n\n\
+                     [agents.docs]\nenabled = true\ndocsdir = \"{dir}\"\nindex = \"index.md\"\n\
+                     memory = [\"basic_session\"]\n"
+                ),
             )
-            .into(),
-        ),
+        }
+        BotProfile::DocsKg => {
+            let dir = docs_dir.unwrap_or("docs/");
+            (
+                "docs",
+                format!(
+                    "[agents.chat]\nenabled = true\nmemory = [\"basic_session\"]\n\n\
+                     [agents.docs]\nenabled = true\ndocsdir = \"{dir}\"\nindex = \"index.md\"\n\
+                     use_kg = true\nmemory = [\"basic_session\"]\n"
+                ),
+            )
+        }
+        BotProfile::Homebuilder => {
+            let user_name = homebuilder_user_name.unwrap_or("");
+            let mut block = format!(
+                "[agents.homebuilder]\nenabled = true\nuser_name = \"{user_name}\"\n"
+            );
+            if let Some(notes) = homebuilder_notes_dir {
+                block.push_str(&format!("notes_dir = \"{notes}\"\n"));
+            }
+            ("homebuilder", block)
+        }
         BotProfile::Newsroom => (
             "newsroom",
             concat!(
@@ -232,6 +265,9 @@ mod tests {
             http_bind: "127.0.0.1:8080".into(),
             enable_telegram: false,
             telegram_token: None,
+            homebuilder_user_name: None,
+            homebuilder_notes_dir: None,
+            docs_dir: None,
         }
     }
 
