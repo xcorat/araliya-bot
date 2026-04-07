@@ -275,28 +275,46 @@ main() {
   # ── extract + install binary ─────────────────────────────────────
   step "Installing binary"
 
-  # Get top-level dir name from the archive
-  EXTRACTED="$(tar -tzf "$TMP/$ARCHIVE" | head -1 | cut -d/ -f1)"
-  tar -xzf "$TMP/$ARCHIVE" -C "$TMP"
+  EXTRACTED="$(tar -tzf "$TMP/$ARCHIVE" | head -1 | cut -d/ -f1)" \
+    || { err "Failed to read archive contents: $ARCHIVE"; exit 1; }
+  [[ -n "$EXTRACTED" ]] \
+    || { err "Archive appears empty or malformed: $ARCHIVE"; exit 1; }
 
-  mkdir -p "$INSTALL_DIR"
-  cp "$TMP/$EXTRACTED/bin/araliya-bot" "$INSTALL_DIR/araliya-bot"
-  chmod +x "$INSTALL_DIR/araliya-bot"
-  ok "Binary → $INSTALL_DIR/araliya-bot"
+  tar -xzf "$TMP/$ARCHIVE" -C "$TMP" \
+    || { err "Failed to extract archive: $ARCHIVE"; exit 1; }
+
+  BIN_SRC="$TMP/$EXTRACTED/bin/araliya-bot"
+  [[ -f "$BIN_SRC" ]] \
+    || { err "Binary not found in archive at: $BIN_SRC"; tar -tzf "$TMP/$ARCHIVE" >&2 || true; exit 1; }
+
+  mkdir -p "$INSTALL_DIR" \
+    || { err "Failed to create install directory: $INSTALL_DIR"; exit 1; }
+
+  cp "$BIN_SRC" "$INSTALL_DIR/araliya-bot" \
+    || { err "Failed to copy binary to $INSTALL_DIR"; exit 1; }
+
+  chmod +x "$INSTALL_DIR/araliya-bot" \
+    || { err "Failed to set permissions on $INSTALL_DIR/araliya-bot"; exit 1; }
+
+  ok "Binary installed → $INSTALL_DIR/araliya-bot"
 
   # ── seed default config (skip if user already has one) ───────────
   step "Preparing config directory"
 
-  mkdir -p "$CONFIG_DIR"
-  mkdir -p "$WORK_DIR"
+  mkdir -p "$CONFIG_DIR" \
+    || { err "Failed to create config directory: $CONFIG_DIR"; exit 1; }
+  mkdir -p "$WORK_DIR" \
+    || { err "Failed to create work directory: $WORK_DIR"; exit 1; }
 
   if [[ ! -f "$CONFIG_DIR/config.toml" ]]; then
     # Copy the tier-matched default config out of the archive
     TIER_CONFIG="$TMP/$EXTRACTED/config/${TIER}.toml"
     if [[ -f "$TIER_CONFIG" ]]; then
-      cp "$TIER_CONFIG" "$CONFIG_DIR/config.toml"
+      cp "$TIER_CONFIG" "$CONFIG_DIR/config.toml" \
+        || { err "Failed to copy tier config to $CONFIG_DIR/config.toml"; exit 1; }
     else
-      cp "$TMP/$EXTRACTED/config/default.toml" "$CONFIG_DIR/config.toml"
+      cp "$TMP/$EXTRACTED/config/default.toml" "$CONFIG_DIR/config.toml" \
+        || { err "Failed to copy default config to $CONFIG_DIR/config.toml"; exit 1; }
     fi
     ok "Default config → $CONFIG_DIR/config.toml"
   else
@@ -323,7 +341,8 @@ main() {
   "$INSTALL_DIR/araliya-bot" setup \
     --config "$CONFIG_DIR/config.toml" \
     --env    "$CONFIG_DIR/.env" \
-    --work-dir "$WORK_DIR"
+    --work-dir "$WORK_DIR" \
+    || { err "Setup wizard failed"; exit 1; }
 
   # ── done ─────────────────────────────────────────────────────────
   printf "\n${GREEN}${BOLD}✓ Araliya Bot is ready!${NC}\n\n"
