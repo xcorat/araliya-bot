@@ -316,8 +316,13 @@ main() {
   mkdir -p "$WORK_DIR" \
     || { err "Failed to create work directory: $WORK_DIR"; exit 1; }
 
+  # Always copy default.toml — tier configs reference it via [meta] base = "default.toml"
+  cp "$TMP/$EXTRACTED/config/default.toml" "$CONFIG_DIR/default.toml" \
+    || { err "Failed to copy default.toml to $CONFIG_DIR/default.toml"; exit 1; }
+  ok "Base config → $CONFIG_DIR/default.toml"
+
   if [[ ! -f "$CONFIG_DIR/config.toml" ]]; then
-    # Copy the tier-matched default config out of the archive
+    # Copy the tier-matched config as the user-editable overlay
     TIER_CONFIG="$TMP/$EXTRACTED/config/${TIER}.toml"
     if [[ -f "$TIER_CONFIG" ]]; then
       cp "$TIER_CONFIG" "$CONFIG_DIR/config.toml" \
@@ -326,7 +331,7 @@ main() {
       cp "$TMP/$EXTRACTED/config/default.toml" "$CONFIG_DIR/config.toml" \
         || { err "Failed to copy default config to $CONFIG_DIR/config.toml"; exit 1; }
     fi
-    ok "Default config → $CONFIG_DIR/config.toml"
+    ok "Tier config → $CONFIG_DIR/config.toml"
   else
     warn "Config already exists — skipping (run 'araliya-bot setup' to reconfigure)"
   fi
