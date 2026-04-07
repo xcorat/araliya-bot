@@ -239,3 +239,29 @@ export interface ObsEvent {
 	span_id?: string;
 	ts_unix_ms: number;
 }
+
+// ── LLM types ───────────────────────────────────────────────
+
+export interface LlmProviderInfo {
+	name: string;
+	model: string;
+	active: boolean;
+}
+
+export interface LlmRouteInfo {
+	hint: string;
+	provider: string;
+	model: string;
+}
+
+export interface LlmProvidersResponse {
+	providers: LlmProviderInfo[];
+	routes: LlmRouteInfo[];
+	active: string;
+}
+
+export interface LlmSetDefaultResponse {
+	ok: boolean;
+	previous: string;
+	active: string;
+}

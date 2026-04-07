@@ -117,6 +117,8 @@ pub struct ProviderConfig {
     pub api_base_url: String,
     pub model: String,
     pub temperature: f32,
+    /// Resolved API key.
+    pub api_key: Option<String>,
     /// Reasoning effort for `OpenAiResponses` adapter. `None` for others.
     pub reasoning_effort: Option<String>,
     pub timeout_seconds: u64,

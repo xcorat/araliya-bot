@@ -36,17 +36,19 @@ pub fn build_from_provider(
     match cfg.api_type {
         ApiType::Dummy => Ok(LlmProvider::Dummy(dummy::DummyProvider)),
         ApiType::ChatCompletions => {
+            let effective_key = cfg.api_key.clone().or(api_key);
             let p = chat_completions::ChatCompletionsProvider::new(
                 cfg.api_base_url.clone(),
                 cfg.model.clone(),
                 cfg.temperature,
                 cfg.timeout_seconds,
-                api_key,
+                effective_key,
                 cfg.max_tokens,
             )?;
             Ok(LlmProvider::ChatCompletions(p))
         }
         ApiType::OpenAiResponses => {
+            let effective_key = cfg.api_key.clone().or(api_key);
             let p = openai_responses::OpenAiResponsesProvider::new(
                 cfg.api_base_url.clone(),
                 cfg.model.clone(),
@@ -54,7 +56,7 @@ pub fn build_from_provider(
                     .clone()
                     .unwrap_or_else(|| "none".to_string()),
                 cfg.timeout_seconds,
-                api_key,
+                effective_key,
                 cfg.max_tokens,
             )?;
             Ok(LlmProvider::OpenAiResponses(p))

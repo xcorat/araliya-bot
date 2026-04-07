@@ -998,14 +998,14 @@ impl AgentsSubsystem {
     /// Attach a health reporter and report initial healthy state.
     pub fn with_health_reporter(mut self, reporter: HealthReporter) -> Self {
         let enabled = self.effective_enabled_agent_ids();
-        let agent_count = enabled.len();
+        let default_agent = self.default_agent.clone();
         let r = reporter.clone();
         tokio::spawn(async move {
             r.set_healthy_with(
                 "ok",
                 Some(serde_json::json!({
-                    "agent_count": agent_count,
-                    "agents": enabled,
+                    "default_agent": default_agent,
+                    "enabled_agents": enabled,
                 })),
             )
             .await;

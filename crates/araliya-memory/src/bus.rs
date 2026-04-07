@@ -21,13 +21,30 @@ use araliya_core::bus::{BusError, BusHandler, BusPayload, BusResult, ERR_METHOD_
 pub struct MemoryBusHandler {
     /// agent_id → identity_dir, used to locate each agent's kgdocstore.
     agent_identity_dirs: Arc<HashMap<String, PathBuf>>,
+    reporter: Option<araliya_core::bus::health::HealthReporter>,
 }
 
 impl MemoryBusHandler {
     pub fn new(agent_identity_dirs: Arc<HashMap<String, PathBuf>>) -> Self {
         Self {
             agent_identity_dirs,
+            reporter: None,
         }
+    }
+
+    pub fn with_health_reporter(mut self, reporter: araliya_core::bus::health::HealthReporter) -> Self {
+        let r = reporter.clone();
+        tokio::spawn(async move {
+            r.set_healthy_with(
+                "ok",
+                Some(serde_json::json!({
+                    "storage": "local",
+                })),
+            )
+            .await;
+        });
+        self.reporter = Some(reporter);
+        self
     }
 }
 

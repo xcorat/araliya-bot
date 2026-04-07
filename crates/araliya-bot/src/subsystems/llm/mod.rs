@@ -160,8 +160,8 @@ impl LlmSubsystem {
         let pool = self.pool.clone();
         tokio::spawn(async move {
             // Immediate check on startup.
-            if let Some(entry) = Self::active_entry_from(&active, &pool) {
-                Self::run_check(&entry.provider, &entry.model, &reporter).await;
+            if let Some((name, entry)) = Self::active_entry_from(&active, &pool) {
+                Self::run_check(&name, &entry.provider, &entry.model, &reporter).await;
             }
             let mut interval = tokio::time::interval(HEALTH_CHECK_INTERVAL);
             interval.tick().await; // consume the first (immediate) tick
@@ -170,8 +170,8 @@ impl LlmSubsystem {
                     biased;
                     _ = shutdown.cancelled() => break,
                     _ = interval.tick() => {
-                        if let Some(entry) = Self::active_entry_from(&active, &pool) {
-                            Self::run_check(&entry.provider, &entry.model, &reporter).await;
+                        if let Some((name, entry)) = Self::active_entry_from(&active, &pool) {
+                            Self::run_check(&name, &entry.provider, &entry.model, &reporter).await;
                         }
                     }
                 }
@@ -190,9 +190,9 @@ impl LlmSubsystem {
     fn active_entry_from(
         active: &Arc<RwLock<String>>,
         pool: &HashMap<String, ProviderEntry>,
-    ) -> Option<ProviderEntry> {
+    ) -> Option<(String, ProviderEntry)> {
         let name = active.read().unwrap().clone();
-        pool.get(&name).cloned()
+        pool.get(&name).cloned().map(|e| (name, e))
     }
 
     /// Resolve which provider + model to use for a request.
@@ -269,12 +269,12 @@ impl LlmSubsystem {
             ))
     }
 
-    async fn run_check(provider: &LlmProvider, model: &str, reporter: &HealthReporter) {
+    async fn run_check(provider_name: &str, provider: &LlmProvider, model: &str, reporter: &HealthReporter) {
         match provider.ping().await {
             Ok(()) => {
                 debug!(model, "llm provider reachable");
                 reporter
-                    .set_healthy_with("ok", Some(serde_json::json!({ "model": model })))
+                    .set_healthy_with("ok", Some(serde_json::json!({ "provider": provider_name, "model": model })))
                     .await;
             }
             Err(e) => {
@@ -282,7 +282,7 @@ impl LlmSubsystem {
                 reporter
                     .set_unhealthy_with(
                         format!("provider unreachable: {e}"),
-                        Some(serde_json::json!({ "model": model })),
+                        Some(serde_json::json!({ "provider": provider_name, "model": model })),
                     )
                     .await;
             }
@@ -310,8 +310,8 @@ impl BusHandler for LlmSubsystem {
             let reporter = self.reporter.clone();
             tokio::spawn(async move {
                 if let Some(ref r) = reporter {
-                    if let Some(entry) = Self::active_entry_from(&active, &pool) {
-                        Self::run_check(&entry.provider, &entry.model, r).await;
+                    if let Some((name, entry)) = Self::active_entry_from(&active, &pool) {
+                        Self::run_check(&name, &entry.provider, &entry.model, r).await;
                     }
                     let h = r
                         .get_current()

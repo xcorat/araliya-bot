@@ -130,6 +130,12 @@ pub(super) struct RawProviderConfig {
     pub model: String,
     #[serde(default = "default_temperature")]
     pub temperature: f32,
+    /// Direct API key or reference (e.g. `secret:openai` or `sk-xxx`).
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Path to a file containing the API key.
+    #[serde(default)]
+    pub api_key_file: Option<String>,
     /// Reasoning effort for `openai_responses` adapter: `"none"` | `"low"` | `"medium"` | `"high"`.
     #[serde(default)]
     pub reasoning_effort: Option<String>,

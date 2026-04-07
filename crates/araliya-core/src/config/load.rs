@@ -342,6 +342,7 @@ pub fn load_from(
                     api_base_url,
                     model: raw.model,
                     temperature: raw.temperature,
+                    api_key: resolve_api_key(raw.api_key, raw.api_key_file),
                     reasoning_effort: raw.reasoning_effort,
                     timeout_seconds: raw.timeout_seconds,
                     max_tokens: raw.max_tokens,
@@ -485,4 +486,46 @@ pub fn expand_home(path: &str) -> PathBuf {
         return home;
     }
     PathBuf::from(path)
+}
+
+/// Resolves an API key from either a direct string, a `secret:<name>` prefix,
+/// or a dedicated `api_key_file` path.
+/// Secrets are looked up in `~/.local/share/araliya/secrets/` (or platform equivalent).
+pub fn resolve_api_key(api_key: Option<String>, api_key_file: Option<String>) -> Option<String> {
+    if let Some(file_path) = api_key_file {
+        let path = expand_home(&file_path);
+        match fs::read_to_string(&path) {
+            Ok(content) => return Some(content.trim().to_string()),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "failed to read api_key_file");
+                return None;
+            }
+        }
+    }
+
+    if let Some(key) = api_key {
+        if let Some(secret_name) = key.strip_prefix("secret:") {
+            let data_dir = dirs::data_local_dir().unwrap_or_else(|| {
+                dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp")).join(".local/share")
+            });
+            let secret_path = data_dir.join("araliya/secrets").join(secret_name);
+            match fs::read_to_string(&secret_path) {
+                Ok(content) => return Some(content.trim().to_string()),
+                Err(e) => {
+                    tracing::warn!(secret = %secret_name, path = %secret_path.display(), error = %e, "failed to read secret file");
+                }
+            }
+        } else if key.starts_with("${") && key.ends_with('}') {
+            let env_var = &key[2..key.len()-1];
+            if let Ok(val) = env::var(env_var) {
+                return Some(val);
+            } else {
+                tracing::warn!(env_var = %env_var, "env var for api_key not found");
+            }
+        } else {
+            return Some(key);
+        }
+    }
+
+    None
 }

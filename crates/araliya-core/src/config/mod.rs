@@ -16,9 +16,8 @@ pub mod agent_def;
 mod load;
 mod raw;
 mod types;
-
 pub use agent_def::{AgentDefinition, resolve_agent_definitions, scan_agent_definitions};
-pub use load::{expand_home, load, load_from};
+pub use load::{expand_home, load, load_from, resolve_api_key};
 pub use types::*;
 
 #[cfg(test)]

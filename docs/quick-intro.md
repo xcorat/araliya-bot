@@ -52,20 +52,7 @@ Araliya Bot is designed around a flexible, event-driven architecture:
 3. **Agents:** Autonomous actors loaded and managed by the agents subsystem at runtime. Each agent can be granted access to the event bus and memory system.
 4. **Event Bus:** The central nervous system of the bot, routing messages between the supervisor, subsystems, and agents.
 
-## 📊 Comparison
 
-| Feature | Araliya Bot 🌸 | ZeroClaw 🦀 | OpenClaw 🦞 |
-| :--- | :--- | :--- | :--- |
-| **Language** | Rust | Rust | TypeScript / Node.js |
-| **Architecture** | Single-process supervisor, pluggable subsystems, event bus | Trait-driven, single binary, swappable providers/channels | Gateway WS control plane, multi-agent routing |
-| **Memory Footprint** | ~6.1 MB  | < 5MB | > 1GB |
-| **Startup Time** | < 1s | < 10ms | > 500s |
-| **Binary Size** | ~3.5 MB  | ~3.4 MB | ~28MB (dist) |
-| **Identity** | ed25519 keypair persisted, Markdown identity | AIEOS (JSON) or OpenClaw (Markdown) | Markdown files (IDENTITY.md, SOUL.md, etc.) |
-| **Security** | Persistent ed25519 identity implemented; pairing/sandboxing/allowlists not implemented (see `notes/` for design) | Gateway pairing, strict sandboxing, explicit allowlists | Gateway pairing, sandboxing, allowlists |
-| **Channels** | PTY enabled by default; auto-disabled when stdio management is attached (virtual `/chat` path). Telegram available by feature/config | CLI, Telegram, Discord, Slack, WhatsApp, etc. | WhatsApp, Telegram, Slack, Discord, etc. |
-| **Memory System** | Basic session store: capped k-v JSON + capped Markdown transcript, UUIDv7 sessions under identity dir | SQLite hybrid search, PostgreSQL, Lucid bridge | *No info* |
-| **Tools** | No general tool subsystem; built-in agents: `echo`, `basic_chat`, `chat` (`src/subsystems/agents/`) | Shell, file, memory, cron, browser, composio | Browser control, Canvas, Nodes, Skills |
 
 ## 📈 Benchmarks (CI) - NOT SETUP [TODO]
 

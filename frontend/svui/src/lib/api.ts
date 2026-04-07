@@ -169,3 +169,19 @@ export async function clearObserveEvents(baseUrl: string): Promise<{ cleared: nu
 	if (!response.ok) return handleError(response);
 	return readResponse<{ cleared: number }>(response);
 }
+
+export async function listLlmProviders(baseUrl: string): Promise<import('./types').LlmProvidersResponse> {
+	const response = await fetch(`${baseUrl}/api/llm/providers`);
+	if (!response.ok) return handleError(response);
+	return readResponse<import('./types').LlmProvidersResponse>(response);
+}
+
+export async function setLlmDefault(baseUrl: string, provider: string): Promise<import('./types').LlmSetDefaultResponse> {
+	const response = await fetch(`${baseUrl}/api/llm/default`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ provider })
+	});
+	if (!response.ok) return handleError(response);
+	return readResponse<import('./types').LlmSetDefaultResponse>(response);
+}

@@ -274,6 +274,33 @@ impl CommsState {
         }
     }
 
+    pub async fn request_llm_providers(&self) -> Result<String, AppError> {
+        match self.bus.request("llm/list_providers", BusPayload::Empty).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "llm error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
+    pub async fn set_llm_default(&self, provider: &str) -> Result<String, AppError> {
+        let payload = BusPayload::JsonRequest {
+            data: serde_json::json!({ "provider": provider }).to_string(),
+        };
+        match self.bus.request("llm/set_default", payload).await {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "llm error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms("unexpected reply payload".to_string())),
+        }
+    }
+
     pub async fn request_session_detail(
         &self,
         session_id: &str,
