@@ -367,6 +367,8 @@ main() {
   printf "    ${BOLD}araliya-bot -f $CONFIG_DIR/config.toml${NC}\n\n"
   echo "  Validate config at any time:"
   printf "    ${BOLD}araliya-bot doctor -f $CONFIG_DIR/config.toml${NC}\n\n"
+  echo "  Uninstall:"
+  printf "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/uninstall.sh | bash${NC}\n\n"
 }
 
 main
