@@ -13,6 +13,7 @@ CONFIG_DIR="${ARALIYA_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/araliya}"
 # Bot runtime data (identity keypair, sessions, memory) lives in ~/.araliya/
 WORK_DIR="${ARALIYA_WORK_DIR:-$HOME/.araliya}"
 TIER="${ARALIYA_TIER:-default}"
+TMP=""
 
 # ── colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -28,7 +29,12 @@ banner() {
 step() { printf "\n${CYAN}── %s${NC}\n" "$1"; }
 ok()   { printf "  ${GREEN}✓ %s${NC}\n" "$1"; }
 warn() { printf "  ${YELLOW}⚠ %s${NC}\n" "$1"; }
-err()  { printf "  ${RED}✗ %s${NC}\n"   "$1"; }
+err()  { printf "  ${RED}✗ %s${NC}\n"   "$1" >&2; }
+
+# ── error + cleanup traps ─────────────────────────────────────────────
+_cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; }
+trap '_cleanup' EXIT
+trap 'err "Installation failed at line ${LINENO}: ${BASH_COMMAND}"' ERR
 
 need() {
   if ! command -v "$1" &>/dev/null; then
@@ -296,8 +302,6 @@ main() {
   else
     warn "Config already exists — skipping (run 'araliya-bot setup' to reconfigure)"
   fi
-
-  rm -rf "$TMP"
 
   # ── PATH check ───────────────────────────────────────────────────
   step "Checking PATH"
