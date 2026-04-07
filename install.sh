@@ -270,7 +270,14 @@ main() {
     rm -rf "$TMP"
     exit 1
   }
-  ok "Downloaded $ARCHIVE"
+  ok "Downloaded to $TMP/$ARCHIVE"
+  ok "Size: $(du -sh "$TMP/$ARCHIVE" | cut -f1)"
+
+  gzip -t "$TMP/$ARCHIVE" \
+    || { err "Downloaded file is not a valid gzip archive."; \
+         err "The URL may have returned a 404 or error page: $URL"; \
+         exit 1; }
+  ok "Archive integrity OK"
 
   # ── extract + install binary ─────────────────────────────────────
   step "Installing binary"
@@ -279,9 +286,11 @@ main() {
     || { err "Failed to read archive contents: $ARCHIVE"; exit 1; }
   [[ -n "$EXTRACTED" ]] \
     || { err "Archive appears empty or malformed: $ARCHIVE"; exit 1; }
+  ok "Archive root: $EXTRACTED"
 
   tar -xzf "$TMP/$ARCHIVE" -C "$TMP" \
     || { err "Failed to extract archive: $ARCHIVE"; exit 1; }
+  ok "Extracted to $TMP/$EXTRACTED"
 
   BIN_SRC="$TMP/$EXTRACTED/bin/araliya-bot"
   [[ -f "$BIN_SRC" ]] \
