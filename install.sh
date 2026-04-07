@@ -282,8 +282,9 @@ main() {
   # ── extract + install binary ─────────────────────────────────────
   step "Installing binary"
 
-  EXTRACTED="$(tar -tzf "$TMP/$ARCHIVE" | head -1 | cut -d/ -f1)" \
+  ARCHIVE_LISTING="$(tar -tzf "$TMP/$ARCHIVE")" \
     || { err "Failed to read archive contents: $ARCHIVE"; exit 1; }
+  EXTRACTED="$(printf '%s\n' "$ARCHIVE_LISTING" | head -1 | cut -d/ -f1)"
   [[ -n "$EXTRACTED" ]] \
     || { err "Archive appears empty or malformed: $ARCHIVE"; exit 1; }
   ok "Archive root: $EXTRACTED"
