@@ -336,6 +336,13 @@ main() {
     warn "Config already exists — skipping (run 'araliya-bot setup' to reconfigure)"
   fi
 
+  # Copy uninstall script for easy cleanup
+  cp "$TMP/$EXTRACTED/scripts/uninstall.sh" "$CONFIG_DIR/uninstall.sh" \
+    || { err "Failed to copy uninstall.sh to $CONFIG_DIR/uninstall.sh"; exit 1; }
+  chmod +x "$CONFIG_DIR/uninstall.sh" \
+    || { err "Failed to set permissions on $CONFIG_DIR/uninstall.sh"; exit 1; }
+  ok "Uninstall script → $CONFIG_DIR/uninstall.sh"
+
   # ── PATH check ───────────────────────────────────────────────────
   step "Checking PATH"
 
@@ -369,9 +376,9 @@ main() {
   printf "  • Runtime data: ${BOLD}$WORK_DIR${NC}\n\n"
   printf "  ${BOLD}Uninstall:${NC}\n\n"
   printf "  • Remove binary only:\n"
-  printf "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/uninstall.sh | bash${NC}\n\n"
+  printf "    ${BOLD}bash $CONFIG_DIR/uninstall.sh${NC}\n\n"
   printf "  • Remove everything (with prompts):\n"
-  printf "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/xcorat/araliya-bot/main/uninstall.sh | bash -s -- --purge${NC}\n\n"
+  printf "    ${BOLD}bash $CONFIG_DIR/uninstall.sh --purge${NC}\n\n"
 }
 
 main

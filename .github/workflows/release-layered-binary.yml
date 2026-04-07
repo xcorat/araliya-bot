@@ -59,11 +59,12 @@ jobs:
           bundle_dir="dist/araliya-bot-${version}-${tier}-x86_64-unknown-linux-gnu"
           archive="${bundle_dir}.tar.gz"
 
-          mkdir -p "${bundle_dir}/bin" "${bundle_dir}/config" "${bundle_dir}/frontend"
+          mkdir -p "${bundle_dir}/bin" "${bundle_dir}/config" "${bundle_dir}/frontend" "${bundle_dir}/scripts"
 
           cp target/release/araliya-bot "${bundle_dir}/bin/araliya-bot"
           cp -a config/. "${bundle_dir}/config/"
           cp -a frontend/svui "${bundle_dir}/frontend/svui"
+          cp uninstall.sh "${bundle_dir}/scripts/uninstall.sh"
 
           cp "config/${tier}.toml" "${bundle_dir}/config/cfg.toml"
 
