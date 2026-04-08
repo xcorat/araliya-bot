@@ -3,7 +3,7 @@ base = "../default.toml"
 
 [supervisor]
 bot_name = "docs-agent"
-work_dir = "~/araliya"
+work_dir = "~/.araliya"
 log_level = "debug"
 
 [comms.pty]
