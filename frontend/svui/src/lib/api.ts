@@ -1,5 +1,6 @@
 import type {
 	HealthResponse,
+	BotConfigResponse,
 	MessageResponse,
 	SessionsResponse,
 	AgentsResponse,
@@ -35,6 +36,12 @@ async function handleError(response: Response): Promise<never> {
 }
 
 // ── API functions ───────────────────────────────────────────
+
+export async function fetchBotConfig(baseUrl: string): Promise<BotConfigResponse> {
+	const response = await fetch(`${baseUrl}/api/config`);
+	if (!response.ok) return handleError(response);
+	return readResponse<BotConfigResponse>(response);
+}
 
 export async function checkHealth(baseUrl: string): Promise<HealthResponse> {
 	const response = await fetch(`${baseUrl}/api/health`);

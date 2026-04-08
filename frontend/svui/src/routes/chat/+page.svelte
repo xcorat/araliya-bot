@@ -14,7 +14,10 @@
         refreshSessions,
         refreshAgents,
         loadSessionHistory,
-        resetSession
+        resetSession,
+        refreshBotProfile,
+        getBotProfile,
+        getDefaultAgent
     } from '$lib/state.svelte';
 
     onMount(() => {
@@ -22,6 +25,7 @@
         doCheckHealth();
         void refreshSessions({ force: true });
         void refreshAgents();
+        void refreshBotProfile();
     });
 
     const messages = $derived(getMessages());
@@ -29,6 +33,8 @@
     const sessions = $derived(getSessions());
     const agents = $derived(getAgents());
     const loadingSessions = $derived(getIsLoadingSessions());
+    const botProfile = $derived(getBotProfile());
+    const defaultAgentId = $derived(getDefaultAgent());
 
     function onSelectSession(targetSessionId: string) {
         void loadSessionHistory(targetSessionId);
@@ -51,12 +57,13 @@
         isLoading={loadingSessions}
         {onSelectSession}
         {onNewSession}
+        {botProfile}
     />
 
     <Sidebar.SidebarInset>
         <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <ChatMessages {messages} />
-            <ChatInput />
+            <ChatInput {defaultAgentId} />
         </div>
     </Sidebar.SidebarInset>
 </Sidebar.SidebarProvider>

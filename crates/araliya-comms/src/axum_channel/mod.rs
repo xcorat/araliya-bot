@@ -154,6 +154,7 @@ async fn run_axum(
 
 fn build_router(state: AxumState) -> Router {
     let router = Router::new()
+        .route("/api/config", get(api::bot_config))
         .route("/api/health", get(api::health))
         .route("/api/health/refresh", post(api::health_refresh))
         .route("/api/tree", get(api::tree))

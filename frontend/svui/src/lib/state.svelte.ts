@@ -54,6 +54,8 @@ let lastTiming = $state<LlmTiming | null>(null);
 let streamElapsedMs = $state<number | null>(null);
 let workingMemoryUpdated = $state<boolean>(false);
 let debugExpanded = $state<boolean>(false);
+let botProfile = $state<string>('other');
+let defaultAgent = $state<string>('');
 
 let sessionsRequest: Promise<void> | null = null;
 let lastSessionsRefreshAt = 0;
@@ -134,6 +136,14 @@ export function getDebugExpanded(): boolean {
 	return debugExpanded;
 }
 
+export function getBotProfile(): string {
+	return botProfile;
+}
+
+export function getDefaultAgent(): string {
+	return defaultAgent;
+}
+
 // ── Setters ─────────────────────────────────────────────────
 
 export function setBaseUrl(url: string) {
@@ -161,6 +171,17 @@ export async function doCheckHealth() {
 	} catch (e: unknown) {
 		healthStatus = 'error';
 		healthMessage = e instanceof Error ? e.message : 'Connection failed';
+	}
+}
+
+export async function refreshBotProfile() {
+	if (!baseUrl) return;
+	try {
+		const config = await api.fetchBotConfig(baseUrl);
+		botProfile = config.profile;
+		defaultAgent = config.default_agent;
+	} catch {
+		// Non-critical — keep defaults.
 	}
 }
 

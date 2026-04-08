@@ -10,7 +10,8 @@
 		activeSessionId,
 		isLoading,
 		onSelectSession,
-		onNewSession
+		onNewSession,
+		botProfile = 'other'
 	}: {
 		sessions: SessionInfo[];
 		agents: AgentInfo[];
@@ -18,6 +19,7 @@
 		isLoading: boolean;
 		onSelectSession: (sessionId: string) => void;
 		onNewSession: () => void;
+		botProfile?: string;
 	} = $props();
 
 	let sessionsOpen = $state(true);
@@ -39,21 +41,27 @@
 		return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 	}
 
+	const isDocsProfile = $derived(botProfile === 'docs' || botProfile === 'docs_kg');
+
 	const sortedSessions = $derived(
-		[...sessions].sort((a, b) => {
-			const ta = new Date(a.updated_at ?? a.created_at).getTime();
-			const tb = new Date(b.updated_at ?? b.created_at).getTime();
-			return tb - ta;
-		})
+		[...sessions]
+			.filter((s) => !isDocsProfile || s.last_agent === 'docs' || s.last_agent === 'docs_agent')
+			.sort((a, b) => {
+				const ta = new Date(a.updated_at ?? a.created_at).getTime();
+				const tb = new Date(b.updated_at ?? b.created_at).getTime();
+				return tb - ta;
+			})
 	);
 
 	const sortedAgents = $derived(
-		[...agents].sort((a, b) => {
-			if (!a.last_fetched && !b.last_fetched) return 0;
-			if (!a.last_fetched) return 1;
-			if (!b.last_fetched) return -1;
-			return new Date(b.last_fetched).getTime() - new Date(a.last_fetched).getTime();
-		})
+		[...agents]
+			.filter((a) => !isDocsProfile || a.agent_id === 'docs' || a.agent_id === 'docs_agent')
+			.sort((a, b) => {
+				if (!a.last_fetched && !b.last_fetched) return 0;
+				if (!a.last_fetched) return 1;
+				if (!b.last_fetched) return -1;
+				return new Date(b.last_fetched).getTime() - new Date(a.last_fetched).getTime();
+			})
 	);
 </script>
 

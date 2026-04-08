@@ -288,6 +288,8 @@ async fn run() -> Result<(), error::AppError> {
                 .get(&config.llm.default)
                 .map(|p| p.timeout_seconds)
                 .unwrap_or(60),
+            profile: classify_profile(&config),
+            default_agent: config.agents.default_agent.clone(),
         },
         comms_info.clone(),
         health_registry.clone(),
@@ -745,5 +747,27 @@ fn parse_cli_args() -> CliArgs {
         interactive,
         config_path,
         log_file,
+    }
+}
+
+/// Classify the bot profile from the loaded config for the frontend UI.
+fn classify_profile(config: &config::Config) -> String {
+    let da = &config.agents.default_agent;
+    if da == "docs" || da == "docs_agent" {
+        let is_kg = config
+            .agents
+            .agent_docs
+            .get("docs")
+            .map(|d| d.use_kg)
+            .unwrap_or(false);
+        if is_kg { "docs_kg" } else { "docs" }.to_string()
+    } else if da == "newsroom" {
+        "newsroom".to_string()
+    } else if da == "homebuilder" {
+        "homebuilder".to_string()
+    } else if da == "chat" || da == "agentic_chat" || da == "session_chat" {
+        "chat".to_string()
+    } else {
+        "other".to_string()
     }
 }

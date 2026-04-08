@@ -11,7 +11,8 @@
 		getWorkingMemoryUpdated,
 		getIsLoading,
 		doCheckHealth,
-		resetSession
+		resetSession,
+		getBotProfile
 	} from '$lib/state.svelte';
 	import { RotateCcw, Flower2, Activity, MessageSquare, BookOpen, PanelLeft, Newspaper, House } from '@lucide/svelte';
 	import { fireSidebarToggle } from '$lib/sidebar-bridge.svelte';
@@ -20,6 +21,8 @@
 	const sid = $derived(getSessionId());
 	const wmUpdated = $derived(getWorkingMemoryUpdated());
 	const loading = $derived(getIsLoading());
+	const profile = $derived(getBotProfile());
+	const isDocsProfile = $derived(profile === 'docs' || profile === 'docs_kg');
 
 	const basePath = $derived(base || '');
 	const chatPath = $derived(basePath ? `${basePath}/` : '/');
@@ -114,6 +117,7 @@
 				<MessageSquare class="size-3" />
 				Chat
 			</button>
+			{#if !isDocsProfile}
 			<button
 				onclick={openStatus}
 				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {isStatusRoute
@@ -149,6 +153,7 @@
 				<House class="size-3" />
 				Home
 			</a>
+			{/if}
 		</div>
 
 		{#if sid}

@@ -188,6 +188,24 @@ impl CommsState {
         }
     }
 
+    pub async fn request_bot_config(&self) -> Result<String, AppError> {
+        match self
+            .bus
+            .request("manage/config", BusPayload::Empty)
+            .await
+        {
+            Err(e) => Err(AppError::Comms(format!("bus error: {e}"))),
+            Ok(Err(e)) => Err(AppError::Comms(format!(
+                "management error {}: {}",
+                e.code, e.message
+            ))),
+            Ok(Ok(BusPayload::JsonResponse { data })) => Ok(data),
+            Ok(Ok(_)) => Err(AppError::Comms(
+                "unexpected management reply payload".to_string(),
+            )),
+        }
+    }
+
     pub async fn management_http_tree(&self) -> Result<String, AppError> {
         match self
             .bus

@@ -265,3 +265,8 @@ export interface LlmSetDefaultResponse {
 	previous: string;
 	active: string;
 }
+
+export interface BotConfigResponse {
+	profile: string;
+	default_agent: string;
+}

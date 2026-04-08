@@ -4,6 +4,7 @@
 //! - `manage/http/get` — health/status JSON (used by HTTP `/health`).
 //! - `manage/http/tree` — component tree JSON for HTTP (e.g. GET /api/tree); no private data.
 //! - `manage/tree` — same tree for control/CLI consumers.
+//! - `manage/config` — static bot configuration (profile, default agent) for the frontend.
 //! - `manage/observe/snapshot` — last N observability events from the ring buffer.
 //! - `manage/observe/clear` — drain the ring buffer.
 
@@ -30,6 +31,10 @@ pub struct ManagementInfo {
     pub llm_provider: String,
     pub llm_model: String,
     pub llm_timeout_seconds: u64,
+    /// UI profile hint: "docs", "docs_kg", "chat", "newsroom", "homebuilder", "other".
+    pub profile: String,
+    /// The default agent ID (from `[agents] default = "..."` in config).
+    pub default_agent: String,
 }
 
 pub struct ManagementSubsystem {
@@ -146,6 +151,7 @@ impl BusHandler for ManagementSubsystem {
         const HTTP_GET: &str = "manage/http/get";
         const HTTP_TREE: &str = "manage/http/tree";
         const TREE: &str = "manage/tree";
+        const CONFIG: &str = "manage/config";
         const HEALTH_REFRESH: &str = "manage/health/refresh";
         const OBSERVE_SNAPSHOT: &str = "manage/observe/snapshot";
         const OBSERVE_CLEAR: &str = "manage/observe/clear";
@@ -156,6 +162,17 @@ impl BusHandler for ManagementSubsystem {
             let _ = reply_tx.send(Ok(BusPayload::JsonResponse {
                 data: resp.to_json(),
             }));
+            return;
+        }
+
+        // manage/config — static bot configuration for the frontend UI.
+        if method == CONFIG {
+            let json = serde_json::json!({
+                "profile": self.info.profile,
+                "default_agent": self.info.default_agent,
+            })
+            .to_string();
+            let _ = reply_tx.send(Ok(BusPayload::JsonResponse { data: json }));
             return;
         }
 

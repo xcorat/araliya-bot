@@ -10,6 +10,11 @@
 	} from '$lib/state.svelte';
 	import { SendHorizontal, Loader2 } from '@lucide/svelte';
 
+	interface Props {
+		defaultAgentId?: string;
+	}
+	let { defaultAgentId }: Props = $props();
+
 	let inputText = $state('');
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 
@@ -59,7 +64,7 @@
 		if (textareaEl) {
 			textareaEl.style.height = 'auto';
 		}
-		await doSendMessageStreaming(text);
+		await doSendMessageStreaming(text, defaultAgentId);
 		textareaEl?.focus();
 	}
 

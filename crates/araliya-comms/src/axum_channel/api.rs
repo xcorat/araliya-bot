@@ -67,6 +67,25 @@ pub(super) async fn health(State(state): State<AxumState>) -> Response {
     }
 }
 
+pub(super) async fn bot_config(State(state): State<AxumState>) -> Response {
+    match tokio::time::timeout(Duration::from_secs(3), state.comms.request_bot_config()).await {
+        Ok(Ok(body)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            warn!(channel_id = %state.channel_id, "bot config request failed: {e}");
+            (StatusCode::BAD_GATEWAY, "management adapter error\n").into_response()
+        }
+        Err(_) => {
+            warn!(channel_id = %state.channel_id, "bot config request timed out");
+            (StatusCode::GATEWAY_TIMEOUT, "management adapter timeout\n").into_response()
+        }
+    }
+}
+
 pub(super) async fn health_refresh(State(state): State<AxumState>) -> Response {
     match tokio::time::timeout(
         Duration::from_secs(15),
