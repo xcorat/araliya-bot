@@ -1,6 +1,6 @@
 # Comms Subsystem
 
-**Status:** v0.8.0 — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · HTTP channel split into `http/` module · **Axum channel (`channel-axum`) with full `/api/` surface including `POST /api/message/stream` SSE endpoint · `stream_direct()` on `CommsState` for direct LLM streaming · `thinking` field threaded through `CommsReply` and JSON responses · Telegram channel (teloxide)**.
+**Status:** v0.2.1-alpha — concurrent channel tasks · `CommsState` capability boundary · intra-subsystem event queue · `start()` returns `SubsystemHandle` · PTY runtime is conditional when stdio management is active · HTTP channel split into `http/` module · **Axum channel (`channel-axum`) with full `/api/` surface including `POST /api/message/stream` SSE endpoint · `stream_direct()` on `CommsState` for direct LLM streaming · `thinking` field threaded through `CommsReply` and JSON responses · Telegram channel (teloxide) · `GET /api/config` profile endpoint for frontend UI adaptation**.
 
 ---
 
@@ -46,6 +46,7 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
 - axum/hyper-based HTTP channel on a configurable bind address (default `127.0.0.1:8080`)
 - Drop-in replacement for the legacy HTTP channel; enabled by `channel-axum` feature flag (on by default)
 - Full `/api/` surface:
+  - `GET  /api/config`                          — static bot config `{"profile","default_agent"}` for frontend UI adaptation
   - `GET  /api/health`                          — enriched health JSON
   - `POST /api/health/refresh`                  — trigger live subsystem health re-check
   - `GET  /api/tree`                            — component tree (no private data)
@@ -53,8 +54,15 @@ Channels are plugins *within* Comms. They only handle send/recv of messages — 
   - `POST /api/message/stream`                  — **SSE streaming**; emits `thinking`, `content`, and `done` events
   - `GET  /api/sessions`                        — session list
   - `GET  /api/agents`                          — agent list
+  - `GET  /api/agents/{agent_id}/session`       — agent-scoped session info
+  - `GET  /api/agents/{agent_id}/spend`         — token spend metrics for an agent
   - `GET  /api/agents/{agent_id}/kg`            — knowledge graph for agent's KGDocStore (reads from agent fs directly)
   - `GET  /api/memory/agents/{agent_id}/kg`     — knowledge graph via memory bus handler (`memory/kg_graph`)
+  - `GET  /api/llm/providers`                   — enumerate active LLM providers and routes
+  - `POST /api/llm/default`                     — switch active LLM provider at runtime
+  - `GET  /api/observe/events`                  — SSE stream of live observability events
+  - `GET  /api/observe/snapshot`                — last N observability events from the ring buffer
+  - `POST /api/observe/clear`                   — drain the observability event ring buffer
   - `GET  /api/session/{session_id}`            — session detail (metadata + transcript)
   - `GET  /api/sessions/{session_id}/memory`    — working memory
   - `GET  /api/sessions/{session_id}/debug`     — per-turn debug data
@@ -131,17 +139,24 @@ channels call typed methods:
 |--------|-------------|
 | `send_message(channel_id, content, session_id, agent_id)` | Route a message to the agents subsystem; return `CommsReply` (reply, optional session_id, optional thinking). |
 | `stream_direct(channel_id, content, system)` | Issue `llm/stream` on the bus; return `mpsc::Receiver<StreamChunk>` for token-by-token delivery. Bypasses session history. |
+| `request_bot_config()` | Request static bot config `{profile, default_agent}` from `manage/config`. |
 | `management_http_get()` | Request health/status JSON from the management bus route. |
 | `management_health_refresh()` | Trigger a live health re-check across all subsystems; return updated health JSON. |
 | `management_http_tree()` | Request component tree JSON. |
+| `management_observe_snapshot()` | Request last N observability events from the ring buffer. |
+| `management_observe_clear()` | Drain the observability event ring buffer. |
 | `request_sessions()` | Request session list JSON from the agents subsystem. |
 | `request_agents()` | Request agent list JSON from the agents subsystem. |
+| `request_agent_session(agent_id)` | Request agent-scoped session info. |
+| `request_agent_spend(agent_id)` | Request token spend metrics for an agent. |
 | `request_session_detail(session_id, agent_id)` | Request session detail (metadata + transcript). |
 | `request_session_memory(session_id, agent_id)` | Request working memory content. |
 | `request_session_files(session_id, agent_id)` | Request session file list. |
 | `request_session_debug(session_id, agent_id)` | Request per-turn debug data. |
 | `request_agent_kg(agent_id)` | Request knowledge graph for an agent's KGDocStore (direct fs read via agents subsystem). |
 | `request_memory_kg(agent_id)` | Request knowledge graph via the memory bus handler (`memory/kg_graph`). Preferred for UI endpoints. |
+| `request_llm_providers()` | Request active LLM providers and routing info. |
+| `set_llm_default(provider)` | Switch the active LLM provider at runtime. |
 | `report_event(CommsEvent)` | Signal the subsystem manager (non-blocking `try_send`). |
 
 `CommsReply` carries `reply: String`, `session_id: Option<String>`, and `thinking: Option<String>`. The `thinking` field is populated when the underlying agent's LLM call produced reasoning content.
